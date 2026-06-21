@@ -1,0 +1,26 @@
+{
+  "name": "TokenDance Fund",
+  "short_name": "TokenDance",
+  "description": "TokenDance Fund — 综合投资仪表盘",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e14",
+  "theme_color": "#0090ba",
+  "icons": [
+    {
+      "src": "/ndaq.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/ndaq-d.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "lang": "zh-CN"
+}

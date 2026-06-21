@@ -1,0 +1,23 @@
+{
+  "name": "fund-dashboard-backend",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch main.ts",
+    "start": "bun main.ts",
+    "build": "bun build main.ts --outdir dist --target bun",
+    "test": "bun test",
+    "test:unit": "bun test __tests__/unit __tests__/contract",
+    "test:integration": "bun test __tests__/services __tests__/datasources __tests__/crawler"
+  },
+  "dependencies": {
+    "@fund-dashboard/contracts": "*",
+    "hono": "^4.7.0",
+    "mcp-lite": "^0.10.0",
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.14"
+  }
+}

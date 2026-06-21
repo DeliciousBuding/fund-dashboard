@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # npm — web package
+  - package-ecosystem: "npm"
+    directory: "/packages/web"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0  # no auto PRs, manual only
+    labels:
+      - "dependencies"
+
+  # github-actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
