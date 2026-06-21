@@ -111,7 +111,7 @@ router.get("/verify", c => {
   if (negPos.length) issues.push(`${negPos.length} negative positions`);
   if (nullSd?.n) issues.push(`${nullSd.n} tx missing settlement_days`);
   if (!issues.length) issues.push("all clear");
-  return c.json({ ok: issues.length === 0, issues });
+  return c.json({ ok: issues.length === 0 || (issues.length === 1 && issues[0] === "all clear"), issues });
 });
 
 // ═══════════ INTEGRITY & BACKUP ═══════════

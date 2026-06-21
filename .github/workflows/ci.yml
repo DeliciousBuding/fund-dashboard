@@ -70,53 +70,7 @@ jobs:
       - name: Install & build
         run: npm ci && cd packages/web && npm run build
 
-  # ── Docker build & push to GHCR ────────────────────────────────
-
-  build-and-push:
-    needs: [workspace-test, test-server, build-server, test-web, build-web]  # test-e2e temporarily non-blocking — pre-existing v3.0 E2E drift (API shape), tracked as tech debt; re-enable once E2E realigned
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/refactor/v3.0-reshape'))
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Build web dist
-        run: npm ci && cd packages/web && npm run build
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build & push backend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/deliciousbuding/fund-dashboard/backend:latest
-            ghcr.io/deliciousbuding/fund-dashboard/backend:${{ github.sha }}
-
-      - name: Build & push web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.web
-          push: true
-          tags: |
-            ghcr.io/deliciousbuding/fund-dashboard/web:latest
-            ghcr.io/deliciousbuding/fund-dashboard/web:${{ github.sha }}
-
+  # NOTE: build-and-push omitted in public fork. Production images (ghcr.io/deliciousbuding/fund-dashboard) are built in fund-dashboard-ops. Public repo runs tests + E2E only.
   # ── E2E (runs on PR + push, uses docker compose for real-env testing) ──
 
   test-e2e:

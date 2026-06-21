@@ -67,8 +67,8 @@ function clientIp(c: any): string {
 // ── Middleware ──────────────────────────────────────────────────────
 app.use(cors({ origin: ["http://localhost:5176", "http://127.0.0.1:5176", "https://your-fund-domain.example.com"] }));
 
-// Rate limiting — /api 60 req/min, /mcp 30 req/min
-app.use("/api/*", rateLimiter(60));
+// Rate limiting — /api 60 req/min (configurable via RATE_LIMIT), /mcp 30 req/min
+app.use("/api/*", rateLimiter(parseInt(process.env.RATE_LIMIT || "60")));
 
 // ── Routes ──────────────────────────────────────────────────────────
 // Primary routes

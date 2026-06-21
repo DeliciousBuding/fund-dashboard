@@ -78,10 +78,23 @@ router.post("/import-csv", async c => {
   }
 
   const db = getRwDb();
+
+  // Ensure fund_details exist for FK constraint before inserting transactions
+  const uniqueFunds = new Map<string, string>(); // fund_code -> fund_name
+  for (const tx of transactions) {
+    if (!uniqueFunds.has(tx.fund_code)) {
+      uniqueFunds.set(tx.fund_code, tx.fund_name || tx.fund_code);
+    }
+  }
+  const upsertFund = db.prepare("INSERT OR IGNORE INTO fund_details (fund_code, fund_name, security_type) VALUES (?, ?, 'fund')");
+
   const insert = db.prepare(`INSERT OR IGNORE INTO transactions (order_id, trade_time, confirm_date, trade_type, direction, fund_code, fund_name, confirm_amount, confirm_share, fee, inferred_nav, signed_cash_flow, signed_share_change) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   let imported = 0;
   const affectedFunds = new Set<string>();
   const doImport = db.transaction((txs: any[]) => {
+    for (const [code, name] of uniqueFunds) {
+      upsertFund.run(code, name);
+    }
     for (const tx of txs) {
       const r = insert.run(tx.order_id, tx.trade_time, tx.confirm_date, tx.trade_type, tx.direction, tx.fund_code, tx.fund_name, tx.confirm_amount, tx.confirm_share, tx.fee, tx.inferred_nav, tx.signed_cash_flow, tx.signed_share_change);
       if (r.changes) { imported++; affectedFunds.add(tx.fund_code); }
