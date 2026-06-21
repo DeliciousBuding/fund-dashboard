@@ -1,0 +1,55 @@
+node_modules/
+.venv/
+dist/
+__pycache__/
+*.pyc
+
+# Database files (personal data, must NOT be in repo)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Crawler output (generated data)
+packages/crawler/data/
+*.log
+errors.log
+
+# Environment
+.env
+.env.local
+
+# Build output
+packages/web/dist/
+
+# Docker named volumes
+fund_backups/
+
+# Test artifacts
+coverage/
+*.tgz
+test-results/
+playwright-report/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+packages/server/__tests__/tmp/
+
+# Defense-in-depth: secrets & alt DB extensions (open-source prep)
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx
+.env.*
+

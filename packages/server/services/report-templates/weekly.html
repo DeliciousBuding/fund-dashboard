@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>周度投资报告</title>
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", Arial, sans-serif; font-size: 12px; color: #1a1a2e; line-height: 1.6; }
+
+  /* ── Header ── */
+  .report-header { border-bottom: 3px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .report-header h1 { font-size: 22px; font-weight: 700; color: #1e3a5f; }
+  .report-header .meta { text-align: right; font-size: 11px; color: #64748b; }
+  .report-header .meta strong { color: #1e3a5f; }
+
+  /* ── Summary Cards ── */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+  .summary-card { background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%); border: 1px solid #dbeafe; border-radius: 8px; padding: 12px; text-align: center; }
+  .summary-card .label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-card .value { font-size: 20px; font-weight: 700; color: #1e3a5f; margin: 4px 0; }
+  .summary-card .value.positive { color: #059669; }
+  .summary-card .value.negative { color: #dc2626; }
+  .summary-card .sub { font-size: 10px; color: #94a3b8; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 18px; page-break-inside: avoid; }
+  .section-title { font-size: 15px; font-weight: 700; color: #1e3a5f; border-left: 4px solid #2563eb; padding-left: 10px; margin-bottom: 10px; }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead th { background: #f1f5f9; color: #334155; font-weight: 600; padding: 7px 8px; text-align: left; border-bottom: 2px solid #cbd5e1; white-space: nowrap; }
+  tbody td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .positive { color: #059669; }
+  .negative { color: #dc2626; }
+
+  /* ── Chart Placeholder ── */
+  .chart-box { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 14px; text-align: center; margin-bottom: 12px; }
+  .chart-box .chart-title { font-size: 11px; color: #64748b; margin-bottom: 6px; }
+  .chart-bar { display: flex; align-items: flex-end; justify-content: center; gap: 6px; height: 80px; padding: 0 20px; }
+  .chart-bar .bar { flex: 1; max-width: 28px; background: linear-gradient(to top, #2563eb, #60a5fa); border-radius: 3px 3px 0 0; position: relative; min-height: 4px; }
+  .chart-bar .bar .bar-val { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 8px; color: #475569; white-space: nowrap; }
+  .chart-bar .bar.red { background: linear-gradient(to top, #dc2626, #f87171); }
+  .chart-labels { display: flex; justify-content: center; gap: 6px; margin-top: 6px; font-size: 8px; color: #94a3b8; }
+
+  /* ── Risk Warnings ── */
+  .risk-box { background: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 6px; padding: 10px 14px; }
+  .risk-box h3 { color: #991b1b; font-size: 13px; margin-bottom: 6px; }
+  .risk-item { padding: 3px 0; font-size: 11px; color: #7f1d1d; }
+  .risk-item::before { content: "⚠ "; }
+
+  /* ── Footer ── */
+  .report-footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center; }
+  .disclaimer { font-size: 9px; color: #cbd5e1; margin-top: 4px; }
+
+  /* ── Penetration Table ── */
+  .penetration-bar { display: inline-block; height: 8px; background: #2563eb; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+
+  /* ── Allocation ── */
+  .alloc-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
+  .alloc-row .alloc-label { width: 80px; text-align: right; color: #475569; flex-shrink: 0; }
+  .alloc-row .alloc-bar-bg { flex: 1; height: 14px; background: #e2e8f0; border-radius: 7px; overflow: hidden; }
+  .alloc-row .alloc-bar-fill { height: 100%; border-radius: 7px; }
+  .alloc-row .alloc-pct { width: 50px; font-weight: 600; color: #1e3a5f; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<div class="report-header">
+  <div>
+    <h1>📊 投资周报</h1>
+    <div style="font-size:11px;color:#64748b;">{{REPORT_PERIOD}}</div>
+  </div>
+  <div class="meta">
+    <div>报告生成时间: <strong>{{GENERATED_AT}}</strong></div>
+    <div>数据截止: <strong>{{DATA_AS_OF}}</strong></div>
+  </div>
+</div>
+
+<!-- ═══════════ SUMMARY ═══════════ -->
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="label">组合总值</div>
+    <div class="value">¥{{TOTAL_VALUE}}</div>
+    <div class="sub">{{HELD_COUNT}} 个持仓</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">本周收益</div>
+    <div class="value {{WEEKLY_RETURN_CLASS}}">{{WEEKLY_RETURN}}</div>
+    <div class="sub">本周已实现 + 浮动</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">累计投入</div>
+    <div class="value">¥{{TOTAL_COST}}</div>
+    <div class="sub">{{TOTAL_TX}} 笔交易</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">累计收益</div>
+    <div class="value {{TOTAL_PNL_CLASS}}">{{TOTAL_PNL}}</div>
+    <div class="sub">浮动盈亏</div>
+  </div>
+</div>
+
+<!-- ═══════════ HOLDINGS DETAIL ═══════════ -->
+<div class="section">
+  <div class="section-title">持仓明细</div>
+  <table>
+    <thead>
+      <tr>
+        <th>代码</th><th>名称</th><th>类型</th>
+        <th class="num">持有份额</th><th class="num">成本</th><th class="num">现价</th>
+        <th class="num">市值</th><th class="num">盈亏</th><th class="num">盈亏%</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{HOLDINGS_ROWS}}
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════ RETURN TREND ═══════════ -->
+<div class="section">
+  <div class="section-title">本周收益走势</div>
+  <div class="chart-box">
+    <div class="chart-title">日度组合总值变化 (¥)</div>
+    <div class="chart-bar">
+      {{TREND_BARS}}
+    </div>
+    <div class="chart-labels">
+      {{TREND_LABELS}}
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ASSET ALLOCATION ═══════════ -->
+<div class="section">
+  <div class="section-title">资产配置</div>
+  {{ALLOCATION_ROWS}}
+</div>
+
+<!-- ═══════════ PENETRATION ANALYSIS ═══════════ -->
+<div class="section">
+  <div class="section-title">穿透分析 — 底层股票暴露 TOP10</div>
+  <table>
+    <thead>
+      <tr>
+        <th>股票</th><th class="num">穿透敞口 (¥)</th><th class="num">占组合%</th><th>持有基金</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{PENETRATION_ROWS}}
+    </tbody>
+  </table>
+  <div style="margin-top:6px;font-size:10px;color:#94a3b8;">
+    穿透覆盖率: {{PENETRATION_COVERAGE}} | 涉及基金: {{EQUITY_FUND_COUNT}} 只 | 底层股票: {{UNIQUE_STOCKS}} 只
+  </div>
+</div>
+
+<!-- ═══════════ RISK WARNINGS ═══════════ -->
+<div class="section">
+  <div class="section-title">风险提示</div>
+  <div class="risk-box">
+    {{RISK_ITEMS}}
+  </div>
+</div>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<div class="report-footer">
+  <div>Fund Dashboard v2.3 — 自动生成投资报告</div>
+  <div class="disclaimer">
+    免责声明：本报告由系统自动生成，仅供个人投资决策参考，不构成任何投资建议。过往业绩不代表未来表现。投资有风险，入市需谨慎。
+  </div>
+</div>
+
+</body>
+</html>

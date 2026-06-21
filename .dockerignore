@@ -1,0 +1,11 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+.git/
+*.db-shm
+*.db-wal
+data/
+*.db.gz
+*.sql.gz

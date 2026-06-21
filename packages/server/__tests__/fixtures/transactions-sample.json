@@ -1,0 +1,7 @@
+[
+  { "trade_time": "2026-01-05 10:00:00", "direction": "buy",   "confirm_amount": 1000, "confirm_share": 1000.0, "fee": 0,   "fund_code": "TEST01" },
+  { "trade_time": "2026-01-12 10:00:00", "direction": "buy",   "confirm_amount": 1000, "confirm_share":  970.87, "fee": 0, "fund_code": "TEST01" },
+  { "trade_time": "2026-01-20 10:00:00", "direction": "buy",   "confirm_amount": 1000, "confirm_share":  909.09, "fee": 0, "fund_code": "TEST01" },
+  { "trade_time": "2026-01-21 10:00:00", "direction": "dividend", "confirm_amount":  50, "confirm_share":   45.87, "fee": 0, "fund_code": "TEST01" },
+  { "trade_time": "2026-02-02 14:00:00", "direction": "sell",  "confirm_amount": 2500, "confirm_share": 2083.33, "fee": 5, "fund_code": "TEST01" }
+]
