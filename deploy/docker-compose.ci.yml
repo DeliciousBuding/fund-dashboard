@@ -1,0 +1,45 @@
+# CI E2E docker-compose — builds from source for integration tests
+# Backend image built from deploy/Dockerfile, web from deploy/Dockerfile.web
+
+networks:
+  fund-ci-net:
+    name: fund-ci-net
+    driver: bridge
+
+services:
+  fund-backend:
+    image: fund-dashboard/backend:ci
+    container_name: fund-ci-backend
+    ports:
+      - "8765:8765"
+    networks:
+      - fund-ci-net
+    environment:
+      - DB_PATH=/app/data/fund.db
+      - MCP_API_KEY=ci-test-key
+      - RATE_LIMIT=300
+      - TZ=Asia/Shanghai
+      - FEISHU_WEBHOOK=
+      - PORT=8765
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8765/api/health || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+      start_period: 5s
+
+  fund-web:
+    image: fund-dashboard/web:ci
+    container_name: fund-ci-web
+    networks:
+      - fund-ci-net
+    ports:
+      - "8080:80"
+    depends_on:
+      fund-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
