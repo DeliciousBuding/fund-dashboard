@@ -341,33 +341,42 @@ export interface FundHoldingsResult {
   holdings: FundHolding[];
 }
 
-/**
- * Fetch fund holdings (持仓明细) from eastmoney FundArchivesDatas API.
- *
- * Endpoint: https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=XXXXXX&topline=50&year=&month=
- *
- * Returns HTML table wrapped in `var apidata={ content:"...", arryear:[...], curyear:2026 };`
- * The table columns: 序号, 股票代码, 股票名称, 最新价, 涨跌幅, 相关资讯, 占净值比例, 持股数(万股), 持仓市值(万元)
- *
- * For US stocks (e.g. AAPL, MSFT), the stock code is the ticker symbol.
- * For HK stocks (e.g. 00700, 09988), it's a 5-digit numeric code.
- * For A-shares, it's a 6-digit numeric code.
- */
-export async function fetchFundHoldings(code: string): Promise<FundHoldingsResult | null> {
-  const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=50&year=&month=&rt=${Date.now()}`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, Referer: `https://fundf10.eastmoney.com/ccmx_${code}.html` },
-  });
-  const text = await res.text();
+interface FeederEtfMeta {
+  etfCode: string;
+  fundName: string;
+  stockPositionPct: number;
+}
+
+function textFromHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#37;/g, "%")
+    .trim();
+}
+
+function parseNumericCell(value: string): number {
+  const cleaned = value.replace(/,/g, "").replace(/%/g, "").replace(/[^\d.-]/g, "");
+  return parseFloat(cleaned) || 0;
+}
+
+function roundPct(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function parseHoldingsApiText(code: string, text: string): FundHoldingsResult | null {
   if (!text) return null;
 
-  // Extract the content from var apidata={ content:"...", ... };
   const contentMatch = text.match(/var apidata=\{\s*content:"(.*?)",\s*arryear:/s);
   if (!contentMatch) return null;
 
   // Unescape JSON-string-escaped content (the content is a JSON string within JS)
   const rawContent = contentMatch[1]
     .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
     .replace(/\\n/g, "\n")
     .replace(/\\t/g, "\t")
     .replace(/\\\\/g, "\\");
@@ -380,27 +389,23 @@ export async function fetchFundHoldings(code: string): Promise<FundHoldingsResul
   const dateMatch = rawContent.match(/截止至：[^<]*<font[^>]*>(\d{4}-\d{2}-\d{2})<\/font>/);
   const reportDate = dateMatch?.[1] || "";
 
-  // Parse table rows: each row has <tr><td>序号</td><td class='toc'><a href='...'>CODE</a></td><td class='toc'>NAME</td>...<td class='toc'>WEIGHT%</td><td class='toc'>SHARES</td><td class='toc'>MARKET_VALUE</td></tr>
-  // Pattern: <tr><td>N</td><td class='toc'><a href='...'>STOCK_CODE</a></td><td class='toc'[^>]*><a href='...'>STOCK_NAME</a></td>...<td class='toc'>WEIGHT</td><td class='toc'>SHARES</td><td class='toc'>MARKET_VALUE</td></tr>
-  const rowPattern = /<tr>\s*<td>(\d+)<\/td>\s*<td class='toc'>\s*<a[^>]*>([^<]+)<\/a>\s*<\/td>\s*<td class='toc'[^>]*>\s*<a[^>]*>([^<]+)<\/a>\s*<\/td>/g;
-
-  // After the stock name cell, we need the weight, shares, market_value cells
-  // The pattern after the stock name/price/change/links cells is:
-  // <td class='toc'>WEIGHT%</td><td class='toc'>SHARES</td><td class='toc'>MARKET_VALUE</td>
-  const fullRowPattern = /<tr>\s*<td>\d+<\/td>\s*<td class='toc'>\s*<a[^>]*>([^<]+)<\/a>\s*<\/td>\s*<td class='toc'[^>]*>\s*<a[^>]*>([^<]+)<\/a>\s*<\/td>[\s\S]*?<td class='toc'>([^<]*)%?<\/td>\s*<td class='toc'>([^<]*)<\/td>\s*<td class='toc'>([^<]*)<\/td>\s*<\/tr>/g;
-
   const holdings: FundHolding[] = [];
-  let match;
-  while ((match = fullRowPattern.exec(rawContent)) !== null) {
-    const stockCode = match[1].trim();
-    const stockName = match[2].trim();
-    const weightStr = match[3].trim();
-    const sharesStr = match[4].trim();
-    const marketValueStr = match[5].trim();
+  const rowPattern = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowPattern.exec(rawContent)) !== null) {
+    const cells = [...rowMatch[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(m => m[1]);
+    if (cells.length < 6) continue;
 
-    const weightPct = parseFloat(weightStr) || 0;
-    const shares = parseFloat(sharesStr.replace(/,/g, "")) || 0;
-    const marketValue = parseFloat(marketValueStr.replace(/,/g, "")) || 0;
+    const seq = textFromHtml(cells[0]);
+    if (!/^\d+$/.test(seq)) continue;
+
+    const stockCode = textFromHtml(cells[1]);
+    const stockName = textFromHtml(cells[2]);
+    const weightPct = parseNumericCell(cells[cells.length - 3]);
+    const shares = parseNumericCell(cells[cells.length - 2]);
+    const marketValue = parseNumericCell(cells[cells.length - 1]);
+
+    if (!stockCode || !stockName || (weightPct <= 0 && shares <= 0 && marketValue <= 0)) continue;
 
     holdings.push({
       stock_code: stockCode,
@@ -427,4 +432,91 @@ export async function fetchFundHoldings(code: string): Promise<FundHoldingsResul
     report_date: reportDate,
     holdings,
   };
+}
+
+async function fetchFundHoldingsDirect(code: string): Promise<FundHoldingsResult | null> {
+  const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=50&year=&month=&rt=${Date.now()}`;
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA, Referer: `https://fundf10.eastmoney.com/ccmx_${code}.html` },
+  });
+  return parseHoldingsApiText(code, await res.text());
+}
+
+function parseLatestStockPositionPct(text: string): number {
+  const match = text.match(/Data_fundSharesPositions\s*=\s*(\[[\s\S]*?\]);/);
+  if (!match) return 0;
+  try {
+    const points = JSON.parse(match[1]) as unknown;
+    if (!Array.isArray(points) || !points.length) return 0;
+    const latest = points[points.length - 1];
+    if (!Array.isArray(latest) || latest.length < 2) return 0;
+    const pct = Number(latest[1]);
+    return Number.isFinite(pct) && pct > 0 ? pct : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function fetchFeederEtfMeta(code: string): Promise<FeederEtfMeta | null> {
+  const pageRes = await fetch(`https://fund.eastmoney.com/${code}.html`, {
+    headers: { "User-Agent": UA, Referer: `https://fundf10.eastmoney.com/ccmx_${code}.html` },
+  });
+  const pageText = await pageRes.text();
+  const etfMatch = pageText.match(/href=["']https?:\/\/fund\.eastmoney\.com\/(\d{6})\.html[^"']*["'][^>]*>\s*查看相关ETF/i);
+  if (!etfMatch || etfMatch[1] === code) return null;
+
+  const dataRes = await fetch(`https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`, {
+    headers: { "User-Agent": UA, Referer: `https://fund.eastmoney.com/${code}.html` },
+  });
+  const dataText = await dataRes.text();
+  const nameMatch = dataText.match(/var fS_name\s*=\s*"([^"]+)"/);
+  const stockPositionPct = parseLatestStockPositionPct(dataText);
+  if (stockPositionPct <= 0) return null;
+
+  return {
+    etfCode: etfMatch[1],
+    fundName: nameMatch?.[1] || "",
+    stockPositionPct,
+  };
+}
+
+async function fetchFeederEtfProxyHoldings(code: string): Promise<FundHoldingsResult | null> {
+  const meta = await fetchFeederEtfMeta(code);
+  if (!meta) return null;
+
+  const etfHoldings = await fetchFundHoldingsDirect(meta.etfCode);
+  if (!etfHoldings?.holdings.length) return null;
+
+  const scale = meta.stockPositionPct / 100;
+  return {
+    fund_code: code,
+    fund_name: meta.fundName || etfHoldings.fund_name,
+    report_date: etfHoldings.report_date,
+    holdings: etfHoldings.holdings.map(h => ({
+      stock_code: h.stock_code,
+      stock_name: h.stock_name,
+      weight_pct: roundPct(h.weight_pct * scale),
+      shares: 0,
+      market_value: 0,
+    })).filter(h => h.weight_pct > 0),
+  };
+}
+
+/**
+ * Fetch fund holdings (持仓明细) from eastmoney FundArchivesDatas API.
+ *
+ * Endpoint: https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=XXXXXX&topline=50&year=&month=
+ *
+ * Returns HTML table wrapped in `var apidata={ content:"...", ... };
+ * The table columns: 序号, 股票代码, 股票名称, 最新价, 涨跌幅, 相关资讯, 占净值比例, 持股数(万股), 持仓市值(万元)
+ *
+ * For ETF feeder funds whose direct stock table is empty, Eastmoney exposes a
+ * related ETF link on the fund page. In that case we proxy through the related
+ * ETF holdings and scale each stock weight by the feeder fund stock-position
+ * estimate from pingzhongdata.
+ */
+export async function fetchFundHoldings(code: string): Promise<FundHoldingsResult | null> {
+  const direct = await fetchFundHoldingsDirect(code);
+  if (direct) return direct;
+  return fetchFeederEtfProxyHoldings(code);
 }
