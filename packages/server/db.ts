@@ -176,11 +176,18 @@ export function initSchema(db: Database) {
 
       // Attempt 2: recreate table with FK constraint.
       // Composite PK (e.g. nav_history) must be a table-level constraint.
+      const origSql = (db.query(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='${table}'`,
+      ).get() as { sql: string } | undefined)?.sql ?? "";
+      const hasAutoinc = /AUTOINCREMENT/i.test(origSql);
       const pkColsFk = cols.filter(c => c.pk).sort((a, b) => a.pk - b.pk);
       const compositePkFk = pkColsFk.length > 1;
       const colDefs = cols.map(c => {
         let def = `"${c.name}" ${c.type}`;
-        if (c.pk && !compositePkFk) def += " PRIMARY KEY";
+        if (c.pk && !compositePkFk) {
+          def += " PRIMARY KEY";
+          if (hasAutoinc && c.type.toUpperCase() === "INTEGER") def += " AUTOINCREMENT";
+        }
         if (c.notnull) def += " NOT NULL";
         if (c.dflt_value !== null && c.dflt_value !== undefined) def += ` DEFAULT ${c.dflt_value}`;
         return def;
@@ -226,6 +233,93 @@ export function initSchema(db: Database) {
     }
   }
 
+  function ensureTransactionsPrimaryKey() {
+    const cols = db.query("PRAGMA table_info('transactions')").all() as {
+      name: string; type: string; notnull: number; dflt_value: string | null; pk: number;
+    }[];
+    if (!cols.length) return;
+
+    const pkCols = cols.filter(c => c.pk).sort((a, b) => a.pk - b.pk).map(c => c.name);
+    const nullSeq = db.query("SELECT COUNT(*) as n FROM transactions WHERE seq IS NULL").get() as { n: number };
+    if (pkCols.length === 1 && pkCols[0] === "seq" && nullSeq.n === 0) return;
+
+    const duplicateSeq = db.query(`
+      SELECT COUNT(*) as n
+      FROM (
+        SELECT seq, COUNT(*) as c
+        FROM transactions
+        WHERE seq IS NOT NULL
+        GROUP BY seq
+        HAVING c > 1
+      )
+    `).get() as { n: number };
+    if (duplicateSeq.n) {
+      console.warn(`[schema] transactions seq PK migration skipped: duplicate seq values=${duplicateSeq.n}`);
+      return;
+    }
+
+    const colDefs = cols.map(c => {
+      let type = c.type || (c.name === "seq" ? "INTEGER" : "TEXT");
+      if (c.name === "seq") type = "INTEGER";
+      let def = `"${c.name}" ${type}`;
+      if (c.name === "seq") {
+        def += " PRIMARY KEY AUTOINCREMENT";
+      } else {
+        if (c.notnull) def += " NOT NULL";
+        if (c.dflt_value !== null && c.dflt_value !== undefined) def += ` DEFAULT ${c.dflt_value}`;
+      }
+      return def;
+    });
+
+    const indexes = db.query(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='transactions' AND sql IS NOT NULL",
+    ).all() as { sql: string }[];
+
+    db.run("PRAGMA foreign_keys=OFF");
+    db.run("BEGIN");
+    try {
+      db.run('DROP TABLE IF EXISTS "transactions_pk"');
+      db.run(`CREATE TABLE "transactions_pk" (${colDefs.join(", ")})`);
+      const names = cols.map(c => `"${c.name}"`).join(", ");
+      db.run(`
+        INSERT INTO "transactions_pk" (${names})
+        SELECT ${names}
+        FROM "transactions"
+        ORDER BY
+          CASE WHEN seq IS NULL THEN 1 ELSE 0 END,
+          seq,
+          trade_time,
+          rowid
+      `);
+      db.run('DROP TABLE "transactions"');
+      db.run('ALTER TABLE "transactions_pk" RENAME TO "transactions"');
+      for (const idx of indexes) {
+        try { db.run(idx.sql); } catch { /* best-effort */ }
+      }
+      db.run("COMMIT");
+      console.log(`[schema] Rebuilt transactions primary key (assigned NULL seq rows=${nullSeq.n})`);
+    } catch (e) {
+      try { db.run("ROLLBACK"); } catch { /* best-effort */ }
+      throw e;
+    } finally {
+      db.run("PRAGMA foreign_keys=ON");
+    }
+  }
+
+  function ensureTransactionImportUniqueIndex() {
+    db.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_import_identity
+      ON transactions (
+        order_id,
+        fund_code,
+        direction,
+        trade_time,
+        confirm_amount,
+        COALESCE(confirm_share, 0)
+      )
+    `);
+  }
+
   try {
     db.run(`CREATE TABLE IF NOT EXISTS fund_details (
       fund_code TEXT PRIMARY KEY, fund_name TEXT, fund_type TEXT
@@ -235,7 +329,7 @@ export function initSchema(db: Database) {
     safeAlter("ALTER TABLE fund_details ADD COLUMN market TEXT DEFAULT ''");
     db.run(`CREATE TABLE IF NOT EXISTS transactions (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id TEXT UNIQUE, trade_time TEXT, confirm_date TEXT,
+      order_id TEXT, trade_time TEXT, confirm_date TEXT,
       trade_type TEXT, direction TEXT, fund_code TEXT, fund_name TEXT,
       confirm_amount REAL, confirm_share REAL, fee REAL DEFAULT 0,
       inferred_nav REAL, nav_on_effective_date REAL, nav_verified INTEGER DEFAULT 0,
@@ -351,10 +445,12 @@ export function initSchema(db: Database) {
       { name: "held_shares", nullDefault: "0" },
       { name: "total_cost", nullDefault: "0" },
     ]);
+    ensureTransactionsPrimaryKey();
     // ── Foreign key constraints ─────────────────────────────────────────
     safeAddForeignKey({ table: "transactions", column: "fund_code", refTable: "fund_details", refColumn: "fund_code", onDelete: "CASCADE" });
     safeAddForeignKey({ table: "nav_history", column: "fund_code", refTable: "fund_details", refColumn: "fund_code" });
     safeAddForeignKey({ table: "portfolio_snapshot", column: "fund_code", refTable: "fund_details", refColumn: "fund_code" });
+    ensureTransactionImportUniqueIndex();
     // ── Seed sector data ──────────────────────────────────────────────
     try { db.run("INSERT OR IGNORE INTO sector_map (stock_code, market, sector, industry) VALUES ('AAPL','US','Technology','Consumer Electronics'),('MSFT','US','Technology','Software'),('GOOGL','US','Communication','Internet'),('AMZN','US','Consumer','Retail'),('NVDA','US','Technology','Semiconductors'),('META','US','Communication','Social Media'),('TSLA','US','Consumer','Auto'),('AVGO','US','Technology','Semiconductors'),('AMD','US','Technology','Semiconductors'),('NFLX','US','Communication','Entertainment'),('ADBE','US','Technology','Software'),('CRM','US','Technology','Software'),('QCOM','US','Technology','Semiconductors'),('TSM','US','Technology','Semiconductors'),('TXN','US','Technology','Semiconductors'),('COST','US','Consumer','Retail'),('PYPL','US','Financial','Payments'),('CSCO','US','Technology','Networking'),('INTC','US','Technology','Semiconductors'),('ASML','US','Technology','Equipment')"); } catch {}
   } catch (e: any) {
