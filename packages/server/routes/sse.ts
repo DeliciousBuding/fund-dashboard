@@ -29,6 +29,18 @@ function getIndices(): IndexRow[] {
   return query<IndexRow>("SELECT * FROM indices ORDER BY code");
 }
 
+function serializeIndices(indices: IndexRow[]): string {
+  return JSON.stringify(indices.map(r => ({
+    code: r.code,
+    name: r.name,
+    market: r.market,
+    price: r.price ? +r.price : null,
+    change_pct: r.change_pct != null ? +r.change_pct : null,
+    change_amt: r.change_amt != null ? +r.change_amt : null,
+    updated_at: r.updated_at,
+  })));
+}
+
 const router = new Hono();
 
 router.get("/stream", (c) => {
@@ -37,58 +49,34 @@ router.get("/stream", (c) => {
     log.info(`SSE client connected (total: ${activeConnections})`);
 
     let timer: ReturnType<typeof setInterval> | null = null;
+    let alive = true;
 
     // Clean up on client disconnect
     stream.onAbort(() => {
+      alive = false;
       if (timer) clearInterval(timer);
       activeConnections--;
       log.info(`SSE client disconnected (total: ${activeConnections})`);
     });
 
-    // Send initial data immediately
-    try {
-      const indices = getIndices();
-      await stream.writeSSE({
-        event: "indices",
-        data: JSON.stringify(indices.map(r => ({
-          code: r.code,
-          name: r.name,
-          market: r.market,
-          price: r.price ? +r.price : null,
-          change_pct: r.change_pct != null ? +r.change_pct : null,
-          change_amt: r.change_amt != null ? +r.change_amt : null,
-          updated_at: r.updated_at,
-        }))),
-      });
-    } catch (e: any) {
-      log.warn("SSE initial fetch failed", { error: e.message });
-    }
-
-    // Periodic push every 60s
-    timer = setInterval(async () => {
-      if (stream.aborted) return;
+    const push = async (label: string) => {
+      if (!alive || stream.aborted) return;
       try {
-        const indices = getIndices();
         await stream.writeSSE({
           event: "indices",
-          data: JSON.stringify(indices.map(r => ({
-            code: r.code,
-            name: r.name,
-            market: r.market,
-            price: r.price ? +r.price : null,
-            change_pct: r.change_pct != null ? +r.change_pct : null,
-            change_amt: r.change_amt != null ? +r.change_amt : null,
-            updated_at: r.updated_at,
-          }))),
+          data: serializeIndices(getIndices()),
         });
       } catch (e: any) {
-        log.warn("SSE periodic fetch failed", { error: e.message });
+        log.warn(`SSE ${label} fetch failed`, { error: e.message });
       }
-    }, SSE_INTERVAL_MS);
+    };
 
-    // Keep stream alive — sleep in a loop until aborted
-    while (!stream.aborted) {
-      await stream.sleep(5000);
+    await push("initial");
+    timer = setInterval(() => { void push("periodic"); }, SSE_INTERVAL_MS);
+
+    // Keep the handler alive until abort; interval does the work.
+    while (alive && !stream.aborted) {
+      await stream.sleep(SSE_INTERVAL_MS);
     }
   }, (err) => {
     // onError — stream-level error (separate from onAbort)

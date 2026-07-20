@@ -65,10 +65,24 @@ function clientIp(c: any): string {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────
-app.use(cors({ origin: ["http://localhost:5176", "http://127.0.0.1:5176", "https://your-fund-domain.example.com"] }));
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5176,http://127.0.0.1:5176")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(cors({ origin: CORS_ORIGINS }));
 
 // Rate limiting — /api 60 req/min (configurable via RATE_LIMIT), /mcp 30 req/min
 app.use("/api/*", rateLimiter(parseInt(process.env.RATE_LIMIT || "60")));
+
+// Request logging (API only) — must register BEFORE routes so Hono applies it.
+app.use("/api/*", async (c, next) => {
+  const rid = Math.random().toString(36).substring(2, 10);
+  const rl = reqLogger(c.req.raw, rid);
+  c.set("reqId", rid);
+  await next();
+  rl.done(c.res.status);
+});
+
 
 // ── Routes ──────────────────────────────────────────────────────────
 // Primary routes
@@ -114,15 +128,6 @@ app.get("/api/health", c => {
 });
 app.get("/api/status", c => c.redirect("/api/admin/status"));
 app.get("/api/summary", c => c.json(getDb().query("SELECT * FROM summary_by_fund").all()));
-
-// Request logging (API only)
-app.use("/api/*", async (c, next) => {
-  const rid = Math.random().toString(36).substring(2, 10);
-  const rl = reqLogger(c.req.raw, rid);
-  c.set("reqId", rid);
-  await next();
-  rl.done(c.res.status);
-});
 
 // MCP endpoint — accepts admin OR public key. The public exposure
 // (your-mcp-domain.example.com) lives behind nginx with its own limit_req + fail2ban;
