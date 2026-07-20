@@ -311,6 +311,7 @@ export function getFundXirr(code: string): number | null {
 // ── Admin operations ──────────────────────────────────────────────
 
 export function recalculateAllSnapshots(): { securities: number; totalValue: number } {
+  // NOTE: multi-portfolio is incomplete — snapshots always land in portfolio_id=1.
   const db = getRwDb();
   db.run("DELETE FROM portfolio_snapshot");
   db.run(`INSERT INTO portfolio_snapshot (fund_code, fund_name, held_shares, total_cost, latest_nav, security_type, portfolio_id)

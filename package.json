@@ -10,6 +10,6 @@
     "dev": "npm run dev --workspaces",
     "build": "npm run build --workspaces",
     "start": "npm run start --workspace packages/server",
-    "test": "cd packages/server && bun test __tests__/services/ __tests__/datasources/ __tests__/crawler/ __tests__/unit/ __tests__/contract/ && cd ../web && npx vitest run"
+    "test": "cd packages/server && bun test __tests__/services/ __tests__/datasources/ __tests__/crawler/ __tests__/unit/ __tests__/contract/ __tests__/api.test.ts __tests__/api-integration-*.test.ts && cd ../web && npx vitest run"
   }
 }

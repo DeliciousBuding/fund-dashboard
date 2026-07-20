@@ -18,14 +18,25 @@ interface RateEntry {
 }
 
 const store = new Map<string, RateEntry>();
+let lastSweep = 0;
 
-/** Extract client IP from request headers or connection */
+/** Drop expired windows occasionally so unique-IP map cannot grow without bound. */
+function maybeSweep(now: number) {
+  if (now - lastSweep < 60_000) return;
+  lastSweep = now;
+  for (const [ip, entry] of store) {
+    if (now >= entry.resetTime) store.delete(ip);
+  }
+}
+
+/** Extract client IP. Prefer nginx X-Real-IP; XFF only when TRUST_PROXY_XFF=1. */
 function getIP(c: Context): string {
-  const xff = c.req.header("X-Forwarded-For");
-  if (xff) return xff.split(",")[0].trim();
   const xri = c.req.header("X-Real-IP");
   if (xri) return xri.trim();
-  // Bun's request.connection is not standard — fall back to hostname
+  if (process.env.TRUST_PROXY_XFF === "1") {
+    const xff = c.req.header("X-Forwarded-For");
+    if (xff) return xff.split(",")[0].trim();
+  }
   try {
     const req = c.req.raw as any;
     return req.connection?.remoteAddress || "127.0.0.1";
@@ -39,6 +50,7 @@ export function rateLimiter(maxPerMinute: number) {
   return async (c: Context, next: Next) => {
     const ip = getIP(c);
     const now = Date.now();
+    maybeSweep(now);
     const entry = store.get(ip);
 
     // Reset expired window

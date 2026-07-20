@@ -275,7 +275,8 @@ export async function fetchStockKline(
   const fields1 = "f1,f2,f3,f4,f5";
   const fields2 = "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";
 
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=${fields1}&fields2=${fields2}&klt=101&fqt=${fqt}&beg=${beg}&end=${end}&lmt=${lmt}&ut=fa5fd1943c7b386f172d6893dbfba10b&_=${Date.now()}`;
+  const ut = process.env.EASTMONEY_UT || "fa5fd1943c7b386f172d6893dbfba10b";
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=${fields1}&fields2=${fields2}&klt=101&fqt=${fqt}&beg=${beg}&end=${end}&lmt=${lmt}&ut=${ut}&_=${Date.now()}`;
 
   const res = await fetch(url, { headers: { "User-Agent": UA, Referer: "https://quote.eastmoney.com/" } });
   const json = await res.json();
