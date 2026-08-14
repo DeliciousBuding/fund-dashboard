@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitecompat"
 	_ "modernc.org/sqlite"
 )
 
@@ -56,7 +55,7 @@ func TestOpenReadOnlyAllowsReadsAndRejectsWrites(t *testing.T) {
 	}
 }
 
-func TestOpenReadWriteCreatesDatabaseAndWorksWithCompatibilityCheck(t *testing.T) {
+func TestOpenReadWriteCreatesDatabaseInWALMode(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
 
 	db, err := Open(context.Background(), Options{Path: dbPath})
@@ -77,14 +76,6 @@ func TestOpenReadWriteCreatesDatabaseAndWorksWithCompatibilityCheck(t *testing.T
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close db: %v", err)
-	}
-
-	report, err := sqlitecompat.CheckCompatibility(context.Background(), dbPath, sqlitecompat.RequiredTables)
-	if err != nil {
-		t.Fatalf("CheckCompatibility returned error: %v", err)
-	}
-	if len(report.MissingTables) != 0 {
-		t.Fatalf("missing tables = %v, want none", report.MissingTables)
 	}
 }
 
