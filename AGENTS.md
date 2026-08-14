@@ -22,7 +22,7 @@
 - 业务：`internal/{app,httpapi,mcp,service,jobs,datasource,agenttools,agentops,repository}`
 - 前端：`packages/web` + `packages/contracts`
 - 部署：`deploy/Dockerfile`（Go 静态二进制 + React SPA 单容器）· `deploy/docker-compose.ci.yml`（CI smoke）
-- 文档：`docs/{ARCHITECTURE,DESIGN,TESTING,CHANGELOG}.md`
+- 文档：`docs/{ARCHITECTURE,DESIGN,TESTING}.md` · `CHANGELOG.md` · `CONTRIBUTING.md`
 
 ## 鉴权边界
 
@@ -79,6 +79,7 @@ CI 硬门禁：`test-go` / `test-web` / `build-go` / `build-web` / `smoke-e2e`�
 | 架构 | `docs/ARCHITECTURE.md` |
 | UI 设计系统 | `docs/DESIGN.md` |
 | 测试体系 | `docs/TESTING.md` |
-| 产品变更 | `docs/CHANGELOG.md` |
+| 产品变更 | `CHANGELOG.md` |
+| 贡献 / 发布 | `CONTRIBUTING.md` |
 | 文档路由 | `docs/README.md` |
 | 构建 / 运行 | `deploy/README.md` |

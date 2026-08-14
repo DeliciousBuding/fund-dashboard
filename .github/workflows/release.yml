@@ -149,7 +149,7 @@ jobs:
         run: docker compose -f deploy/docker-compose.ci.yml down -v || true
 
   # GHCR push remains on master CI (workflow_dispatch/push). Tag releases re-use CI image by SHA.
-  # Keep this job as a thin GitHub Release note publisher only when secrets allow.
+  # Release notes are extracted from CHANGELOG.md for the matching version section.
   github-release:
     needs: [validate, test, image-smoke]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -161,19 +161,32 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.validate.outputs.release_tag }}
+
+      - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ needs.validate.outputs.release_tag }}
+        run: |
+          version="${TAG#v}"
+          # Print the "## [x.y.z]" section up to the next "## [" heading.
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { found=1; print; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            {
+              echo "自动生成的发布。镜像：\`ghcr.io/deliciousbuding/fund-dashboard:$TAG\`"
+              echo
+              echo '```bash'
+              echo 'docker pull ghcr.io/deliciousbuding/fund-dashboard:latest'
+              echo '```'
+            } > release_notes.md
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.validate.outputs.release_tag }}
           name: ${{ needs.validate.outputs.release_tag }}
           prerelease: ${{ needs.validate.outputs.prerelease == 'true' }}
-          generate_release_notes: true
-          body: |
-            Pure Go backend + React SPA single-container release.
-
-            Image (from master CI): `ghcr.io/deliciousbuding/fund-dashboard:${{ needs.validate.outputs.sha }}`
-
-            Verify:
-            ```bash
-            curl -fsS http://127.0.0.1:8765/api/health
-            ```
+          body_path: release_notes.md

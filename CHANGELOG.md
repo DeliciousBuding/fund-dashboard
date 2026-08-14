@@ -1,11 +1,21 @@
 # Changelog
 
-格式约定（借鉴 daily_stock_analysis）：
+本文件记录用户可见的变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 精神，结合本仓库的中文条目约定。
+
+## 格式约定
 
 - `[Unreleased]` 使用**扁平**条目：`- [类型] 描述`
 - 类型：`新功能` / `改进` / `修复` / `文档` / `测试` / `chore`
 - **禁止**在 `[Unreleased]` 内新增 `###` 子标题（减少并发冲突）
-- 发版时由 maintainer 汇总为正式分段
+- 发版时由 maintainer 汇总为正式分段：`## [x.y.z] - YYYY-MM-DD`
+
+## 发版流程
+
+1. 确认所有改动已合入 `main`
+2. 运行 `./scripts/release.sh <x.y.z>`（自动把 `[Unreleased]` 归入 `[x.y.z]`、打 tag `v<x.y.z>`、推送）
+3. tag 推送触发 GitHub Actions，自动创建 Release（release notes 取自本文件对应版本段）
+
+完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
 

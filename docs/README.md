@@ -71,7 +71,7 @@ docs/                   architecture, design system, testing, changelog
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 架构与分层 |
 | [`DESIGN.md`](./DESIGN.md) | UI 设计系统 SSOT |
 | [`TESTING.md`](./TESTING.md) | 测试体系 SSOT |
-| [`CHANGELOG.md`](./CHANGELOG.md) | 产品 / 修复变更流水 |
+| [`CHANGELOG.md`](../CHANGELOG.md) | 产品 / 修复变更流水 |
 
 ## License
 
