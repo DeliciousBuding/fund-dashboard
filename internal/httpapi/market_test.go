@@ -228,13 +228,14 @@ func TestMarketStreamEmitsIndicesEvent(t *testing.T) {
 		router.ServeHTTP(rec, req)
 	}()
 
-	// Wait briefly for first frame then cancel.
+	// Wait briefly for first frame then cancel, then block until the handler
+	// actually returns so reading rec.Body below does not race the SSE goroutine.
 	time.Sleep(200 * time.Millisecond)
 	cancel()
 	select {
 	case <-done:
-	default:
-		time.Sleep(200 * time.Millisecond)
+	case <-time.After(2 * time.Second):
+		t.Fatal("market stream handler did not return after cancel")
 	}
 
 	if rec.Code != http.StatusOK {

@@ -91,7 +91,7 @@ func (s *Scheduler) Start() {
 		s.runStartupCatchUp(time.Now().In(cst))
 	})
 
-	go s.loop()
+	go s.loop(s.stopCh)
 	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, weekdays 20:00 CST price stale_only+dca once/day, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
 }
 
@@ -118,10 +118,10 @@ func (s *Scheduler) Stop() {
 	slog.Info("scheduler stopped")
 }
 
-func (s *Scheduler) loop() {
+func (s *Scheduler) loop(stopCh <-chan struct{}) {
 	for {
 		select {
-		case <-s.stopCh:
+		case <-stopCh:
 			return
 		case t := <-s.ticker.Chan():
 			s.tick(t.In(cst))

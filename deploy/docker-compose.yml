@@ -17,6 +17,9 @@ services:
       - "${FUND_PORT:-8765}:8765"
     volumes:
       - ./data:/app/data
+      # Backup directory surfaced by /api/admin/backup-status; the in-container
+      # backup producer is disabled, so this is a mount point for external jobs.
+      - ./backups:/app/backups
     environment:
       - FUND_HTTP_ADDR=0.0.0.0:8765
       - FUND_DB_PATH=/app/data/fund.db
@@ -26,7 +29,13 @@ services:
       - MCP_API_KEY=${MCP_API_KEY:?set MCP_API_KEY in .env, e.g. openssl rand -hex 32}
       - PUBLIC_MCP_KEY=${PUBLIC_MCP_KEY:-}
       - FUND_EDGE_KEY=${FUND_EDGE_KEY:-}
+      - FUND_BACKUP_DIR=/app/backups
       - TZ=${TZ:-Asia/Shanghai}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8765/api/health || exit 1"]
       interval: 30s
