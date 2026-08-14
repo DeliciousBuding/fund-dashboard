@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 // IntegrityReport is the read-only SQLite integrity / freelist / row-count view.
@@ -62,7 +63,7 @@ func (s Service) GetDBIntegrity(ctx context.Context, now time.Time) (IntegrityRe
 		DecisionBoundary: "read_only",
 	}
 
-	if s.driver == "pg" {
+	if s.dialect.IsPostgres() {
 		return s.getPGIntegrity(ctx, report)
 	}
 	return s.getSQLiteIntegrity(ctx, report)
@@ -118,12 +119,12 @@ func (s Service) getPGIntegrity(ctx context.Context, report IntegrityReport) (In
 		Detail:   "pg: n/a (autovacuum manages free space; check pg_stat_user_tables.n_dead_tup for bloat)",
 	}
 
-	tables, err := s.listPGTables(ctx)
+	tables, err := s.dialect.ListUserTables(ctx)
 	if err != nil {
 		return IntegrityReport{}, err
 	}
 	for _, table := range tables {
-		count, err := s.countRows(ctx, "SELECT COUNT(*) FROM "+quotePGIdentifier(table))
+		count, err := s.countRows(ctx, "SELECT COUNT(*) FROM "+dialect.QuoteIdentifier(table))
 		if err != nil {
 			slog.Error("integrity table unreadable", "table", table, "error", err.Error())
 			report.Recommendations = append(report.Recommendations, fmt.Sprintf("table_unreadable:%s", table))
@@ -180,12 +181,12 @@ func (s Service) getSQLiteIntegrity(ctx context.Context, report IntegrityReport)
 		report.Recommendations = append(report.Recommendations, "Schedule a reviewed VACUUM maintenance window to reclaim freelist pages.")
 	}
 
-	tables, err := s.listUserTables(ctx)
+	tables, err := s.dialect.ListUserTables(ctx)
 	if err != nil {
 		return IntegrityReport{}, err
 	}
 	for _, table := range tables {
-		count, err := s.countRows(ctx, "SELECT COUNT(*) FROM "+quoteSQLiteIdentifier(table))
+		count, err := s.countRows(ctx, "SELECT COUNT(*) FROM "+dialect.QuoteIdentifier(table))
 		if err != nil {
 			slog.Error("integrity table unreadable", "table", table, "error", err.Error())
 			report.Recommendations = append(report.Recommendations, fmt.Sprintf("table_unreadable:%s", table))
@@ -240,66 +241,4 @@ func (s Service) countQueryRows(ctx context.Context, query string) (int, error) 
 		return 0, err
 	}
 	return count, nil
-}
-
-func (s Service) listUserTables(ctx context.Context) ([]string, error) {
-	if s.driver == "pg" {
-		return s.listPGTables(ctx)
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT name
-		FROM sqlite_master
-		WHERE type = 'table'
-		  AND name NOT LIKE 'sqlite_%'
-		ORDER BY name
-		LIMIT 500
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list user tables: %w", err)
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return nil, fmt.Errorf("scan user table: %w", err)
-		}
-		tables = append(tables, table)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("user table rows: %w", err)
-	}
-	return tables, nil
-}
-
-func (s Service) listPGTables(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT tablename
-		FROM pg_catalog.pg_tables
-		WHERE schemaname = 'public'
-		ORDER BY tablename
-		LIMIT 500
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list pg tables: %w", err)
-	}
-	defer rows.Close()
-
-	var tables []string
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return nil, fmt.Errorf("scan pg table: %w", err)
-		}
-		tables = append(tables, table)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("pg table rows: %w", err)
-	}
-	return tables, nil
-}
-
-func quotePGIdentifier(identifier string) string {
-	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }

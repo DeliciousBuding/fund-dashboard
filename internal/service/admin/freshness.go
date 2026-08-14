@@ -7,27 +7,25 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 const stalePriceDays = 4
 
 type Service struct {
-	db     *sql.DB
-	driver string // "sqlite" (default) or "pg"
+	db      *sql.DB
+	dialect dialect.Dialect
 }
 
 func NewService(db *sql.DB) Service {
-	return Service{db: db}
+	return Service{db: db, dialect: dialect.New("", db)}
 }
 
-// NewServiceWithDriver creates a Service that knows the underlying database driver
-// so it can generate the correct SQL dialect (e.g. julianday vs CURRENT_DATE).
+// NewServiceWithDriver creates a Service aware of the underlying database driver
+// so it can generate the correct SQL dialect (e.g. julianday vs EXTRACT/EPOCH).
 func NewServiceWithDriver(db *sql.DB, driver string) Service {
-	if driver == "" {
-		driver = "sqlite"
-	}
-	return Service{db: db, driver: driver}
+	return Service{db: db, dialect: dialect.New(driver, db)}
 }
 
 type FreshnessReport struct {
@@ -131,7 +129,7 @@ func (s Service) queryNAV(ctx context.Context) (navStats, error) {
 }
 
 func (s Service) queryAnomalyCount(ctx context.Context) (int, error) {
-	hasAnomaly, err := s.tableHasColumn(ctx, "transactions", "anomaly")
+	hasAnomaly, err := s.dialect.HasColumn(ctx, "transactions", "anomaly")
 	if err != nil {
 		return 0, err
 	}
@@ -189,40 +187,22 @@ func (s Service) queryMissingNAVSecurities(ctx context.Context, heldOnly bool) (
 }
 
 func (s Service) queryStaleSecurities(ctx context.Context) ([]StaleSecurity, error) {
-	var staleSQL string
-	if s.driver == "pg" {
-		staleSQL = fmt.Sprintf(`
-			SELECT
-				nh.fund_code,
-				COALESCE(fd.fund_name, nh.fund_code),
-				MAX(nh.date),
-				CAST(EXTRACT(EPOCH FROM NOW()) / 86400 - EXTRACT(EPOCH FROM MAX(nh.date)::timestamp) / 86400 AS INTEGER)
-			FROM nav_history nh
-			JOIN fund_details fd ON nh.fund_code = fd.fund_code
-			JOIN portfolio_snapshot ps ON ps.fund_code = fd.fund_code
-			WHERE ps.held_shares > 0.001
-			GROUP BY nh.fund_code, fd.fund_name
-			HAVING CAST(EXTRACT(EPOCH FROM NOW()) / 86400 - EXTRACT(EPOCH FROM MAX(nh.date)::timestamp) / 86400 AS INTEGER) > %d
-			ORDER BY CAST(EXTRACT(EPOCH FROM NOW()) / 86400 - EXTRACT(EPOCH FROM MAX(nh.date)::timestamp) / 86400 AS INTEGER) DESC, nh.fund_code
-			LIMIT 5000
-		`, stalePriceDays)
-	} else {
-		staleSQL = fmt.Sprintf(`
-			SELECT
-				nh.fund_code,
-				COALESCE(fd.fund_name, nh.fund_code),
-				MAX(nh.date),
-				CAST(julianday('now') - julianday(MAX(nh.date)) AS INTEGER)
-			FROM nav_history nh
-			JOIN fund_details fd ON nh.fund_code = fd.fund_code
-			JOIN portfolio_snapshot ps ON ps.fund_code = fd.fund_code
-			WHERE ps.held_shares > 0.001
-			GROUP BY nh.fund_code
-			HAVING CAST(julianday('now') - julianday(MAX(nh.date)) AS INTEGER) > %d
-			ORDER BY CAST(julianday('now') - julianday(MAX(nh.date)) AS INTEGER) DESC, nh.fund_code
-			LIMIT 5000
-		`, stalePriceDays)
-	}
+	daysSince := s.dialect.DaysSinceExpr("MAX(nh.date)")
+	staleSQL := fmt.Sprintf(`
+		SELECT
+			nh.fund_code,
+			COALESCE(fd.fund_name, nh.fund_code),
+			MAX(nh.date),
+			%s
+		FROM nav_history nh
+		JOIN fund_details fd ON nh.fund_code = fd.fund_code
+		JOIN portfolio_snapshot ps ON ps.fund_code = fd.fund_code
+		WHERE ps.held_shares > 0.001
+		GROUP BY nh.fund_code, fd.fund_name
+		HAVING %s > %d
+		ORDER BY %s DESC, nh.fund_code
+		LIMIT 5000
+	`, daysSince, daysSince, stalePriceDays, daysSince)
 
 	rows, err := s.db.QueryContext(ctx, staleSQL)
 	if err != nil {
@@ -245,51 +225,6 @@ func (s Service) queryStaleSecurities(ctx context.Context) ([]StaleSecurity, err
 		return nil, fmt.Errorf("admin freshness stale security rows: %w", err)
 	}
 	return items, nil
-}
-
-func (s Service) tableHasColumn(ctx context.Context, table string, column string) (bool, error) {
-	var query string
-	if s.driver == "pg" {
-		query = `SELECT EXISTS (
-			SELECT 1 FROM information_schema.columns
-			WHERE table_name = ? AND column_name = ?
-		)`
-	} else {
-		query = "PRAGMA table_info(" + quoteSQLiteIdentifier(table) + ")"
-	}
-
-	if s.driver == "pg" {
-		var exists bool
-		if err := s.db.QueryRowContext(ctx, query, table, column).Scan(&exists); err != nil {
-			return false, fmt.Errorf("inspect %s columns: %w", table, err)
-		}
-		return exists, nil
-	}
-
-	rows, err := s.db.QueryContext(ctx, query)
-	if err != nil {
-		return false, fmt.Errorf("inspect %s columns: %w", table, err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var cid int
-		var name string
-		var dataType sql.NullString
-		var notNull int
-		var defaultValue any
-		var pk int
-		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
-			return false, fmt.Errorf("scan %s columns: %w", table, err)
-		}
-		if name == column {
-			return true, nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return false, fmt.Errorf("%s column rows: %w", table, err)
-	}
-	return false, nil
 }
 
 func freshnessActionable(staleCount int, missingHeldCount int) string {
@@ -328,8 +263,4 @@ func nullableStringPtr(value sql.NullString) *string {
 		return nil
 	}
 	return &value.String
-}
-
-func quoteSQLiteIdentifier(identifier string) string {
-	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }

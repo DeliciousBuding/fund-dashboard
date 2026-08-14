@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 var numericSecurityCodePattern = regexp.MustCompile(`^\d+$`)
@@ -118,9 +120,9 @@ func (s Service) querySecurityIdentity(ctx context.Context, code string) (securi
 func (s Service) queryPerCodeRange(ctx context.Context, table string, dateColumn string, code string) (RangeStats, error) {
 	query := fmt.Sprintf(
 		"SELECT COUNT(*), MIN(%s), MAX(%s) FROM %s WHERE fund_code = ?",
-		quoteSQLiteIdentifier(dateColumn),
-		quoteSQLiteIdentifier(dateColumn),
-		quoteSQLiteIdentifier(table),
+		dialect.QuoteIdentifier(dateColumn),
+		dialect.QuoteIdentifier(dateColumn),
+		dialect.QuoteIdentifier(table),
 	)
 	var stats RangeStats
 	var first sql.NullString

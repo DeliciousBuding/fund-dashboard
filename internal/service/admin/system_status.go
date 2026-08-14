@@ -138,7 +138,7 @@ func (s Service) querySystemSecurities(ctx context.Context) (SystemSecurityStats
 }
 
 func (s Service) querySystemAnomalies(ctx context.Context) (SystemAnomalyStats, error) {
-	hasAnomaly, err := s.tableHasColumn(ctx, "transactions", "anomaly")
+	hasAnomaly, err := s.dialect.HasColumn(ctx, "transactions", "anomaly")
 	if err != nil {
 		return SystemAnomalyStats{}, err
 	}

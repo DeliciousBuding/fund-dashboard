@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -24,10 +23,10 @@ type DashboardReport struct {
 }
 
 type DashboardSystem struct {
-	UptimeSec    float64         `json:"uptime_sec"`
-	UptimeHuman  string          `json:"uptime_human"`
-	Memory       DashboardMemory `json:"memory"`
-	GoVersion    string          `json:"go_version"`
+	UptimeSec   float64         `json:"uptime_sec"`
+	UptimeHuman string          `json:"uptime_human"`
+	Memory      DashboardMemory `json:"memory"`
+	GoVersion   string          `json:"go_version"`
 	// BuildVersion is FUND_VERSION / release pin (auth-gated dashboard only; not public health).
 	BuildVersion string `json:"build_version,omitempty"`
 	Platform     string `json:"platform"`
@@ -181,7 +180,7 @@ func (s Service) dashboardSecuritiesTotal(ctx context.Context) (int, error) {
 }
 
 func (s Service) dashboardAnomalies(ctx context.Context) ([]DashboardAnomaly, error) {
-	hasAnomaly, err := s.tableHasColumn(ctx, "transactions", "anomaly")
+	hasAnomaly, err := s.dialect.HasColumn(ctx, "transactions", "anomaly")
 	if err != nil {
 		return nil, err
 	}
@@ -245,57 +244,7 @@ func (s Service) dashboardNAVFresh(ctx context.Context, now time.Time) (int, err
 }
 
 func (s Service) dashboardDatabaseSize(ctx context.Context) (int64, error) {
-	if s.driver == "pg" {
-		return s.pgDatabaseSize(ctx)
-	}
-	return s.sqliteDatabaseSize(ctx)
-}
-
-func (s Service) pgDatabaseSize(ctx context.Context) (int64, error) {
-	var size int64
-	if err := s.db.QueryRowContext(ctx,
-		"SELECT pg_database_size(current_database())",
-	).Scan(&size); err != nil {
-		return 0, fmt.Errorf("pg database size: %w", err)
-	}
-	return size, nil
-}
-
-func (s Service) sqliteDatabaseSize(ctx context.Context) (int64, error) {
-	rows, err := s.db.QueryContext(ctx, "PRAGMA database_list")
-	if err != nil {
-		return 0, fmt.Errorf("database_list: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var seq int
-		var name string
-		var file string
-		if err := rows.Scan(&seq, &name, &file); err != nil {
-			return 0, fmt.Errorf("scan database_list: %w", err)
-		}
-		if name != "main" || file == "" {
-			continue
-		}
-		info, err := os.Stat(file)
-		if err == nil {
-			return info.Size(), nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("database_list rows: %w", err)
-	}
-
-	pageCount, err := s.querySingleInt(ctx, "PRAGMA page_count")
-	if err != nil {
-		return 0, fmt.Errorf("page_count: %w", err)
-	}
-	pageSize, err := s.querySingleInt(ctx, "PRAGMA page_size")
-	if err != nil {
-		return 0, fmt.Errorf("page_size: %w", err)
-	}
-	return int64(pageCount * pageSize), nil
+	return s.dialect.DatabaseSizeBytes(ctx)
 }
 
 func readDashboardMemory() DashboardMemory {
