@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 讨论 / 一般问题
+    url: https://github.com/DeliciousBuding/fund-dashboard/discussions
+    about: 一般性问题、使用咨询请在讨论区提出
+  - name: 安全漏洞报告
+    url: https://github.com/DeliciousBuding/fund-dashboard/security
+    about: 请通过私有渠道报告安全漏洞，勿公开披露

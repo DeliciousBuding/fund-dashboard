@@ -1,8 +1,14 @@
 # Fund Dashboard
 
+[![CI](https://github.com/DeliciousBuding/fund-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/DeliciousBuding/fund-dashboard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DeliciousBuding/fund-dashboard?sort=semver)](https://github.com/DeliciousBuding/fund-dashboard/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
+[![Node](https://img.shields.io/badge/Node-24-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+
 个人投资组合分析平台：基金 / 股票持仓管理、净值追踪、XIRR 年化、最大回撤、穿透分析、DCA 定投回测、蒙特卡洛模拟，以及面向 AI agent 的 MCP server。
 
-纯 **Go** 后端 + **React** 前端，单容器部署，SQLite 持久化。
+纯 **Go** 后端 + **React** 前端，单容器部署，SQLite 持久化（可选 PostgreSQL）。
 
 ## 功能
 
@@ -44,8 +50,27 @@ docker build -f deploy/Dockerfile -t fund-dashboard:local .
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构 |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | UI 设计系统 |
 | [`docs/TESTING.md`](docs/TESTING.md) | 测试体系 |
-| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 产品变更 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 变更日志 |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | 贡献与发布流程 |
 | [`deploy/README.md`](deploy/README.md) | 构建与运行 |
 | [`AGENTS.md`](AGENTS.md) | Agent 共享约束 |
+
+## 发布
+
+本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。发布通过 Git tag 触发：
+
+```bash
+./scripts/release.sh 2.0.0   # 归并 CHANGELOG + 打 tag v2.0.0 + 推送
+```
+
+tag 推送后 GitHub Actions 自动构建多架构镜像（GHCR）并创建 [Release](https://github.com/DeliciousBuding/fund-dashboard/releases)，release notes 取自 `CHANGELOG.md`。镜像拉取：
+
+```bash
+docker pull ghcr.io/deliciousbuding/fund-dashboard:latest
+```
+
+## 参与贡献
+
+欢迎提 Issue 和 PR。开发流程：从 `main` 拉出 `feature/*` 分支，改动后提 PR 回 `main`。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 License: Apache-2.0
