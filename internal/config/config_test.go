@@ -178,9 +178,9 @@ func TestParseProductionRequiresStrongSecrets(t *testing.T) {
 
 	t.Run("accepts strong keys", func(t *testing.T) {
 		cfg, err := Parse(map[string]string{
-			"FUND_ENV":       "production",
-			"MCP_API_KEY":    strongAdmin,
-			"FUND_EDGE_KEY":  strongEdge,
+			"FUND_ENV":      "production",
+			"MCP_API_KEY":   strongAdmin,
+			"FUND_EDGE_KEY": strongEdge,
 		})
 		if err != nil {
 			t.Fatalf("Parse returned error: %v", err)

@@ -274,4 +274,3 @@ func TestAdminRecalculateSnapshotAllFailed(t *testing.T) {
 		t.Fatalf("expected failed_codes: %v", body)
 	}
 }
-

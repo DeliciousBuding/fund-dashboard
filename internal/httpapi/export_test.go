@@ -138,4 +138,3 @@ func TestClampExportCell(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
-

@@ -158,4 +158,3 @@ func LoadJSON(payload []byte, options ...LoadOption) (*Registry, error) {
 	}
 	return &registry, nil
 }
-

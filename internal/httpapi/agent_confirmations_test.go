@@ -190,4 +190,3 @@ func TestClampAgentConfirmationIdentity(t *testing.T) {
 		t.Fatalf("%+v", in)
 	}
 }
-

@@ -18,17 +18,17 @@ type HarnessSnapshot struct {
 }
 
 type HarnessHoldingSignal struct {
-	Code         string          `json:"code"`
-	Name         string          `json:"name"`
-	SecurityType string          `json:"security_type"`
-	Market       string          `json:"market"`
-	HeldShares   float64         `json:"held_shares"`
-	CurrentValue float64         `json:"current_value"`
-	WeightPct    float64         `json:"weight_pct"`
-	LatestNAV    float64         `json:"latest_nav"`
-	CostPerShare *float64        `json:"cost_per_share"`
-	ChangePct    *float64        `json:"change_pct"`
-	DeviationPct *float64        `json:"deviation_pct"`
+	Code         string   `json:"code"`
+	Name         string   `json:"name"`
+	SecurityType string   `json:"security_type"`
+	Market       string   `json:"market"`
+	HeldShares   float64  `json:"held_shares"`
+	CurrentValue float64  `json:"current_value"`
+	WeightPct    float64  `json:"weight_pct"`
+	LatestNAV    float64  `json:"latest_nav"`
+	CostPerShare *float64 `json:"cost_per_share"`
+	ChangePct    *float64 `json:"change_pct"`
+	DeviationPct *float64 `json:"deviation_pct"`
 	// PNLPct is snapshot unrealized PnL % (distinct from DeviationPct = NAV vs cost/share).
 	PNLPct     *float64        `json:"pnl_pct,omitempty"`
 	SignalTags []string        `json:"signal_tags"`

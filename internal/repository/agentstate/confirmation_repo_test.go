@@ -154,7 +154,6 @@ func openAgentStateFixture(t *testing.T) *sql.DB {
 	return db
 }
 
-
 func TestConfirmationRepositoryMarkUsedConcurrentSingleWinner(t *testing.T) {
 	ctx := context.Background()
 	db := openAgentStateFixture(t)

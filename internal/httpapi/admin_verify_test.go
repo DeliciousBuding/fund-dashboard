@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
 )
 
 func TestAdminVerifyReportsAllClearForCleanData(t *testing.T) {

@@ -109,4 +109,3 @@ func TestAdjustPositionRejectsHugeShares(t *testing.T) {
 		t.Fatal("expected reason too long")
 	}
 }
-

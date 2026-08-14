@@ -196,7 +196,6 @@ func TestDurableClaimWindowAcrossMemoryReset(t *testing.T) {
 	}
 }
 
-
 func TestMultiJobDurableClaimsSameDay(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

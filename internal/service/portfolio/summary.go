@@ -231,7 +231,6 @@ func (s Service) fillContributors(ctx context.Context, portfolioID int, summary 
 	return nil
 }
 
-
 // chinaMarketLoc is the fund NAV calendar (CN A-share / fund industry convention).
 // Host may be in another timezone; stale chips must not use host local TZ.
 var chinaMarketLoc = func() *time.Location {

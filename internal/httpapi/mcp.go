@@ -1,9 +1,9 @@
 package httpapi
 
 import (
-	"log/slog"
 	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"

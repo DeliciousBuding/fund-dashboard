@@ -197,4 +197,3 @@ func (s Service) queryPortfolioMarketValue(ctx context.Context, portfolioID int)
 	}
 	return total.Float64, nil
 }
-

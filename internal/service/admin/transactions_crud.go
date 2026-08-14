@@ -219,4 +219,3 @@ func (s Service) getTransaction(ctx context.Context, seq int) (transactionRow, e
 	}
 	return row, nil
 }
-

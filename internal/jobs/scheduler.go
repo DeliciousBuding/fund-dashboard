@@ -32,14 +32,14 @@ type Scheduler struct {
 	dca       DCARunner
 	db        *sql.DB
 
-	mu            sync.Mutex
-	stopCh        chan struct{}
-	ticker        ticker
-	lastRun       map[string]string // job -> window id (usually YYYY-MM-DD CST)
-	rootCtx       context.Context
-	rootCancel    context.CancelFunc
-	startupTimer  *time.Timer
-	stopped       bool
+	mu           sync.Mutex
+	stopCh       chan struct{}
+	ticker       ticker
+	lastRun      map[string]string // job -> window id (usually YYYY-MM-DD CST)
+	rootCtx      context.Context
+	rootCancel   context.CancelFunc
+	startupTimer *time.Timer
+	stopped      bool
 }
 
 // ticker abstracts time.Ticker for testability.

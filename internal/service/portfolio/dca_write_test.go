@@ -94,4 +94,3 @@ func TestUpsertDCAPlanRejectsBadActiveAndFrequency(t *testing.T) {
 		t.Fatal("expected frequency reject")
 	}
 }
-

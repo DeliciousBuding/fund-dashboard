@@ -160,4 +160,3 @@ func (s Service) ImportTransactions(ctx context.Context, transactions []ImportTr
 
 	return ImportTransactionsResult{OK: true, Imported: imported, Total: len(transactions), AffectedFunds: len(affected)}, nil
 }
-

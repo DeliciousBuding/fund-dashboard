@@ -221,8 +221,8 @@ func (c *rebindConn) ResetSession(ctx context.Context) error {
 
 // rebind replaces ? positional placeholders with $1, $2, ... $N.
 // Single-quoted SQL string literals are respected: ? inside '...' is left alone,
-// and '' (escaped quote) does not end the string. Dollar-quoting and double-quoted
-// identifiers are not specially handled.
+// and a doubled quote (two single quotes) does not end the string. Dollar-quoting
+// and double-quoted identifiers are not specially handled.
 func rebind(query string) string {
 	// Fast path: no ? present.
 	if !strings.ContainsRune(query, '?') {

@@ -109,4 +109,3 @@ func TestNormalizeYahooRangeDefaultsUnknown(t *testing.T) {
 		t.Fatalf("interval default = %q", got)
 	}
 }
-

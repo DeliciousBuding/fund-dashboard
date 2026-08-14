@@ -66,8 +66,8 @@ var fetchStockSnapshotFn = datasource.FetchYahooStockSnapshot
 
 // Process-local full snapshot cache: production stock_realtime cannot store OHLC (#99).
 const (
-	usStockSnapFreshFor  = 15 * time.Minute
-	maxUSStockSnapCache  = 200
+	usStockSnapFreshFor = 15 * time.Minute
+	maxUSStockSnapCache = 200
 )
 
 type usStockSnapCacheEntry struct {

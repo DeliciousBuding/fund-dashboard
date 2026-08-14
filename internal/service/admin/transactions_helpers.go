@@ -93,7 +93,7 @@ func (s Service) recalcSnapshotTx(ctx context.Context, tx *sql.Tx, code string) 
 
 	// Preserve existing portfolio_id on update; default new rows to portfolio 1.
 	// SQLite: PRIMARY KEY(fund_code) only — avoid ON CONFLICT(fund_code, portfolio_id).
-		portfolioID := int64(1)
+	portfolioID := int64(1)
 	err := tx.QueryRowContext(ctx, `
 		SELECT portfolio_id FROM portfolio_snapshot
 		WHERE fund_code = ?

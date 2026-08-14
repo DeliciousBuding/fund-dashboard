@@ -57,7 +57,6 @@ func TestServiceComputeDCAAmountReportsNoPosition(t *testing.T) {
 	}
 }
 
-
 func TestServiceComputeDCAAmountScopesPortfolio(t *testing.T) {
 	db := openSummaryFixture(t)
 	defer db.Close()

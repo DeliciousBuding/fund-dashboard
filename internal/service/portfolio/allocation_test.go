@@ -1,9 +1,6 @@
 package portfolio
 
-
-
 import (
-
 	"context"
 
 	"database/sql"
@@ -11,10 +8,7 @@ import (
 	"strings"
 
 	"testing"
-
 )
-
-
 
 func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 
@@ -23,8 +17,6 @@ func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 	defer db.Close()
 
 	seedMixedAllocationData(t, db)
-
-
 
 	service := NewService(db)
 
@@ -35,8 +27,6 @@ func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 		t.Fatalf("GetAllocation returned error: %v", err)
 
 	}
-
-
 
 	if allocation.TotalValue != 830 {
 
@@ -54,8 +44,6 @@ func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 
 	assertBucket(t, allocation.BySecurityType[1], AllocationBucket{Key: "fund", Label: "Fund", Value: 150, WeightPct: 18.07, Count: 1})
 
-
-
 	if got := bucketKeys(allocation.ByMarket); strings.Join(got, ",") != "us_stock,hk_stock,cn_fund" {
 
 		t.Fatalf("ByMarket keys = %v, want us_stock,hk_stock,cn_fund", got)
@@ -67,8 +55,6 @@ func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 	assertBucket(t, allocation.ByMarket[1], AllocationBucket{Key: "hk_stock", Label: "HK Stocks", Value: 300, WeightPct: 36.14, Count: 1})
 
 	assertBucket(t, allocation.ByMarket[2], AllocationBucket{Key: "cn_fund", Label: "CN Funds", Value: 150, WeightPct: 18.07, Count: 1})
-
-
 
 	if got := bucketKeys(allocation.ByFundType); strings.Join(got, ",") != "科技股,港股,QDII-股票" {
 
@@ -96,15 +82,11 @@ func TestServiceGetAllocationMatchesCurrentPortfolioSemantics(t *testing.T) {
 
 }
 
-
-
 func TestServiceGetAllocationReturnsEmptyFactsForEmptyPortfolio(t *testing.T) {
 
 	db := openSummaryFixture(t)
 
 	defer db.Close()
-
-
 
 	service := NewService(db)
 
@@ -115,8 +97,6 @@ func TestServiceGetAllocationReturnsEmptyFactsForEmptyPortfolio(t *testing.T) {
 		t.Fatalf("GetAllocation returned error: %v", err)
 
 	}
-
-
 
 	if allocation.TotalValue != 0 {
 
@@ -149,8 +129,6 @@ func TestServiceGetAllocationReturnsEmptyFactsForEmptyPortfolio(t *testing.T) {
 	}
 
 }
-
-
 
 func seedMixedAllocationData(t *testing.T, db execer) {
 
@@ -186,15 +164,9 @@ func seedMixedAllocationData(t *testing.T, db execer) {
 
 }
 
-
-
 type execer interface {
-
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
-
 }
-
-
 
 func assertBucket(t *testing.T, got AllocationBucket, want AllocationBucket) {
 
@@ -207,8 +179,6 @@ func assertBucket(t *testing.T, got AllocationBucket, want AllocationBucket) {
 	}
 
 }
-
-
 
 func bucketKeys(rows []AllocationBucket) []string {
 
@@ -223,4 +193,3 @@ func bucketKeys(rows []AllocationBucket) []string {
 	return keys
 
 }
-

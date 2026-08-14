@@ -193,4 +193,3 @@ func validSnakeName(value string) bool {
 	}
 	return true
 }
-

@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
 )
 
 func TestAdminDashboardReportsReadOnlySystemAndDataState(t *testing.T) {
@@ -79,7 +78,6 @@ func TestAdminDashboardReportsReadOnlySystemAndDataState(t *testing.T) {
 		t.Fatalf("anomaly_count = %v, want 0", state["anomaly_count"])
 	}
 }
-
 
 func TestOpsDashboardRequiresEdgeKeyAndReturnsGoVersion(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)

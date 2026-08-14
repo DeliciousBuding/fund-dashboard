@@ -330,7 +330,6 @@ func newAgentOpsFixture(t *testing.T, db *sql.DB, clock func() time.Time) *Servi
 	})
 }
 
-
 func TestClaimConfirmationConcurrentSingleWinner(t *testing.T) {
 	ctx := context.Background()
 	db := openAgentOpsFixture(t)

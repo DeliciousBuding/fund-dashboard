@@ -1,22 +1,14 @@
 package portfolio
 
-
-
 import (
-
 	"context"
 
 	"path/filepath"
 
 	"testing"
 
-
-
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
-
 )
-
-
 
 func TestUpsertAndDeleteSecurity(t *testing.T) {
 
@@ -51,7 +43,6 @@ func TestUpsertAndDeleteSecurity(t *testing.T) {
 		`CREATE TABLE crawl_log (fund_code TEXT, source TEXT, rows_added INTEGER, latest_date TEXT, status TEXT, crawled_at TEXT)`,
 
 		`CREATE TABLE source_events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, related_security_code TEXT)`,
-
 	} {
 
 		if _, err := db.Exec(q); err != nil {
@@ -93,7 +84,6 @@ func TestUpsertAndDeleteSecurity(t *testing.T) {
 		`INSERT INTO crawl_log(fund_code, source, rows_added, latest_date, status, crawled_at) VALUES ('019173','eastmoney',1,'2026-07-15','ok','2026-07-15')`,
 
 		`INSERT INTO source_events(title, related_security_code) VALUES ('note','019173')`,
-
 	} {
 
 		if _, err := db.Exec(q); err != nil {
@@ -123,7 +113,6 @@ func TestUpsertAndDeleteSecurity(t *testing.T) {
 		`SELECT COUNT(*) FROM crawl_log WHERE fund_code='019173'`,
 
 		`SELECT COUNT(*) FROM source_events WHERE related_security_code='019173'`,
-
 	} {
 
 		var n int
@@ -143,8 +132,6 @@ func TestUpsertAndDeleteSecurity(t *testing.T) {
 	}
 
 }
-
-
 
 func TestDeleteUSSecurityCascadesStockCache(t *testing.T) {
 
@@ -175,7 +162,6 @@ func TestDeleteUSSecurityCascadesStockCache(t *testing.T) {
 		`INSERT INTO stock_kline_cache(code, market, period, date, close) VALUES ('AAPL','US','daily','2026-07-15',190)`,
 
 		`INSERT INTO stock_profile(code, name) VALUES ('AAPL','Apple')`,
-
 	} {
 
 		if _, err := db.Exec(q); err != nil {
@@ -205,7 +191,6 @@ func TestDeleteUSSecurityCascadesStockCache(t *testing.T) {
 		`SELECT COUNT(*) FROM stock_profile WHERE code='AAPL'`,
 
 		`SELECT COUNT(*) FROM fund_details WHERE fund_code='AAPL'`,
-
 	} {
 
 		var n int
@@ -225,4 +210,3 @@ func TestDeleteUSSecurityCascadesStockCache(t *testing.T) {
 	}
 
 }
-

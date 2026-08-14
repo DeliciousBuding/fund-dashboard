@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"log/slog"
+	"strings"
 )
 
 // ensureNavSchema is a best-effort SQLite/legacy column backfill, run once per refresher.
@@ -115,4 +115,3 @@ func isDuplicateColumnErr(err error) bool {
 	return strings.Contains(msg, "duplicate column") ||
 		strings.Contains(msg, "already exists")
 }
-

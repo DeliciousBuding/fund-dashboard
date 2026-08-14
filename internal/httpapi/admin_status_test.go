@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
 )
 
 func TestAdminStatusReportsReadOnlyDiagnostics(t *testing.T) {

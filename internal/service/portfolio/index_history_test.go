@@ -188,4 +188,3 @@ func TestIndexHistoryCacheEvictsExpiredAndCapsSize(t *testing.T) {
 		t.Fatalf("expected newest entry to remain under size cap")
 	}
 }
-

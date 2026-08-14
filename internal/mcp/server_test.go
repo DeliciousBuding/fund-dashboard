@@ -16,7 +16,6 @@ import (
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
 
-
 func TestConsumeConfirmationUnavailableNoPanic(t *testing.T) {
 	db := openMCPFixture(t)
 	defer db.Close()
