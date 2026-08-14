@@ -19,7 +19,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
-          cache: false
       - name: Vet
         run: go vet ./...
       - name: Run Go tests
@@ -32,7 +31,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.x'
-          cache: false
       - name: Build Go binary
         run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
 
@@ -43,7 +41,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: false
       - name: Install dependencies
         run: npm ci
       - name: Run web tests
@@ -56,7 +53,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: false
       - name: Install & build
         run: npm ci && cd packages/web && npm run build
 
@@ -71,7 +67,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: false
 
       - name: Seed CI database
         run: |
@@ -144,7 +139,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: false
 
       - name: Seed CI database
         run: |
