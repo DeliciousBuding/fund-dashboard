@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fund-dashboard.local/contracts/agent-context-pack.schema.json",
+  "title": "AgentContextPack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "decision_boundary",
+    "identity",
+    "portfolio",
+    "holdings",
+    "data_quality",
+    "source_context",
+    "permissions",
+    "capabilities",
+    "maintenance",
+    "agent_brief"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agent-context-pack-v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decision_boundary": {
+      "const": "facts_only"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portfolio_id", "base_currency", "data_version"],
+      "properties": {
+        "portfolio_id": { "type": "integer", "minimum": 1 },
+        "portfolio_name": { "type": ["string", "null"] },
+        "base_currency": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "data_version": { "type": "string" }
+      }
+    },
+    "portfolio": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["summary", "allocation", "risk_flags"],
+      "properties": {
+        "summary": { "type": "object" },
+        "allocation": { "type": "object" },
+        "risk_flags": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "holdings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/holding_signal" }
+    },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overall_score",
+        "level",
+        "stale_price_count",
+        "missing_cost_basis_count",
+        "missing_change_pct_count",
+        "holdings_coverage_pct",
+        "limitations"
+      ],
+      "properties": {
+        "overall_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "level": { "enum": ["good", "usable", "limited", "poor"] },
+        "stale_price_count": { "type": "integer", "minimum": 0 },
+        "missing_cost_basis_count": { "type": "integer", "minimum": 0 },
+        "missing_change_pct_count": { "type": "integer", "minimum": 0 },
+        "holdings_coverage_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "integrity_status": { "type": ["string", "null"] },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "source_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queries", "targets", "stored_events_summary", "recent_events"],
+      "properties": {
+        "queries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_query" }
+        },
+        "targets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_target" }
+        },
+        "stored_events_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total", "unread", "useful", "ignored"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "unread": { "type": "integer", "minimum": 0 },
+            "useful": { "type": "integer", "minimum": 0 },
+            "ignored": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "recent_events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/source_event" }
+        }
+      }
+    },
+    "permissions": {
+      "$ref": "#/$defs/permission_envelope"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "./tool-registry.schema.json#/$defs/tool_capability" }
+    },
+    "maintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recommended_actions"],
+      "properties": {
+        "recommended_actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recommended_action" }
+        }
+      }
+    },
+    "agent_brief": {
+      "type": "string"
+    },
+    "public_projection": {
+      "type": "object",
+      "description": "Low-sensitive display/debug projection. Must not contain raw provider payloads, secrets, or full audit rows."
+    }
+  },
+  "$defs": {
+    "holding_signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "name",
+        "security_type",
+        "market",
+        "held_shares",
+        "current_value",
+        "weight_pct",
+        "latest_price",
+        "cost_per_share",
+        "change_pct",
+        "deviation_pct",
+        "signal_tags",
+        "data_points"
+      ],
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "security_type": { "type": "string" },
+        "market": { "type": "string" },
+        "held_shares": { "type": "number" },
+        "current_value": { "type": "number" },
+        "weight_pct": { "type": "number" },
+        "latest_price": { "type": "number" },
+        "cost_per_share": { "type": ["number", "null"] },
+        "change_pct": { "type": ["number", "null"] },
+        "deviation_pct": { "type": ["number", "null"] },
+        "signal_tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "data_points": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["has_price", "has_cost_basis", "has_change_pct"],
+          "properties": {
+            "has_price": { "type": "boolean" },
+            "has_cost_basis": { "type": "boolean" },
+            "has_change_pct": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "source_query": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "entity_code", "entity_name", "query", "reason", "freshness"],
+      "properties": {
+        "id": { "type": "string" },
+        "scope": { "enum": ["portfolio", "holding", "underlying"] },
+        "entity_code": { "type": ["string", "null"] },
+        "entity_name": { "type": "string" },
+        "query": { "type": "string" },
+        "reason": { "type": "string" },
+        "freshness": { "enum": ["intraday", "daily", "weekly"] }
+      }
+    },
+    "source_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "url_template", "use_for"],
+      "properties": {
+        "kind": { "enum": ["web_search", "market_data", "official_disclosure", "local_mcp"] },
+        "name": { "type": "string" },
+        "url_template": { "type": ["string", "null"] },
+        "use_for": { "type": "string" }
+      }
+    },
+    "source_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "url", "source", "snippet", "query", "related_security_code", "related_security_name", "is_read", "is_useful", "fetched_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string" },
+        "url": { "type": ["string", "null"] },
+        "source": { "type": "string" },
+        "snippet": { "type": ["string", "null"] },
+        "query": { "type": ["string", "null"] },
+        "related_security_code": { "type": ["string", "null"] },
+        "related_security_name": { "type": ["string", "null"] },
+        "is_read": { "type": "boolean" },
+        "is_useful": { "type": "boolean" },
+        "fetched_at": { "type": "string" }
+      }
+    },
+    "permission_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_boundary",
+        "read_scope",
+        "write_scope",
+        "requires_confirmation",
+        "disabled_operations"
+      ],
+      "properties": {
+        "decision_boundary": { "const": "facts_only" },
+        "read_scope": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "write_scope": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requires_confirmation": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "disabled_operations": {
+          "type": "array",
+          "contains": { "const": "backup_producer" },
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "recommended_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["priority", "tool", "reason"],
+      "properties": {
+        "priority": { "enum": ["high", "medium", "low"] },
+        "tool": { "type": "string" },
+        "reason": { "type": "string" },
+        "input": { "type": "object" }
+      }
+    }
+  }
+}
