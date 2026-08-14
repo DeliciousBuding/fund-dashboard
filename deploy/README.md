@@ -8,8 +8,8 @@ Single-container image: Go backend (static binary) + React SPA, SQLite persisten
 docker build -f deploy/Dockerfile -t fund-dashboard:local .
 ```
 
-The `deploy/Dockerfile` is multi-stage: `golang:1.25-alpine` compiles the backend,
-`node:20-alpine` builds the SPA, and the final `alpine:3.20` image runs as an
+The `deploy/Dockerfile` is multi-stage: `golang:1.26-alpine` compiles the backend,
+`node:24-alpine` builds the SPA, and the final `alpine:3.20` image runs as an
 unprivileged `fund` user with `EXPOSE 8765`.
 
 ## Run locally

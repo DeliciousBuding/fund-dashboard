@@ -4,7 +4,7 @@
 # Run:    docker compose -f deploy/docker-compose.yml up -d
 # Env:    FUND_HTTP_ADDR, FUND_DB_PATH, FUND_STATIC_DIR, MCP_API_KEY, PUBLIC_MCP_KEY, FUND_EDGE_KEY
 
-FROM golang:1.25-alpine AS go-build
+FROM golang:1.26-alpine AS go-build
 
 RUN apk add --no-cache git
 
@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /fund-dashboard -ldflags="-s -w" ./cmd/fund-dashboard/
 
-FROM node:20-alpine AS web-build
+FROM node:24-alpine AS web-build
 WORKDIR /src
 COPY packages/web/package.json packages/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
