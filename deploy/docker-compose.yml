@@ -1,0 +1,35 @@
+# Production compose — single container, SQLite persistence, unprivileged user.
+#
+# Setup:
+#   cp .env.example .env
+#   # fill MCP_API_KEY (openssl rand -hex 32); FUND_EDGE_KEY for SPA mutations
+#   docker compose up -d
+#
+# Secrets are read from .env, never committed. The image runs as the
+# unprivileged 'fund' user; ./data is volume-mounted and must be writable.
+
+services:
+  fund-dashboard:
+    image: ghcr.io/deliciousbuding/fund-dashboard:latest
+    container_name: fund-dashboard
+    restart: unless-stopped
+    ports:
+      - "${FUND_PORT:-8765}:8765"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FUND_HTTP_ADDR=0.0.0.0:8765
+      - FUND_DB_PATH=/app/data/fund.db
+      - FUND_STATIC_DIR=/app/web
+      - FUND_ENV=${FUND_ENV:-development}
+      # Fail fast if the operator key is missing (production requires >=16 chars).
+      - MCP_API_KEY=${MCP_API_KEY:?set MCP_API_KEY in .env, e.g. openssl rand -hex 32}
+      - PUBLIC_MCP_KEY=${PUBLIC_MCP_KEY:-}
+      - FUND_EDGE_KEY=${FUND_EDGE_KEY:-}
+      - TZ=${TZ:-Asia/Shanghai}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8765/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
