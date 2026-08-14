@@ -29,8 +29,8 @@ jobs:
           fi
       - name: Vet
         run: go vet ./...
-      - name: Run Go tests
-        run: go test ./... -count=1
+      - name: Run Go tests (with race detector)
+        run: go test ./... -count=1 -race
 
   build-go:
     runs-on: ubuntu-latest
