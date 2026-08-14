@@ -274,4 +274,9 @@ var adminFixtureStatements = []string{
 		created_at TEXT NOT NULL DEFAULT '',
 		updated_at TEXT NOT NULL DEFAULT ''
 	)`,
+	`CREATE TABLE fund_holdings (
+		fund_code TEXT,
+		stock_code TEXT,
+		weight REAL
+	)`,
 }
