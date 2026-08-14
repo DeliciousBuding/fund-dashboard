@@ -1,7 +1,5 @@
 package portfolio
 
-import "database/sql"
-
 type FundDetail struct {
 	Code             string
 	Name             *string
@@ -96,41 +94,4 @@ type fundIdentity struct {
 	Type         *string
 	SecurityType string
 	Market       string
-}
-
-func nullableStringValue(value sql.NullString, fallback string) string {
-	if !value.Valid {
-		return fallback
-	}
-	return value.String
-}
-
-func nullableStringValuePtr(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	return &value.String
-}
-
-func dateOnlyNullablePtr(value sql.NullString) *string {
-	if !value.Valid {
-		return nil
-	}
-	date := dateOnly(value.String)
-	return &date
-}
-
-func nullableFloat64Ptr(value sql.NullFloat64) *float64 {
-	if !value.Valid {
-		return nil
-	}
-	return &value.Float64
-}
-
-func nullableIntPtr(value sql.NullInt64) *int {
-	if !value.Valid {
-		return nil
-	}
-	converted := int(value.Int64)
-	return &converted
 }
