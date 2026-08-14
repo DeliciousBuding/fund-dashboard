@@ -1,5 +1,14 @@
 version: 2
 updates:
+  # gomod — Go backend
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0  # no auto PRs, manual only
+    labels:
+      - "dependencies"
+
   # npm — web package
   - package-ecosystem: "npm"
     directory: "/packages/web"
