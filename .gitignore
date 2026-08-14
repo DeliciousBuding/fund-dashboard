@@ -11,22 +11,30 @@ data/
 *.db-wal
 
 # Crawler output (generated data)
-packages/crawler/data/
 *.log
 errors.log
 
 # Environment
 .env
 .env.local
+.env.*
 
 # Build output
 packages/web/dist/
+bin/
+dist/
+*.exe
+/fund-dashboard
+
+# CI seed runtime data (generated)
+deploy/ci-data/
 
 # Docker named volumes
 fund_backups/
 
 # Test artifacts
 coverage/
+.tmp/
 *.tgz
 test-results/
 playwright-report/
@@ -42,7 +50,7 @@ playwright-report/
 .DS_Store
 Thumbs.db
 desktop.ini
-packages/server/__tests__/tmp/
+nul/
 
 # Defense-in-depth: secrets & alt DB extensions (open-source prep)
 *.sqlite
@@ -51,7 +59,6 @@ packages/server/__tests__/tmp/
 *.key
 *.p12
 *.pfx
-.env.*
 
-
-.claude/
+# local git worktrees (spec-driven / parallel lanes)
+.worktrees/

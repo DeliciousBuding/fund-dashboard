@@ -40,6 +40,25 @@ describe('InvestmentHarnessPanel', () => {
         }],
         data_quality: { stale_price_count: 0, missing_cost_basis_count: 0, missing_change_pct_count: 0, holdings_coverage_pct: 100 },
         available_agent_tools: ['get_fund_detail'],
+        agent_permissions: {
+          decision_boundary: 'facts_only',
+          read_scope: ['portfolio'],
+          write_scope: ['source_event_feedback'],
+          requires_confirmation: ['add_transaction'],
+          disabled_operations: ['broker_trade_execution', 'backup_producer'],
+        },
+        agent_capabilities: [{
+          tool: 'get_fund_detail',
+          scope: 'read',
+          permission: 'allowed',
+          risk_level: 'low',
+          use_for: '读取单个证券事实',
+        }],
+        recommended_agent_actions: [{
+          priority: 'low',
+          tool: 'get_investment_source_brief',
+          reason: '生成消息源查询',
+        }],
         agent_brief: 'Agent owns all investment decisions',
       }),
     } as Response).mockResolvedValueOnce({
@@ -89,7 +108,7 @@ describe('InvestmentHarnessPanel', () => {
 
     render(<InvestmentHarnessPanel />);
 
-    await waitFor(() => expect(screen.getByText('Agent Harness')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('智能分析')).toBeInTheDocument());
     expect(screen.getByText('纳斯达克100')).toBeInTheDocument();
     expect(screen.getByText('高于成本 >10%')).toBeInTheDocument();
     expect(screen.getByText('消息源查询')).toBeInTheDocument();

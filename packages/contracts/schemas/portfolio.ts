@@ -35,6 +35,14 @@ const BySecurityTypeSummarySchema = z.object({
   total_pnl: z.number(),
 });
 
+const HoldingContributorSchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  unrealized_pnl: z.number(),
+  pnl_pct: z.number(),
+  current_value: z.number(),
+});
+
 export const PortfolioSchema = z.object({
   total_tx: z.number(),
   unique_funds: z.number(),
@@ -44,6 +52,12 @@ export const PortfolioSchema = z.object({
   total_sell: z.number(),
   total_fee: z.number(),
   unrealized_pnl: z.number(),
+  invested_cost: z.number().optional().default(0),
+  current_value: z.number().optional().default(0),
+  pnl_pct: z.number().optional().default(0),
+  top_gainer: HoldingContributorSchema.nullable().optional(),
+  top_loser: HoldingContributorSchema.nullable().optional(),
+  stale_nav_days: z.number().nullable().optional(),
   auto_tx: z.number(),
   manual_tx: z.number(),
   auto_amount: z.number(),
@@ -56,6 +70,7 @@ export const PortfolioSchema = z.object({
   by_security_type: z.array(BySecurityTypeSummarySchema),
 });
 export type Portfolio = z.infer<typeof PortfolioSchema>;
+export type HoldingContributor = z.infer<typeof HoldingContributorSchema>;
 
 // ═══════ DCA plan ═══════
 

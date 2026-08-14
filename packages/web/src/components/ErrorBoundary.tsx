@@ -1,6 +1,8 @@
 import { Component, type ReactNode } from 'react'
 import { Button, Text } from '@cloudflare/kumo'
 import i18n from '../i18n'
+import { space, fontSize } from '../styles/theme'
+import { sanitizeUserError } from '../services/userError'
 
 interface Props { children: ReactNode; fallback?: ReactNode }
 interface State { hasError: boolean; error: string }
@@ -9,17 +11,17 @@ export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: '' }
 
   static getDerivedStateFromError(e: Error) {
-    return { hasError: true, error: e.message }
+    return { hasError: true, error: sanitizeUserError(e, i18n.t('common.loadError')) }
   }
 
   render() {
     if (this.state.hasError) {
       return this.props.fallback || (
-        <div style={{ padding: 60, textAlign: 'center' }}>
-          <Text variant="error" as="span" style={{ display: 'block', fontSize: 14, marginBottom: 16 }}>
+        <div style={{ padding: space[8], textAlign: 'center' }}>
+          <Text variant="error" as="span" style={{ display: 'block', fontSize: fontSize.lg, marginBottom: space[4] }}>
             {i18n.t('error.boundaryTitle')}: {this.state.error}
           </Text>
-          <Button variant="primary" onClick={() => this.setState({ hasError: false, error: '' })}>
+          <Button type="button" variant="primary" onClick={() => this.setState({ hasError: false, error: '' })}>
             {i18n.t('error.boundaryRetry')}
           </Button>
         </div>

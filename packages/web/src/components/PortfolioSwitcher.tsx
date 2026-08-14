@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Text } from '@cloudflare/kumo'
 import { Scales } from '@phosphor-icons/react'
 import { fetchPortfolios, type PortfolioDefinition } from '../api'
+import { getTheme, glassSurfaceStyle, radius, space, fontSize, fontWeight, zIndex } from '../styles/theme'
+import { useAppStore } from '../stores/appStore'
 
 interface PortfolioSwitcherProps {
   activeId: number;
@@ -12,9 +14,11 @@ interface PortfolioSwitcherProps {
 /** Full-width portfolio selector chip.
  *  v3.0: rendered as a consistent bordered chip whether there is one or many
  *  portfolios, so the sidebar header row stays visually stable. Multi-portfolio
- *  opens a dropdown of styled items. */
+ *  opens a dropdown of styled items. URL sync is owned by App via usePortfolioDeepLink. */
 export default function PortfolioSwitcher({ activeId, onChange }: PortfolioSwitcherProps) {
   const { t } = useTranslation();
+  const dark = useAppStore((s) => s.dark);
+  const theme = getTheme(dark);
   const [portfolios, setPortfolios] = useState<PortfolioDefinition[]>([]);
   const [open, setOpen] = useState(false);
 
@@ -22,7 +26,7 @@ export default function PortfolioSwitcher({ activeId, onChange }: PortfolioSwitc
     const ctrl = new AbortController();
     fetchPortfolios(ctrl.signal)
       .then(setPortfolios)
-      .catch(() => {});
+      .catch((e: any) => { if (e?.name !== 'AbortError') console.warn('[portfolioSwitcher]', e); });
     return () => ctrl.abort();
   }, []);
 
@@ -42,19 +46,18 @@ export default function PortfolioSwitcher({ activeId, onChange }: PortfolioSwitc
   const single = portfolios.length <= 1;
 
   const chipStyle: CSSProperties = {
-    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-    padding: '6px 10px', borderRadius: 6,
-    border: '1px solid var(--color-kumo-border)',
-    background: 'var(--color-kumo-surface)',
-    fontSize: 12, fontWeight: 500,
-    color: 'var(--text-color-kumo)',
+    display: 'flex', alignItems: 'center', gap: space[2], width: '100%',
+    padding: `${space[2] - 2}px ${space[3] - 2}px`,
+    ...glassSurfaceStyle(theme, { borderRadius: radius.sm }),
+    fontSize: fontSize.md, fontWeight: fontWeight.medium,
+    color: theme.text,
   };
 
   // Single portfolio → static chip (no dropdown, no interaction affordance).
   if (single) {
     return (
-      <div style={{ ...chipStyle, cursor: 'default' }}>
-        <Scales size={14} style={{ flexShrink: 0 }} />
+      <div style={{ ...chipStyle, cursor: 'default' }} aria-label={displayName}>
+        <Scales size={14} style={{ flexShrink: 0 }} aria-hidden />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
       </div>
     );
@@ -63,31 +66,39 @@ export default function PortfolioSwitcher({ activeId, onChange }: PortfolioSwitc
   return (
     <div data-portfolio-switcher style={{ position: 'relative', width: '100%' }}>
       <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => setOpen(v => !v)}
         style={{ ...chipStyle, cursor: 'pointer', textAlign: 'left' }}
       >
-        <Scales size={14} style={{ flexShrink: 0 }} />
+        <Scales size={14} style={{ flexShrink: 0 }} aria-hidden />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-        <span style={{ fontSize: 10, marginLeft: 2 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: fontSize.xs, marginLeft: 2 }} aria-hidden>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-          background: 'var(--color-kumo-surface)',
-          border: '1px solid var(--color-kumo-border)',
-          borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          zIndex: 200, overflow: 'hidden',
-        }}>
+        <div
+          role="listbox"
+          aria-label={t('portfolio.default')}
+          style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, marginTop: space[1],
+            ...glassSurfaceStyle(theme, { borderRadius: radius.md }),
+            zIndex: zIndex.sticky, overflow: 'hidden',
+          }}
+        >
           {portfolios.map(p => (
             <button
+              type="button"
               key={p.id}
+              role="option"
+              aria-selected={p.id === activeId}
               onClick={() => { onChange(p.id); setOpen(false); }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left',
-                padding: '8px 14px', border: 'none',
+                padding: `${space[2]}px ${space[4] - 2}px`, border: 'none',
                 background: p.id === activeId ? 'var(--color-kumo-canvas)' : 'transparent',
-                cursor: 'pointer', fontSize: 13, fontWeight: p.id === activeId ? 600 : 400,
-                color: 'var(--text-color-kumo)',
+                cursor: 'pointer', fontSize: fontSize.base, fontWeight: p.id === activeId ? fontWeight.semibold : fontWeight.regular,
+                color: theme.text,
                 borderBottom: '1px solid var(--color-kumo-border)',
               }}
             >

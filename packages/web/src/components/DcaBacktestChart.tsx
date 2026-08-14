@@ -1,44 +1,13 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Text } from '@cloudflare/kumo'
-import { use as echartsUse } from 'echarts/core'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
 import { fetchNav, type NavPoint } from '../api'
-import { getTheme, chartAxis, chartTooltip, chartLegend, chartDataZoom, areaGradient } from '../styles/theme'
+import { getTheme, chartAxis, chartTooltip, chartLegend, chartDataZoom, space, radius, fontSize, fontWeight, chartHeight } from '../styles/theme'
 import { useEChart } from '../hooks/useEChart'
-import { Card } from './ui/Card'
+import { ChartShell, useChartData, lineSeries, useCoreCharts } from './charts'
+import { calcIRR } from '../services/irr'
 
-echartsUse([LineChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer])
-
-// ── IRR via Newton's method ──────────────────────────────────────
-
-function calcIRR(cashflows: number[], dates: Date[]): number | null {
-  if (cashflows.length < 2) return null
-  const allPos = cashflows.every(c => c >= 0)
-  const allNeg = cashflows.every(c => c <= 0)
-  if (allPos || allNeg) return null
-  let rate = 0.1
-  const msPerYear = 365.25 * 24 * 3600 * 1000
-  const t0 = dates[0].getTime()
-  for (let iter = 0; iter < 200; iter++) {
-    let npv = 0, dnpv = 0
-    for (let i = 0; i < cashflows.length; i++) {
-      const yrs = (dates[i].getTime() - t0) / msPerYear
-      const denom = Math.pow(1 + rate, yrs)
-      npv += cashflows[i] / denom
-      if (yrs > 0) dnpv += -yrs * cashflows[i] / (denom * (1 + rate))
-    }
-    if (Math.abs(dnpv) < 1e-15 || Math.abs(npv) < 1e-12) break
-    const nr = rate - npv / dnpv
-    if (Math.abs(nr - rate) < 1e-12) { rate = nr; break }
-    rate = nr
-    if (rate <= -1) rate = -0.999
-    if (rate > 100) rate = 100
-  }
-  return isNaN(rate) || !isFinite(rate) || rate <= -0.999 ? null : rate
-}
+useCoreCharts()
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -69,27 +38,17 @@ interface DcaBacktestChartProps {
 function DcaBacktestChart({ fundCode, dark, baseAmount = 1000 }: DcaBacktestChartProps) {
   const { t } = useTranslation();
   const theme = getTheme(dark);
-  const [navData, setNavData] = useState<NavPoint[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
 
-  // ── Fetch NAV history ──────────────────────────────────────────
-  useEffect(() => {
-    const ctrl = new AbortController()
-    setLoading(true)
-    setError('')
-    fetchNav(fundCode, ctrl.signal)
-      .then(d => { setNavData(d); setLoading(false) })
-      .catch(e => {
-        if (e.name !== 'AbortError') { setError(e.message || t('dca.error')); setLoading(false) }
-      })
-    return () => ctrl.abort()
-  }, [fundCode])
+  const { data: navData, loading, error } = useChartData<NavPoint[]>(
+    (signal) => fetchNav(fundCode, signal),
+    [fundCode],
+  );
+  const nav = navData ?? [];
 
   // ── Compute strategy simulations ───────────────────────────────
   const result = useMemo((): BacktestResult | null => {
-    if (navData.length < 2) return null
-    const sorted = [...navData].sort((a, b) => a.date.localeCompare(b.date))
+    if (nav.length < 2) return null
+    const sorted = [...nav].sort((a, b) => a.date.localeCompare(b.date))
     const firstNav = sorted[0].unit_nav
 
     // DCA: invest baseAmount at the first data point of each month
@@ -99,7 +58,6 @@ function DcaBacktestChart({ fundCode, dark, baseAmount = 1000 }: DcaBacktestChar
     let dcaInvested = 0
     let lastMonth = ''
 
-    // IRR tracking
     const irrCashflows: number[] = []
     const irrDates: Date[] = []
 
@@ -150,7 +108,7 @@ function DcaBacktestChart({ fundCode, dark, baseAmount = 1000 }: DcaBacktestChar
       dcaIrr,
       lumpIrr,
     }
-  }, [navData, baseAmount])
+  }, [nav, baseAmount]);
 
   const option = useMemo(() => {
     if (!result) return {} as Record<string, unknown>;
@@ -173,19 +131,12 @@ function DcaBacktestChart({ fundCode, dark, baseAmount = 1000 }: DcaBacktestChar
       xAxis: { type: 'category', data: result.dates, boundaryGap: false, ...chartAxis(theme) },
       yAxis: {
         type: 'value', ...chartAxis(theme),
-        axisLabel: { formatter: (v: number) => v >= 1e4 ? `¥${(v / 1e4).toFixed(1)}万` : `¥${v.toFixed(0)}`, color: theme.textMuted },
+        axisLabel: { formatter: (v: number) => v >= 1e4 ? `¥${(v / 1e4).toFixed(1)}${t('dca.valueUnit10k')}` : `¥${v.toFixed(0)}`, color: theme.textMuted },
       },
       dataZoom: chartDataZoom(theme),
       series: [
-        {
-          name: t('dca.dcaLegend'), type: 'line', data: result.dcaValues, smooth: true, symbol: 'none',
-          lineStyle: { color: theme.blue, width: 2 },
-          areaStyle: { color: areaGradient(theme, theme.blue) },
-        },
-        {
-          name: t('dca.lumpLegend'), type: 'line', data: result.lumpValues, smooth: true, symbol: 'none',
-          lineStyle: { color: theme.amber, width: 1.5, type: 'dashed' },
-        },
+        lineSeries({ name: t('dca.dcaLegend'), data: result.dcaValues, color: theme.blue, area: true, width: 2 }),
+        lineSeries({ name: t('dca.lumpLegend'), data: result.lumpValues, color: theme.amber, width: 1.5, dashed: true }),
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,66 +144,39 @@ function DcaBacktestChart({ fundCode, dark, baseAmount = 1000 }: DcaBacktestChar
 
   const chartRef = useEChart(option, [option]);
 
-  // ── Loading / Error / Empty ─────────────────────────────────────
-  const placeholder = (msg: string, testid: string) => (
-    <div data-testid={testid} style={{ height: 420, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textMuted, fontVariantNumeric: 'tabular-nums' }}>
-      {msg}
-    </div>
-  );
-
-  if (loading) {
-    return (
-      <Card dark={dark} style={{ marginBottom: 20 }}>
-        {placeholder(t('dca.loading'), 'chart-loading')}
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card dark={dark} style={{ marginBottom: 20 }}>
-        {placeholder(t('common.loadError', '加载失败'), 'chart-error')}
-      </Card>
-    )
-  }
-
-  if (!result) {
-    return (
-      <Card dark={dark} style={{ marginBottom: 20 }}>
-        {placeholder(t('common.noData', '暂无数据'), 'chart-empty')}
-      </Card>
-    )
-  }
-
   return (
-    <Card dark={dark} style={{ marginBottom: 20 }}>
-      <div style={{ padding: '4px 0 16px' }}>
-        <Text variant="heading3" as="h3">{t('dca.backtestCompare')}</Text>
-        <Text variant="secondary" as="span" size="xs" style={{ marginTop: 2 }}>
-          {t('dca.backtestDesc', { amount: baseAmount })}
-        </Text>
-      </div>
-      <div ref={chartRef} style={{ height: 380 }} />
-
-      {/* Stats row */}
-      <div style={{ padding: '8px 0 16px', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-        <StatItem label={t('dca.dcaIrr')} value={result.dcaIrr != null ? `${(result.dcaIrr * 100).toFixed(2)}%` : '-'} />
-        <StatItem label={t('dca.lumpIrr')} value={result.lumpIrr != null ? `${(result.lumpIrr * 100).toFixed(2)}%` : '-'} />
-        <StatItem label={t('backtest.totalInvested')} value={`¥${result.dcaInvested.toFixed(0)}`} />
-        <StatItem label={t('dca.dcaLegend')} value={`¥${result.dcaFinalValue.toFixed(0)}`} />
-        <StatItem label={t('dca.lumpLegend')} value={`¥${result.lumpFinalValue.toFixed(0)}`} />
-        <StatItem
-          label={t('dca.dcaPnl')}
-          value={`${result.dcaPnl >= 0 ? '+' : ''}¥${result.dcaPnl.toFixed(0)} (${result.dcaPnlPct >= 0 ? '+' : ''}${result.dcaPnlPct.toFixed(1)}%)`}
-          color={result.dcaPnl >= 0 ? theme.up : theme.down}
-        />
-        <StatItem
-          label={t('dca.lumpPnl')}
-          value={`${result.lumpPnl >= 0 ? '+' : ''}¥${result.lumpPnl.toFixed(0)} (${result.lumpPnlPct >= 0 ? '+' : ''}${result.lumpPnlPct.toFixed(1)}%)`}
-          color={result.lumpPnl >= 0 ? theme.up : theme.down}
-        />
-      </div>
-    </Card>
+    <ChartShell
+      dark={dark}
+      marginBottom={space[5]}
+      height={chartHeight.backtest}
+      title={t('dca.backtestCompare')}
+      subtitle={t('dca.backtestDesc', { amount: baseAmount })}
+      loading={loading}
+      loadingText={t('dca.loading')}
+      error={error}
+      empty={!result}
+    >
+      <div ref={chartRef} style={{ height: chartHeight.backtest }} />
+      {result && (
+        <div style={{ padding: `${space[2]}px 0 ${space[4]}px`, display: 'flex', gap: space[5], flexWrap: 'wrap' }}>
+          <StatItem label={t('dca.dcaIrr')} value={result.dcaIrr != null ? `${(result.dcaIrr * 100).toFixed(2)}%` : '-'} />
+          <StatItem label={t('dca.lumpIrr')} value={result.lumpIrr != null ? `${(result.lumpIrr * 100).toFixed(2)}%` : '-'} />
+          <StatItem label={t('dca.totalInvested')} value={`¥${result.dcaInvested.toFixed(0)}`} />
+          <StatItem label={t('dca.dcaLegend')} value={`¥${result.dcaFinalValue.toFixed(0)}`} />
+          <StatItem label={t('dca.lumpLegend')} value={`¥${result.lumpFinalValue.toFixed(0)}`} />
+          <StatItem
+            label={t('dca.dcaPnl')}
+            value={`${result.dcaPnl >= 0 ? '+' : ''}¥${result.dcaPnl.toFixed(0)} (${result.dcaPnlPct >= 0 ? '+' : ''}${result.dcaPnlPct.toFixed(1)}%)`}
+            color={result.dcaPnl >= 0 ? theme.up : theme.down}
+          />
+          <StatItem
+            label={t('dca.lumpPnl')}
+            value={`${result.lumpPnl >= 0 ? '+' : ''}¥${result.lumpPnl.toFixed(0)} (${result.lumpPnlPct >= 0 ? '+' : ''}${result.lumpPnlPct.toFixed(1)}%)`}
+            color={result.lumpPnl >= 0 ? theme.up : theme.down}
+          />
+        </div>
+      )}
+    </ChartShell>
   )
 }
 
@@ -262,7 +186,7 @@ function StatItem({ label, value, color }: { label: string; value: string; color
   return (
     <div>
       <Text variant="secondary" as="span" size="xs">{label}</Text>
-      <div style={{ marginTop: 2, fontWeight: 600, color, fontSize: 14 }}>{value}</div>
+      <div style={{ marginTop: 2, fontWeight: fontWeight.semibold, color, fontSize: fontSize.lg }}>{value}</div>
     </div>
   )
 }

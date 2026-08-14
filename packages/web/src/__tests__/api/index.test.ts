@@ -17,6 +17,8 @@ import {
   fetchPortfolioAllocation,
   fetchInvestmentHarness,
   fetchInvestmentSourceBrief,
+  fetchCompare,
+  fetchPortfolioTimeline,
   transactionsToCsv,
   downloadCsv,
 } from '../../api';
@@ -74,6 +76,10 @@ describe('fetchPortfolio', () => {
       total_tx: 100, unique_funds: 10, unique_stocks: 8, held_funds: 5,
       total_buy: 50000, total_sell: 10000, total_fee: 100,
       unrealized_pnl: 5000,
+      invested_cost: 45000, current_value: 50000, pnl_pct: 11.11,
+      top_gainer: { code: '019173', name: 'QDII', unrealized_pnl: 3000, pnl_pct: 12, current_value: 20000 },
+      top_loser: null,
+      stale_nav_days: 1,
       auto_tx: 50, manual_tx: 50,
       auto_amount: 25000, manual_amount: 25000,
       first_trade: '2023-01-01', last_trade: '2024-01-01',
@@ -148,6 +154,25 @@ describe('fetchInvestmentHarness', () => {
       }],
       data_quality: { stale_price_count: 0, missing_cost_basis_count: 0, missing_change_pct_count: 0, holdings_coverage_pct: 100 },
       available_agent_tools: ['get_fund_detail'],
+      agent_permissions: {
+        decision_boundary: 'facts_only',
+        read_scope: ['portfolio'],
+        write_scope: ['source_event_feedback'],
+        requires_confirmation: ['add_transaction'],
+        disabled_operations: ['broker_trade_execution', 'backup_producer'],
+      },
+      agent_capabilities: [{
+        tool: 'get_fund_detail',
+        scope: 'read',
+        permission: 'allowed',
+        risk_level: 'low',
+        use_for: '读取单个证券事实',
+      }],
+      recommended_agent_actions: [{
+        priority: 'low',
+        tool: 'get_investment_source_brief',
+        reason: '生成消息源查询',
+      }],
       agent_brief: 'Agent owns all investment decisions',
     };
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -159,6 +184,47 @@ describe('fetchInvestmentHarness', () => {
     expect(result.decision_boundary).toBe('facts_only');
     expect(result.holding_signals[0].signal_tags).toContain('above_cost_gt_10pct');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/portfolio/harness', { signal: undefined });
+  });
+
+  it('passes portfolio id and AbortSignal without mixing them', async () => {
+    const ctrl = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        generated_at: '2026-06-19T00:00:00.000Z',
+        decision_boundary: 'facts_only',
+        total_value: 0,
+        holdings_count: 0,
+        allocation: {
+          total_value: 0,
+          by_security_type: [],
+          by_market: [],
+          by_fund_type: [],
+          risk_flags: [],
+          agent_brief: '暂无持仓',
+        },
+        holding_signals: [],
+        data_quality: { stale_price_count: 0, missing_cost_basis_count: 0, missing_change_pct_count: 0, holdings_coverage_pct: 100 },
+        available_agent_tools: ['get_full_dashboard'],
+        agent_permissions: {
+          decision_boundary: 'facts_only',
+          read_scope: ['portfolio'],
+          write_scope: ['source_event_feedback'],
+          requires_confirmation: ['add_transaction'],
+          disabled_operations: ['broker_trade_execution', 'backup_producer'],
+        },
+        agent_capabilities: [],
+        recommended_agent_actions: [],
+        agent_brief: 'empty',
+      }),
+    } as Response);
+
+    await fetchInvestmentHarness(2, ctrl.signal);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/portfolio/harness?portfolio_id=2',
+      { signal: ctrl.signal },
+    );
   });
 });
 
@@ -195,6 +261,33 @@ describe('fetchInvestmentSourceBrief', () => {
     expect(result.queries[0].query).toContain('Apple');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/portfolio/source-brief?limit=5', { signal: undefined });
   });
+
+  it('passes portfolio id and AbortSignal without mixing them', async () => {
+    const ctrl = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        generated_at: '2026-06-19T00:00:00.000Z',
+        decision_boundary: 'source_queries_only',
+        queries: [],
+        source_targets: [{
+          kind: 'web_search',
+          name: 'DSA search providers',
+          url_template: 'dsa:search({query})',
+          use_for: '新闻检索',
+        }],
+        coverage: { holdings_scanned: 0, underlying_scanned: 0, max_queries: 8 },
+        agent_brief: 'Hermes source brief',
+      }),
+    } as Response);
+
+    await fetchInvestmentSourceBrief(8, 2, ctrl.signal);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/portfolio/source-brief?limit=8&portfolio_id=2',
+      { signal: ctrl.signal },
+    );
+  });
 });
 
 // ── fetchFundDetail ─────────────────────────────────────────────
@@ -218,6 +311,29 @@ describe('fetchFundDetail', () => {
     const result = await fetchFundDetail('019173');
     expect(result).toHaveProperty('code', '019173');
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/funds/019173', { signal: undefined });
+  });
+
+  it('passes portfolio_id and AbortSignal without mixing them', async () => {
+    const ctrl = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        code: '019173', name: 'Test',
+        held_shares: 0, total_cost: 0, latest_nav: 1, current_value: 0,
+        unrealized_pnl: 0, pnl_pct: 0,
+        auto_buy_count: 0, manual_buy_count: 0,
+        auto_buy_amount: 0, manual_buy_amount: 0,
+        auto_tx: 0, manual_tx: 0,
+        buy_count: 0, sell_count: 0, median_settlement: 0,
+        transactions: [],
+      }),
+    } as Response);
+
+    await fetchFundDetail('019173', 2, ctrl.signal);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/funds/019173?portfolio_id=2',
+      { signal: ctrl.signal },
+    );
   });
 });
 
@@ -247,6 +363,57 @@ describe('fetchXirr', () => {
     const result = await fetchXirr('019173');
     expect(result).toHaveProperty('xirr', 0.15);
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/funds/019173/xirr', { signal: undefined });
+  });
+
+  it('passes portfolio_id and AbortSignal', async () => {
+    const ctrl = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ xirr: 0.1 }),
+    } as Response);
+    await fetchXirr('019173', 2, ctrl.signal);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/funds/019173/xirr?portfolio_id=2',
+      { signal: ctrl.signal },
+    );
+  });
+});
+
+// ── fetchCompare / timeline ────────────────────────────────────
+describe('fetchCompare', () => {
+  it('passes codes and portfolio_id', async () => {
+    const ctrl = new AbortController();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        funds: [{
+          code: '019173', name: 'A', market: 'CN',
+          xirr: 10, volatility: 20, sharpe: 0.5, max_drawdown: 15, calmar: 0.6,
+        }],
+      }),
+    } as Response);
+    await fetchCompare(['019173', '016453'], 2, ctrl.signal);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/analysis/compare?codes=019173%2C016453&portfolio_id=2',
+      { signal: ctrl.signal },
+    );
+  });
+});
+
+describe('fetchPortfolioTimeline', () => {
+  it('calls timeline with portfolio_id', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve([
+        { date: '2026-01-01', total_value: 100, total_cost: 90, pnl: 10, pnl_pct: 11 },
+      ]),
+    } as Response);
+    const rows = await fetchPortfolioTimeline(2);
+    expect(rows).toHaveLength(1);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/portfolio/timeline?portfolio_id=2',
+      { signal: undefined },
+    );
   });
 });
 

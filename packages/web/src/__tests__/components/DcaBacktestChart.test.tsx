@@ -14,15 +14,28 @@ vi.mock('echarts/core', () => ({
   },
 }))
 
-vi.mock('echarts/charts', () => ({ LineChart: {} }))
+vi.mock('echarts/charts', () => ({
+  LineChart: {},
+  BarChart: {},
+  ScatterChart: {},
+  RadarChart: {},
+  TreemapChart: {},
+  SunburstChart: {},
+  HeatmapChart: {},
+}))
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   TooltipComponent: {},
   LegendComponent: {},
   DataZoomComponent: {},
+  MarkLineComponent: {},
+  MarkPointComponent: {},
+  RadarComponent: {},
+  VisualMapComponent: {},
 }))
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
+import * as echartsCore from 'echarts/core'
 import DcaBacktestChart from '../../components/DcaBacktestChart'
 
 // ── Mock NAV data spanning 6 months ──────────────────────────────
@@ -44,6 +57,7 @@ const mockNavData = [
 
 describe('DcaBacktestChart', () => {
   afterEach(() => {
+    vi.clearAllMocks()
     vi.restoreAllMocks()
   })
 
@@ -70,11 +84,11 @@ describe('DcaBacktestChart', () => {
 
     render(<DcaBacktestChart fundCode="F02" dark={false} />)
 
+    // gate on a data-only element (heading renders during loading — would race)
     await waitFor(() => {
-      expect(screen.getByText('DCA 回测对比')).toBeInTheDocument()
+      expect(screen.getByText('定投 IRR')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('定投 IRR')).toBeInTheDocument()
     expect(screen.getByText('一次性 IRR')).toBeInTheDocument()
     expect(screen.getByText('总投入')).toBeInTheDocument()
     expect(screen.getByText('定投市值')).toBeInTheDocument()
@@ -95,7 +109,7 @@ describe('DcaBacktestChart', () => {
     render(<DcaBacktestChart fundCode="F03" dark={true} />)
 
     await waitFor(() => {
-      expect(screen.getByText('DCA 回测对比')).toBeInTheDocument()
+      expect(screen.getByText('总投入')).toBeInTheDocument()
     })
     expect(screen.getByText('总投入')).toBeInTheDocument()
   })
@@ -150,5 +164,26 @@ describe('DcaBacktestChart', () => {
     await waitFor(() => {
       expect(screen.getByText(/基础金额 ¥500/)).toBeInTheDocument()
     })
+  })
+
+  it('renders DCA line blue+area and lump line dashed amber (lineSeries guard)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockNavData),
+    } as Response)
+
+    render(<DcaBacktestChart fundCode="F09" dark={false} />)
+    // gate on setOption fired (heading renders during loading — would race otherwise)
+    await waitFor(() => {
+      const calls = (echartsCore.init as ReturnType<typeof vi.fn>).mock?.results?.[0]?.value?.setOption?.mock?.calls ?? []
+      expect(calls.length).toBeGreaterThan(0)
+    })
+
+    const mockInstance = (echartsCore.init as ReturnType<typeof vi.fn>).mock?.results?.[0]?.value
+    const callArg = mockInstance.setOption.mock.calls[0]?.[0]
+    expect(callArg.series[0].lineStyle.color).toBe('#3172d9') // DCA = theme.blue
+    expect(callArg.series[0].areaStyle).toBeDefined()
+    expect(callArg.series[1].lineStyle.color).toBe('#e07b2c') // lump = theme.amber
+    expect(callArg.series[1].lineStyle.type).toBe('dashed')
   })
 })

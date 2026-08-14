@@ -1,0 +1,176 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing tag to release, for example v2.10.0"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: fund-dashboard-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      sha: ${{ steps.meta.outputs.sha }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          prerelease="false"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.release_tag }}"
+            prerelease="${{ inputs.prerelease }}"
+            git rev-parse "$tag" >/dev/null
+          fi
+          case "$tag" in
+            v*) ;;
+            *) echo "Release tag must start with v: $tag"; exit 1 ;;
+          esac
+          echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.release_tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Go tests
+        run: go test ./... -count=1
+
+      - name: Build Go binary
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
+
+      - name: Install & test web
+        run: |
+          npm ci
+          cd packages/web && npx vitest run
+
+      - name: Build web
+        run: npm run build --workspace packages/web
+
+  # Optional container smoke (no Playwright suite required for tag release).
+  image-smoke:
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.release_tag }}
+
+      - name: Seed CI database
+        run: |
+          chmod +x scripts/seed-ci-db.sh
+          ./scripts/seed-ci-db.sh deploy/ci-data
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: fund-dashboard:ci
+
+      - name: Start services via docker compose
+        run: |
+          docker compose -f deploy/docker-compose.ci.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8080/api/health 2>/dev/null | grep -q '"ok"' && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8080/ | grep -E '200|304'
+
+      - name: API auth smoke
+        run: |
+          # admin without key → 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/admin/status)
+          test "$code" = "401"
+          # admin with key → 200
+          curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/status | grep -q '"ok":true'
+          curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/dashboard | grep -q '"go_version"'
+          # portfolio/funds should return seeded data
+          curl -fsS http://localhost:8080/api/portfolio | grep -q 'total_tx'
+          curl -fsS http://localhost:8080/api/funds | grep -q '019173'
+          # mcp without key → 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/mcp \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          test "$code" = "401"
+          # mcp with key → tools/list envelope
+          curl -fsS -X POST http://localhost:8080/mcp \
+            -H 'Authorization: Bearer ci-test-key' \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q 'get_portfolio_summary'
+
+      - name: Show docker logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.ci.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f deploy/docker-compose.ci.yml down -v || true
+
+  # GHCR push remains on master CI (workflow_dispatch/push). Tag releases re-use CI image by SHA.
+  # Keep this job as a thin GitHub Release note publisher only when secrets allow.
+  github-release:
+    needs: [validate, test, image-smoke]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.release_tag }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.release_tag }}
+          name: ${{ needs.validate.outputs.release_tag }}
+          prerelease: ${{ needs.validate.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          body: |
+            Pure Go backend + React SPA single-container release.
+
+            Image (from master CI): `ghcr.io/deliciousbuding/fund-dashboard:${{ needs.validate.outputs.sha }}`
+
+            Verify:
+            ```bash
+            curl -fsS http://127.0.0.1:8765/api/health
+            ```

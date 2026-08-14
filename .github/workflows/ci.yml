@@ -1,52 +1,40 @@
 name: CI
 on:
   push:
-    branches: [master, main, refactor/v3.0-reshape]
+    branches: [master, main]
   pull_request:
     branches: [master, main]
-  workflow_dispatch:  # manual trigger — build images on any branch (e.g. MCP deploy)
+  workflow_dispatch:
+    inputs:
+      full_e2e:
+        description: 'Run full Playwright suite (e2e-full job)'
+        type: boolean
+        default: false
 
 jobs:
-  workspace-test:
+  test-go:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      - uses: actions/setup-go@v5
         with:
-          bun-version: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Install server dependencies
-        run: cd packages/server && bun install
-      - name: Install web dependencies
-        run: npm ci   # root install (npm workspaces — web lockfile removed, contracts is a workspace member)
-      - name: Run workspace test script
-        run: npm test
+          go-version: '1.25.x'
+          cache: false
+      - name: Vet
+        run: go vet ./...
+      - name: Run Go tests
+        run: go test ./... -count=1
 
-  test-server:
+  build-go:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      - uses: actions/setup-go@v5
         with:
-          bun-version: latest
-      - name: Install dependencies
-        run: cd packages/server && bun install
-      - name: Run server unit tests
-        run: cd packages/server && bun test __tests__/services/ __tests__/datasources/ __tests__/crawler/
-
-  build-server:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-      - name: Install dependencies
-        run: cd packages/server && bun install
-      - name: Build server bundle
-        run: cd packages/server && bun build main.ts --outdir dist --target bun
+          go-version: '1.25.x'
+          cache: false
+      - name: Build Go binary
+        run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
 
   test-web:
     runs-on: ubuntu-latest
@@ -55,8 +43,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: false
       - name: Install dependencies
-        run: npm ci   # root install (npm workspaces)
+        run: npm ci
       - name: Run web tests
         run: cd packages/web && npx vitest run
 
@@ -67,14 +56,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: false
       - name: Install & build
         run: npm ci && cd packages/web && npm run build
 
-  # NOTE: build-and-push omitted in public fork. Production images (ghcr.io/deliciousbuding/fund-dashboard) are built in fund-dashboard-ops. Public repo runs tests + E2E only.
-  # ── E2E (runs on PR + push, uses docker compose for real-env testing) ──
+  # ── Container + API smoke (seeded DB) ──────────────────────────
 
-  test-e2e:
-    needs: [build-web, build-server]
+  smoke-e2e:
+    needs: [test-go, build-go, test-web, build-web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,51 +71,55 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: false
 
-      - name: Build web dist for image context
-        run: npm ci && cd packages/web && npm run build
+      - name: Seed CI database
+        run: |
+          chmod +x scripts/seed-ci-db.sh
+          ./scripts/seed-ci-db.sh deploy/ci-data
 
-      - name: Build backend image
+      - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile
           push: false
-          tags: fund-dashboard/backend:ci
+          tags: fund-dashboard:ci
+          load: true
 
-      - name: Build web image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile.web
-          push: false
-          tags: fund-dashboard/web:ci
-
-      - name: Start services via docker compose
+      - name: Start services
         run: |
           docker compose -f deploy/docker-compose.ci.yml up -d
-          echo "Waiting for backend to become healthy..."
-          for i in $(seq 1 30); do
-            if wget -q -O - http://localhost:8765/api/health 2>/dev/null | grep -q '"ok"'; then
-              echo "Backend healthy after ${i}s"
-              break
-            fi
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8080/api/health 2>/dev/null | grep -q '"ok"' && break
             sleep 1
           done
-          echo "Waiting for web to become healthy..."
-          for i in $(seq 1 30); do
-            if wget -q --spider http://localhost:8080/ 2>/dev/null; then
-              echo "Web healthy after ${i}s"
-              break
-            fi
-            sleep 1
-          done
+          curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
+          curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8080/ | grep -E '200|304'
 
-      - name: Install Playwright
-        run: cd packages/web && npx playwright install chromium
+      - name: API auth smoke
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/admin/status)
+          test "$code" = "401"
+          curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/status | grep -q '"ok":true'
+          curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/dashboard | grep -q '"go_version"'
+          curl -fsS http://localhost:8080/api/portfolio | grep -q 'total_tx'
+          curl -fsS http://localhost:8080/api/funds | grep -q '019173'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/mcp \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          test "$code" = "401"
+          curl -fsS -X POST http://localhost:8080/mcp \
+            -H 'Authorization: Bearer ci-test-key' \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q 'get_portfolio_summary'
 
-      - name: Run E2E tests
-        run: cd packages/web && npx playwright test
+      - name: Install Playwright + run smoke
+        run: |
+          npm ci
+          cd packages/web
+          npx playwright install --with-deps chromium
+          CI=1 BASE_URL=http://localhost:8080 npx playwright test e2e/smoke.spec.ts
 
       - name: Show docker logs on failure
         if: failure()
@@ -134,4 +127,138 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker compose -f deploy/docker-compose.ci.yml down -v
+        run: docker compose -f deploy/docker-compose.ci.yml down -v || true
+
+  # ── Optional full Playwright suite (workflow_dispatch only) ───
+  # Does not block PR/push gates. Trigger:
+  #   gh workflow run ci.yml -f full_e2e=true
+  # or Actions UI → CI → Run workflow → full_e2e
+
+  e2e-full:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_e2e == true
+    needs: [test-go, build-go, test-web, build-web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: false
+
+      - name: Seed CI database
+        run: |
+          chmod +x scripts/seed-ci-db.sh
+          ./scripts/seed-ci-db.sh deploy/ci-data
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          tags: fund-dashboard:ci
+          load: true
+
+      - name: Start services
+        run: |
+          docker compose -f deploy/docker-compose.ci.yml up -d
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:8080/api/health 2>/dev/null | grep -q '"ok"' && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
+
+      - name: Install Playwright + run full e2e
+        run: |
+          npm ci
+          cd packages/web
+          npx playwright install --with-deps chromium
+          CI=1 BASE_URL=http://localhost:8080 npx playwright test e2e/
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-full-report
+          path: packages/web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show docker logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.ci.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f deploy/docker-compose.ci.yml down -v || true
+
+  # ── Docker build & push to GHCR (parallel native runners) ──────
+
+  build-and-push:
+    needs: [test-go, build-go, test-web, build-web, smoke-e2e]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'))
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push ${{ matrix.arch }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          platforms: linux/${{ matrix.arch }}
+          tags: |
+            ghcr.io/deliciousbuding/fund-dashboard:${{ matrix.arch }}-latest
+            ghcr.io/deliciousbuding/fund-dashboard:${{ github.sha }}-${{ matrix.arch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Merge per-arch images into multi-arch manifest lists for `latest` and `<sha>`.
+  merge-manifest:
+    needs: build-and-push
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge architecture manifests
+        run: |
+          docker buildx imagetools create \
+            --tag ghcr.io/deliciousbuding/fund-dashboard:latest \
+            ghcr.io/deliciousbuding/fund-dashboard:amd64-latest \
+            ghcr.io/deliciousbuding/fund-dashboard:arm64-latest
+          docker buildx imagetools create \
+            --tag ghcr.io/deliciousbuding/fund-dashboard:${{ github.sha }} \
+            ghcr.io/deliciousbuding/fund-dashboard:${{ github.sha }}-amd64 \
+            ghcr.io/deliciousbuding/fund-dashboard:${{ github.sha }}-arm64

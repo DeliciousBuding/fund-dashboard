@@ -1,23 +1,33 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import { Text, Button, Loader, Table } from '@cloudflare/kumo'
-import { use as echartsUse } from 'echarts/core'
-import { RadarChart } from 'echarts/charts'
-import { RadarComponent, TooltipComponent, LegendComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
 import { fetchCompare, type CompareFund, type FundInfo } from '../api'
-import { getTheme, chartTooltip, chartLegend, hexToRgba } from '../styles/theme'
+import { getTheme, chartTooltip, chartLegend, hexToRgba, space, radius, fontSize, chartHeight } from '../styles/theme'
 import { useEChart } from '../hooks/useEChart'
+import { useCoreCharts, radarSeries } from './charts'
 import { Card } from './ui/Card'
+import { ChartShell } from './charts'
+import { sanitizeUserError } from '../services/userError'
+import { useAppStore } from '../stores/appStore'
 
-echartsUse([RadarChart, RadarComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+useCoreCharts()
 
+// Per-metric radar scale configuration.
+// `max` here is a FLOOR — the on-screen indicator max grows beyond it when a
+// fund's value would otherwise be clipped (so a fund returning 120% never
+// spills outside the polygon), but never shrinks below it (keeping the visual
+// scale stable for the common low-magnitude case and comparable across runs).
+// `invert` marks "lower is better" metrics (max_drawdown is conventionally a
+// positive magnitude where larger = worse). On a radar, "further out" reads as
+// "better", so for inverted metrics we plot (max - value) instead of value —
+// a 5% drawdown reaches near the rim while a 40% drawdown sits near the centre.
 const METRICS = [
-  { key: 'xirr', label: 'comparison.annualReturnLabel', max: 50 },
-  { key: 'volatility', label: 'comparison.volatilityLabel', max: 40 },
-  { key: 'sharpe', label: 'comparison.sharpeLabel', max: 3 },
-  { key: 'max_drawdown', label: 'comparison.maxDrawdownLabel', max: 50 },
-  { key: 'calmar', label: 'Calmar', max: 3 },
+  { key: 'xirr', label: 'comparison.annualReturnLabel', max: 50, invert: false },
+  { key: 'volatility', label: 'comparison.volatilityLabel', max: 40, invert: false },
+  { key: 'sharpe', label: 'comparison.sharpeLabel', max: 3, invert: false },
+  { key: 'max_drawdown', label: 'comparison.maxDrawdownLabel', max: 50, invert: true },
+  { key: 'calmar', label: 'comparison.calmarLabel', max: 3, invert: false },
 ] as const;
 
 interface FundComparisonProps {
@@ -25,35 +35,76 @@ interface FundComparisonProps {
   dark: boolean;
 }
 
+function parseCodesParam(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
+}
+
 export default function FundComparison({ funds, dark }: FundComparisonProps) {
   const { t } = useTranslation();
   const theme = getTheme(dark);
-  const [selected, setSelected] = useState<string[]>([]);
+  const portfolioId = useAppStore((s) => s.portfolioId);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selected = useMemo(() => parseCodesParam(searchParams.get('codes')), [searchParams]);
   const [compareData, setCompareData] = useState<CompareFund[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+  const autoRanKey = useRef<string>('');
 
   const heldFunds = useMemo(() => funds.filter(f => f.held_shares > 0.001), [funds]);
+  const heldCodes = useMemo(() => new Set(heldFunds.map((f) => f.code)), [heldFunds]);
+
+  // Drop URL codes that are no longer held (stale links).
+  useEffect(() => {
+    if (!heldFunds.length || !selected.length) return;
+    const filtered = selected.filter((c) => heldCodes.has(c));
+    if (filtered.length !== selected.length) {
+      setSearchParams((prev) => {
+        const sp = new URLSearchParams(prev);
+        if (filtered.length) sp.set('codes', filtered.join(','));
+        else sp.delete('codes');
+        return sp;
+      }, { replace: true });
+    }
+  }, [heldFunds, heldCodes, selected, setSearchParams]);
+
+  // Clear stale radar/table when portfolio membership changes.
+  useEffect(() => {
+    setCompareData([]);
+    setError('');
+    autoRanKey.current = '';
+  }, [portfolioId]);
 
   const option = useMemo(() => {
     if (!compareData.length) return {} as Record<string, unknown>;
-    const indicator = METRICS.map(m => ({ name: t(m.label, m.label), max: m.max }));
 
-    const seriesData = compareData.map((f, idx) => ({
-      name: f.name,
-      value: [
-        f.xirr ?? 0,
-        f.volatility ?? 0,
-        f.sharpe ?? 0,
-        f.max_drawdown ?? 0,
-        f.calmar ?? 0,
-      ],
-      lineStyle: { color: theme.series[idx % theme.series.length], width: 2 },
-      areaStyle: { color: hexToRgba(theme.series[idx % theme.series.length], 0.08) },
-      symbol: 'circle', symbolSize: 4,
-      itemStyle: { color: theme.series[idx % theme.series.length] },
-    }));
+    // Per-metric indicator max = max(floor, ceil(largest observed value * 1.1)).
+    // The 1.1 headroom keeps the outermost point off the rim; the floor keeps
+    // the polygon stable when all values are small. For inverted metrics the
+    // base max is still the indicator edge — values are mirrored below.
+    const indicator = METRICS.map((m) => {
+      const observed = compareData
+        .map((f) => (f[m.key] as number | null) ?? 0)
+        .filter((v) => Number.isFinite(v));
+      const peak = observed.length ? Math.max(...observed) : 0;
+      const dynamicMax = Math.max(m.max, Math.ceil(peak * 1.1));
+      return { name: t(m.label, m.label), max: dynamicMax };
+    });
+
+    const radarData = compareData.map((f, idx) => {
+      const color = theme.series[idx % theme.series.length];
+      return {
+        name: f.name,
+        value: METRICS.map((m, mi) => {
+          const raw = (f[m.key] as number | null) ?? 0;
+          return m.invert ? Math.max(indicator[mi].max - raw, 0) : raw;
+        }),
+        color,
+      };
+    });
+
+    const { radar, series } = radarSeries({ indicators: indicator, data: radarData });
 
     return {
       tooltip: { trigger: 'item', ...chartTooltip(theme) },
@@ -62,9 +113,8 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
         ...chartLegend(theme),
       },
       radar: {
-        indicator,
-        center: ['50%', '48%'], radius: '65%',
-        axisName: { fontSize: 10, color: theme.textMuted },
+        ...radar,
+        axisName: { fontSize: fontSize.xs, color: theme.textMuted },
         splitArea: {
           areaStyle: {
             color: [hexToRgba(theme.surface, 0.5), hexToRgba(theme.canvas, 0.5)],
@@ -73,36 +123,56 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
         axisLine: { lineStyle: { color: theme.hairline } },
         splitLine: { lineStyle: { color: theme.hairline } },
       },
-      series: [{ type: 'radar', data: seriesData }],
+      series,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compareData, dark]);
 
   const chartRef = useEChart(option, [option]);
 
-  const doCompare = async () => {
-    if (selected.length < 2) { setError(t('comparison.selectMin2')); return; }
+  const doCompare = useCallback(async (codes: string[] = selected) => {
+    if (codes.length < 2) { setError(t('comparison.selectMin2')); return; }
     setError(''); setLoading(true);
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      const result = await fetchCompare(selected, ctrl.signal);
+      const result = await fetchCompare(codes, portfolioId, ctrl.signal);
       if (ctrl.signal.aborted) return;
       setCompareData(result.funds);
     } catch (e: any) {
       if (e.name !== 'AbortError') {
-        setError(e.message || t('comparison.error'));
+        setError(sanitizeUserError(e, t('comparison.error')));
       }
     } finally {
       if (!ctrl.signal.aborted) {
         setLoading(false);
       }
     }
-  };
+  }, [selected, portfolioId, t]);
+
+  // Auto-run only for initial deep-link (?codes=a,b), not for every user toggle.
+  useEffect(() => {
+    if (autoRanKey.current) return;
+    const initial = parseCodesParam(searchParams.get('codes'));
+    if (initial.length < 2) {
+      autoRanKey.current = '__no_autoload__';
+      return;
+    }
+    autoRanKey.current = initial.join(',');
+    void doCompare(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleFund = (code: string) => {
-    setSelected(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      const cur = parseCodesParam(sp.get('codes'));
+      const next = cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code];
+      if (next.length) sp.set('codes', next.join(','));
+      else sp.delete('codes');
+      return sp;
+    }, { replace: true });
   };
 
   const fmtVal = (v: number | null, suffix = '', d = 2): string => {
@@ -122,26 +192,21 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
   const lowVol = Math.min(...allVol);
   const lowDd = Math.min(...allDd);
 
-  const placeholder = (msg: string, testid: string) => (
-    <div data-testid={testid} style={{ height: 450, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textMuted, fontVariantNumeric: 'tabular-nums' }}>
-      {msg}
-    </div>
-  );
-
   return (
     <div>
       <Text variant="heading1" as="h1">{t('comparison.title')}</Text>
 
-      <Card dark={dark} style={{ marginTop: 16 }}>
-        <div style={{ padding: '4px 0 16px' }}>
-          <Text variant="heading3" as="h3" style={{ marginBottom: 12 }}>{t('comparison.selectFunds')}</Text>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+      <Card dark={dark} glass style={{ marginTop: space[4] }}>
+        <div style={{ padding: `${space[1]}px 0 ${space[4]}px` }}>
+          <Text variant="heading3" as="h3" style={{ marginBottom: space[3] }}>{t('comparison.selectFunds')}</Text>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: space[2], marginBottom: space[3] }}>
             {heldFunds.map(f => (
-              <Button
+              <Button type="button"
                 key={f.code}
                 variant={selected.includes(f.code) ? 'primary' : 'secondary'}
                 size="sm"
                 onClick={() => toggleFund(f.code)}
+                aria-pressed={selected.includes(f.code)}
               >
                 {f.name}
               </Button>
@@ -150,27 +215,32 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
           {heldFunds.length === 0 && (
             <Text variant="secondary" as="span">{t('comparison.noFunds')}</Text>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button variant="primary" onClick={doCompare} disabled={loading || selected.length < 2}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: space[2] }}>
+            <Button type="button" variant="primary" onClick={() => void doCompare()} disabled={loading || selected.length < 2} aria-busy={loading}>
               {loading ? t('comparison.comparing') : `${t('comparison.compareBtn')} (${selected.length})`}
             </Button>
-            {error && <Text variant="secondary" as="span" style={{ color: theme.up }}>{error}</Text>}
+            <div aria-live="polite">
+              {error && <Text variant="secondary" as="span" style={{ color: theme.critical }}>{error}</Text>}
+            </div>
           </div>
         </div>
       </Card>
 
       {compareData.length > 0 && (
         <>
-          <Card dark={dark} style={{ marginTop: 16 }}>
-            <div style={{ padding: '4px 0 16px' }}>
-              <Text variant="heading3" as="h3">{t('comparison.radar')}</Text>
-            </div>
-            <div ref={chartRef} style={{ height: 450 }} />
-          </Card>
+          <ChartShell
+            dark={dark}
+            title={t('comparison.radar')}
+            height={chartHeight.compare}
+            style={{ marginTop: space[4] }}
+            testidPrefix="chart"
+          >
+            <div ref={chartRef} style={{ height: chartHeight.compare }} />
+          </ChartShell>
 
-          <Card dark={dark} style={{ marginTop: 16 }}>
-            <div style={{ padding: '4px 0 16px' }}>
-              <Text variant="heading3" as="h3" style={{ marginBottom: 12 }}>{t('comparison.metricTable')}</Text>
+          <Card dark={dark} glass style={{ marginTop: space[4] }}>
+            <div style={{ padding: `${space[1]}px 0 ${space[4]}px` }}>
+              <Text variant="heading3" as="h3" style={{ marginBottom: space[3] }}>{t('comparison.metricTable')}</Text>
               <Table>
                 <Table.Header>
                   <Table.Row>
@@ -179,14 +249,14 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
                     <Table.Head>{t('comparison.volatilityLabel')}</Table.Head>
                     <Table.Head>{t('comparison.sharpeLabel')}</Table.Head>
                     <Table.Head>{t('comparison.maxDrawdownLabel')}</Table.Head>
-                    <Table.Head>Calmar</Table.Head>
+                    <Table.Head>{t('comparison.calmarLabel')}</Table.Head>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
                   {compareData.map((f, idx) => (
                     <Table.Row key={f.code}>
                       <Table.Cell>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: space[2] - 2 }}>
                           <span style={{
                             width: 10, height: 10, borderRadius: '50%',
                             background: theme.series[idx % theme.series.length], display: 'inline-block', flexShrink: 0,
@@ -221,7 +291,11 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
                       </Table.Cell>
                       <Table.Cell>
                         <Text variant="body" as="span" size="sm" style={{
-                          color: theme.up,
+                          // max_drawdown is a positive magnitude of loss — larger is
+                          // worse. CN convention: green (theme.down) = loss/bad, so a
+                          // drawdown cell always reads as down regardless of magnitude;
+                          // the lowest (best) drawdown is bolded + starred below.
+                          color: theme.down,
                           fontWeight: f.max_drawdown != null && f.max_drawdown === lowDd ? 600 : 400,
                         }}>
                           {fmtVal(f.max_drawdown, '%')}
@@ -246,14 +320,16 @@ export default function FundComparison({ funds, dark }: FundComparisonProps) {
       )}
 
       {loading && (
-        <div data-testid="chart-loading" style={{ padding: 60, textAlign: 'center' }}>
+        <div data-testid="chart-loading" style={{ padding: space[8], textAlign: 'center' }}>
           <Loader />
-          <div style={{ marginTop: 12 }}><Text variant="secondary" as="span">{t('comparison.comparing')}</Text></div>
+          <div style={{ marginTop: space[3] }}><Text variant="secondary" as="span">{t('comparison.comparing')}</Text></div>
         </div>
       )}
 
       {!loading && !compareData.length && !error && selected.length >= 2 && (
-        placeholder(t('common.noData', '暂无数据'), 'chart-empty')
+        <div data-testid="chart-empty" style={{ padding: space[8], textAlign: 'center', color: theme.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+          {t('common.noData')}
+        </div>
       )}
     </div>
   );

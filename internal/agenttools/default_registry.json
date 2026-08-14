@@ -1,0 +1,3253 @@
+{
+  "schema_version": "tool-registry-v1",
+  "generated_at": "2026-07-06T22:55:00+08:00",
+  "tools": [
+    {
+      "name": "add_fund",
+      "category": "securities",
+      "description": "添加新基金到系统",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_name": {
+            "type": "string",
+            "description": "基金名称"
+          },
+          "name": {
+            "type": "string",
+            "description": "名称别名"
+          },
+          "fund_type": {
+            "type": "string",
+            "description": "基金类型"
+          },
+          "security_type": {
+            "type": "string",
+            "description": "默认 fund"
+          },
+          "market": {
+            "type": "string",
+            "description": "默认 CN"
+          },
+          "currency": {
+            "type": "string",
+            "description": "默认 CNY"
+          },
+          "exchange": {
+            "type": "string",
+            "description": "交易所"
+          },
+          "source": {
+            "type": "string",
+            "description": "来源，默认 mcp"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "add_fund",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/securities.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "add_security",
+      "category": "securities",
+      "description": "添加新证券（基金或股票）到系统。fund 无需 market；stock 需指定 market=SH/SZ/HK/US。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "description": "名称"
+          },
+          "fund_name": {
+            "type": "string",
+            "description": "名称别名"
+          },
+          "security_type": {
+            "type": "string",
+            "description": "fund/stock"
+          },
+          "fund_type": {
+            "type": "string",
+            "description": "类型"
+          },
+          "market": {
+            "type": "string",
+            "description": "SH/SZ/HK/US/CN"
+          },
+          "currency": {
+            "type": "string",
+            "description": "币种"
+          },
+          "exchange": {
+            "type": "string",
+            "description": "交易所"
+          },
+          "source": {
+            "type": "string",
+            "description": "来源，默认 mcp"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "add_security",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/securities.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "add_transaction",
+      "category": "transactions",
+      "description": "添加一笔新交易记录（买入/卖出/分红），支持基金和股票。添加后自动重算组合快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "幂等订单号"
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "security_code": {
+            "type": "string",
+            "description": "证券代码别名"
+          },
+          "fund_name": {
+            "type": "string",
+            "description": "名称"
+          },
+          "trade_time": {
+            "type": "string",
+            "description": "成交时间"
+          },
+          "confirm_date": {
+            "type": "string",
+            "description": "确认日 YYYY-MM-DD"
+          },
+          "trade_type": {
+            "type": "string",
+            "description": "交易类型"
+          },
+          "direction": {
+            "type": "string",
+            "description": "buy/sell/dividend"
+          },
+          "confirm_amount": {
+            "type": "number",
+            "description": "成交金额"
+          },
+          "amount": {
+            "type": "number",
+            "description": "金额别名"
+          },
+          "confirm_share": {
+            "type": "number",
+            "description": "成交份额"
+          },
+          "shares": {
+            "type": "number",
+            "description": "份额别名"
+          },
+          "fee": {
+            "type": "number",
+            "description": "手续费，默认 0"
+          },
+          "signed_cash_flow": {
+            "type": "number",
+            "description": "显式现金流"
+          },
+          "signed_share_change": {
+            "type": "number",
+            "description": "显式份额变动"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "trade_time",
+          "direction"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "add_transaction",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "写入交易流水；需要人类确认原始记录"
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "写入交易流水；需要人类确认原始记录",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/transactions.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "adjust_position",
+      "category": "operations",
+      "description": "手动调整某只证券的持仓份额（如拆分、合并等特殊情况）。自动重算市值和盈亏。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "held_shares": {
+            "type": "number",
+            "description": "目标持仓份额"
+          },
+          "total_cost": {
+            "type": "number",
+            "description": "目标成本（符号约定与快照一致）"
+          },
+          "reason": {
+            "type": "string",
+            "description": "调整原因"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "adjust_position",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/operations.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "check_alerts",
+      "category": "admin",
+      "description": "扫描价格异动/回撤/数据过期/定投缺口等，返回 facts-only 告警列表（无 webhook）。需确认（#5）。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "业务日 YYYY-MM-DD"
+          },
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "check_alerts",
+        "scope": "external_context",
+        "permission": "requires_confirmation",
+        "risk_level": "medium",
+        "use_for": "Can trigger external notification or generated artifact behavior; keep human confirmation until audited."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Can trigger external notification or generated artifact behavior; keep human confirmation until audited.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "external_context",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "compare_funds",
+      "category": "analysis",
+      "description": "对多个基金、股票或 ETF 做只读风险收益事实比较，返回身份、XIRR、波动率、Sharpe、最大回撤和 Calmar。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "证券代码列表",
+            "minItems": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "单个代码（可与 codes 并用）"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "compare_funds",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "对多只资产做只读风险收益事实比较；不排序为建议、不触发刷新或交易。"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/analysis.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "compute_dca_amount",
+      "category": "analysis",
+      "description": "定投金额模拟器：按持仓成本偏离或最近涨跌幅计算事实型 DCA 金额，不产生扣款或交易指令。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "base_amount": {
+            "type": "number",
+            "description": "基础定投金额，默认 30"
+          },
+          "mode": {
+            "type": "string",
+            "description": "计算模式"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "compute_dca_amount",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "运行事实型 DCA 金额模拟；不产生扣款、交易、补录或投资建议。"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/analysis.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "crawl_fund_holdings",
+      "category": "market",
+      "description": "爬取基金持仓明细——从东方财富获取指定基金或全部权益类基金的季度持仓报告，存入 fund_holdings 表。数据用于股权穿透分析。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "crawl_fund_holdings",
+        "scope": "maintenance",
+        "permission": "allowed",
+        "risk_level": "medium",
+        "use_for": "刷新基金季报持仓穿透数据"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "maintenance",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/market.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "crawl_nav",
+      "category": "operations",
+      "description": "触发净值/价格爬取——刷新单只证券（基金或股票）或全部持仓的最新价格数据。股票从东方财富K线接口获取，基金从天天基金净值接口获取。 Supports stale_only=true to refresh only stale/missing held NAV codes recommended by get_data_freshness.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "stale_only": {
+            "type": "boolean",
+            "description": "When true and no code/fund_code is set, refresh only held securities with stale or missing NAV (from get_data_freshness). Prefer this over full held crawl for agents."
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "crawl_nav",
+        "scope": "maintenance",
+        "permission": "allowed",
+        "risk_level": "medium",
+        "use_for": "刷新本地价格/NAV 数据 Prefer stale_only after get_data_freshness."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "maintenance",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/operations.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "delete_fund",
+      "category": "securities",
+      "description": "删除证券及其所有关联数据（交易、净值、持仓）。不可逆！",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "delete_fund",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/securities.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "delete_transaction",
+      "category": "transactions",
+      "description": "删除一笔交易记录（按 seq 序号）。自动重算组合快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "交易序号",
+            "minimum": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "seq"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "delete_transaction",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "删除交易流水；需要人类确认原始记录"
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "删除交易流水；需要人类确认原始记录",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/transactions.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "disable_dca_plan",
+      "category": "dca",
+      "description": "停用自动定投计划。不会删除历史执行记录或已生成交易。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "计划 ID",
+            "minimum": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "disable_dca_plan",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/dca.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "generate_report",
+      "category": "report",
+      "description": "生成组合事实报告（JSON only，无 PDF）。需 AgentOps 确认（#5）。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "base_currency": {
+            "type": "string",
+            "description": "基准货币"
+          },
+          "title": {
+            "type": "string",
+            "description": "报告标题"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "业务日 YYYY-MM-DD"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "generate_report",
+        "scope": "external_context",
+        "permission": "requires_confirmation",
+        "risk_level": "medium",
+        "use_for": "Can trigger external notification or generated artifact behavior; keep human confirmation until audited."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Can trigger external notification or generated artifact behavior; keep human confirmation until audited.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "external_context",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/report.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_data_freshness",
+      "category": "admin",
+      "description": "检查数据新鲜度：最后交易日期、最新净值日期、过期证券清单（>2天未更新）和可行动建议。数据过期时返回 actionable 建议。 Returns recommended_codes and recommended_maintenance_args={stale_only:true} when crawl is needed.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_data_freshness",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "检查 NAV/价格新鲜度和可行动补数入口"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_full_dashboard",
+      "category": "admin",
+      "description": "一次性获取仪表盘核心读面：summary + harness_snapshot(含权限/能力) + allocation + source_brief + source_events + agent_context。不含 DCA plans / data_freshness / market_indices / portfolio_timeline——请分别调用 list_dca_plans、get_data_freshness、get_market_indices、get_portfolio_timeline。减少 Agent 多次 MCP 调用。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "base_currency": {
+            "type": "string",
+            "description": "基准货币，默认 CNY"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_full_dashboard",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "一次性读取组合 summary/harness/allocation/source 与 agent_context"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_fund_detail",
+      "category": "query",
+      "description": "获取单只证券（基金或股票）的完整详情：所有交易记录、持仓、收益率、XIRR、交易状态",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_fund_detail",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取单个证券的交易、价格和持仓事实"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/query.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_fund_drawdown",
+      "category": "query",
+      "description": "计算证券（基金或股票）历史最大回撤",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_fund_drawdown",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/query.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_fund_status",
+      "category": "admin",
+      "description": "获取单只证券的管理状态：交易列表、价格覆盖、当前持仓、申赎状态",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_fund_status",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_fund_xirr",
+      "category": "query",
+      "description": "计算单只证券（基金或股票）的年化收益率（XIRR）",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_fund_xirr",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/query.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_investment_harness_snapshot",
+      "category": "portfolio",
+      "description": "获取 Hermes/Agent 使用的金融 Harness 事实快照：持仓、配置、价格/成本/涨跌幅信号、数据质量和可用工具。只提供事实，不做投资决策或扣款建议。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_investment_harness_snapshot",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_investment_source_brief",
+      "category": "portfolio",
+      "description": "为 Hermes/WebSearch 生成消息源与爬取上下文：组合级、持仓级、穿透股票级搜索 query，外部 source target 和本地 MCP 补数入口。只提供检索上下文，不做投资判断。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "返回条数上限",
+            "minimum": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "description": "来源过滤"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_investment_source_brief",
+        "scope": "external_context",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "生成 Hermes/DSA/WebSearch 可消费的消息源查询"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "external_context",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_market_indices",
+      "category": "market",
+      "description": "获取美股主要指数实时行情（纳斯达克100 ^NDX、标普500 ^GSPC）。返回最新价格、涨跌幅、涨跌额。数据来源：Yahoo Finance。",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_market_indices",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/market.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_nav_history",
+      "category": "query",
+      "description": "获取证券（基金或股票）历史价格数据",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "返回条数上限",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_nav_history",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取历史 NAV/价格序列"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/query.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_portfolio_allocation",
+      "category": "portfolio",
+      "description": "获取组合资产配置：按证券类型、市场、主题聚合，并返回适合 Agent 直接引用的配置摘要和风险提示。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_portfolio_allocation",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取资产类型、市场和主题配置"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_portfolio_penetration",
+      "category": "market",
+      "description": "读取当前组合基金持仓穿透事实，返回底层股票暴露、行业聚合、披露日期覆盖和不可穿透基金。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_portfolio_penetration",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取基金穿透底层股票暴露"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/market.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_portfolio_summary",
+      "category": "portfolio",
+      "description": "获取投资组合全貌：总资产、盈亏、持仓分布（含基金和股票）、定投/手动统计、结算日分布",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_portfolio_summary",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取组合交易、持仓和收益概览"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_portfolio_timeline",
+      "category": "portfolio",
+      "description": "获取每日总资产时间线（价格×持仓），用于画资产走势图。覆盖基金和股票。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_portfolio_timeline",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_portfolio_xirr",
+      "category": "portfolio",
+      "description": "计算整个投资组合的年化收益率（XIRR），含基金和股票",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_portfolio_xirr",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_source_events",
+      "category": "admin",
+      "description": "获取来源事件队列——Hermes/Agent 可消费的已抓取新闻、公告、搜索结果。支持按证券代码、来源、已读状态过滤。只提供事实引用，不做投资判断。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "description": "来源过滤"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "返回条数上限",
+            "minimum": 1
+          },
+          "unread_only": {
+            "type": "boolean",
+            "description": "仅未读"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_source_events",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取已抓取新闻、公告和搜索结果队列"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "get_system_status",
+      "category": "admin",
+      "description": "获取系统完整诊断信息：交易数、净值覆盖面、异常记录、运行状态、全球市场交易时段（A股/港股/美股开收盘时间）",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_system_status",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "get_us_stock",
+      "category": "market",
+      "description": "获取美股实时行情和历史K线数据。输入美股代码（如 AAPL、MSFT、TSLA），返回最新报价和可选历史数据。数据来源：Yahoo Finance。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "美股代码，如 AAPL"
+          },
+          "range": {
+            "type": "string",
+            "description": "历史区间，如 1y/6m"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "get_us_stock",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/market.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "import_transactions",
+      "category": "transactions",
+      "description": "批量导入交易记录。每笔需含 order_id, trade_time, direction, fund_code, confirm_amount 等字段。支持基金和股票。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "transactions": {
+            "type": "array",
+            "description": "交易对象数组（字段同 add_transaction）",
+            "items": {
+              "type": "object"
+            },
+            "minItems": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "transactions"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "import_transactions",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/transactions.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "list_dca_plans",
+      "category": "dca",
+      "description": "列出自动定投计划。计划是规则层，不等同于已成交交易；已成交需通过 run_dca_auto_invest 在净值可用后生成。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "active_only": {
+            "type": "boolean",
+            "description": "仅活跃计划"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "list_dca_plans",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取自动定投计划规则和启用状态；不生成交易、不扣款、不执行补录。"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/dca.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "list_portfolios",
+      "category": "portfolio",
+      "description": "列出所有可用的投资组合定义（ID、名称、描述）",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "list_portfolios",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "读取可用投资组合定义，帮助 Agent 选择 portfolio_id"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/portfolio.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "mark_source_event",
+      "category": "admin",
+      "description": "标记来源事件已读/有用——Hermes/Agent 消费事件后反馈状态，用于后续过滤和质量排序。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "事件 ID",
+            "minimum": 1
+          },
+          "is_read": {
+            "type": "boolean",
+            "description": "是否已读"
+          },
+          "is_useful": {
+            "type": "boolean",
+            "description": "是否有用"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "mark_source_event",
+        "scope": "write",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "标记来源事件已读或有用，优化后续队列"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "recalculate_snapshot",
+      "category": "operations",
+      "description": "完全重建 portfolio_snapshot——从 transactions 与 nav_history 重算持仓。 省略 code/fund_code 时重建全部 transaction codes； 返回 status=complete|partial|error、codes（成功数）、failed_codes[]（恒为数组；partial 时非空）。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "recalculate_snapshot",
+        "scope": "maintenance",
+        "permission": "allowed",
+        "risk_level": "medium",
+        "use_for": "Rebuild portfolio_snapshot. All-mode response includes failed_codes[] (always array) and status complete|partial|error."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "maintenance",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/operations.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "run_backtest",
+      "category": "analysis",
+      "description": "对指定基金跑历史策略回测（定投/一次性等），返回收益、回撤与对比指标。facts-only。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "strategy": {
+            "type": "string",
+            "description": "策略：dca/lump_sum/grid/momentum 等，默认 dca"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "开始日期 YYYY-MM-DD"
+          },
+          "base_amount": {
+            "type": "number",
+            "description": "每期/基数金额，默认 1000"
+          },
+          "grid_levels": {
+            "type": "integer",
+            "description": "网格层数"
+          },
+          "momentum_months": {
+            "type": "integer",
+            "description": "动量窗口月数"
+          },
+          "target_weight": {
+            "type": "number",
+            "description": "目标权重"
+          },
+          "rebalance_interval": {
+            "type": "integer",
+            "description": "再平衡间隔"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "run_backtest",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "运行历史策略模拟，不产生交易指令"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/analysis.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "run_dca_auto_invest",
+      "category": "dca",
+      "description": "执行自动定投补录：为启用计划生成工作日执行记录；仅当该基金对应日期净值已存在时，才写入真实交易流水并重算快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "业务日 YYYY-MM-DD，默认今天"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "默认 true；false 才落账"
+          },
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "mode": {
+            "type": "string",
+            "description": "执行模式"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "run_dca_auto_invest",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "DCA plan execution can create portfolio records; require confirmation until Go semantics are explicit."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "DCA plan execution can create portfolio records; require confirmation until Go semantics are explicit.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/dca.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "search_funds",
+      "category": "query",
+      "description": "搜索基金或股票，返回匹配列表。可按名称、代码、类型搜索。基金用6位代码，股票也支持按代码前缀匹配。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "名称/代码关键词"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "search_funds",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/query.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "search_stocks",
+      "category": "market",
+      "description": "搜索美股/A股/港股股票，按名称或代码查找。优先查询本地数据库的 stock_profile 表，如无结果则调用东方财富实时搜索接口。支持中英文名称和代码前缀匹配。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "名称/代码关键词"
+          },
+          "market": {
+            "type": "string",
+            "description": "市场：SH/SZ/HK/US 等"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "search_stocks",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "Read-only query tool; Go registry should confirm no writes or external side effects."
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": true
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/market.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "update_fund",
+      "category": "securities",
+      "description": "更新证券信息（名称、类型、市场）",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_name": {
+            "type": "string",
+            "description": "名称"
+          },
+          "name": {
+            "type": "string",
+            "description": "名称别名"
+          },
+          "fund_type": {
+            "type": "string",
+            "description": "类型"
+          },
+          "security_type": {
+            "type": "string",
+            "description": "security_type"
+          },
+          "market": {
+            "type": "string",
+            "description": "市场"
+          },
+          "currency": {
+            "type": "string",
+            "description": "币种"
+          },
+          "exchange": {
+            "type": "string",
+            "description": "交易所"
+          },
+          "source": {
+            "type": "string",
+            "description": "来源"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "update_fund",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/securities.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "update_transaction",
+      "category": "transactions",
+      "description": "修改一笔交易记录（按 seq 序号）。自动重算签名现金流和组合快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "交易序号",
+            "minimum": 1
+          },
+          "trade_time": {
+            "type": "string",
+            "description": "成交时间"
+          },
+          "confirm_date": {
+            "type": "string",
+            "description": "确认日"
+          },
+          "trade_type": {
+            "type": "string",
+            "description": "交易类型"
+          },
+          "direction": {
+            "type": "string",
+            "description": "buy/sell/dividend"
+          },
+          "confirm_amount": {
+            "type": "number",
+            "description": "成交金额"
+          },
+          "amount": {
+            "type": "number",
+            "description": "金额别名"
+          },
+          "confirm_share": {
+            "type": "number",
+            "description": "成交份额"
+          },
+          "shares": {
+            "type": "number",
+            "description": "份额别名"
+          },
+          "fee": {
+            "type": "number",
+            "description": "手续费"
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "seq"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "update_transaction",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "修改交易流水；需要人类确认原始记录"
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "修改交易流水；需要人类确认原始记录",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/transactions.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
+      "name": "upsert_dca_plan",
+      "category": "dca",
+      "description": "创建或更新自动定投计划。支持工作日定投；系统会在对应日期有净值后生成定投买入交易并重算快照。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "已有计划 ID；缺省则新建"
+          },
+          "fund_code": {
+            "type": "string",
+            "description": "基金/证券代码；与 code 二选一",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "description": "证券代码（基金 6 位或股票代码）",
+            "minLength": 1
+          },
+          "fund_name": {
+            "type": "string",
+            "description": "基金名称"
+          },
+          "amount": {
+            "type": "number",
+            "description": "每期金额",
+            "exclusiveMinimum": 0
+          },
+          "frequency": {
+            "type": "string",
+            "description": "频率：weekday/daily/weekly/monthly"
+          },
+          "weekday_mask": {
+            "type": "string",
+            "description": "工作日掩码，如 1,2,3,4,5"
+          },
+          "trade_type": {
+            "type": "string",
+            "description": "交易类型标签"
+          },
+          "portfolio_id": {
+            "type": "integer",
+            "description": "组合 ID，默认 1",
+            "minimum": 1
+          },
+          "start_date": {
+            "type": "string",
+            "description": "开始日期 YYYY-MM-DD"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "结束日期 YYYY-MM-DD"
+          },
+          "source": {
+            "type": "string",
+            "description": "来源标记"
+          },
+          "confirmation_id": {
+            "type": "integer",
+            "description": "AgentOps 确认 ID（#5 开启后写工具必填）",
+            "minimum": 1
+          },
+          "confirmation_token": {
+            "type": "string",
+            "description": "AgentOps 确认 token"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "amount"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "upsert_dca_plan",
+        "scope": "write",
+        "permission": "requires_confirmation",
+        "risk_level": "high",
+        "use_for": "Changes portfolio records or security master data; require explicit confirmation and audit trail."
+      },
+      "confirmation": {
+        "required": true,
+        "reason": "Changes portfolio records or security master data; require explicit confirmation and audit trail.",
+        "token_ttl_seconds": 900
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": true,
+        "record_result": true,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": true,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/dca.ts",
+        "permission_source": "inferred",
+        "review_required": true
+      }
+    },
+    {
+      "name": "verify_data",
+      "category": "admin",
+      "description": "数据完整性校验：检查缺失净值、负持仓、空结算日等问题",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "verify_data",
+        "scope": "read",
+        "permission": "allowed",
+        "risk_level": "low",
+        "use_for": "检查缺失净值、负持仓、空结算日等数据完整性问题"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "read",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "api_key",
+          "token",
+          "cookie",
+          "authorization",
+          "webhook",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": true,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/admin.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    }
+  ]
+}

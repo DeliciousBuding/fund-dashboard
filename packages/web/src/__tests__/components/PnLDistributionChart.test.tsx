@@ -15,23 +15,36 @@ vi.mock('echarts/core', () => ({
 }));
 
 vi.mock('echarts/charts', () => ({
+  LineChart: {},
   BarChart: {},
+  ScatterChart: {},
+  RadarChart: {},
+  TreemapChart: {},
+  SunburstChart: {},
+  HeatmapChart: {},
 }));
 
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   TooltipComponent: {},
   LegendComponent: {},
+  DataZoomComponent: {},
+  MarkLineComponent: {},
+  MarkPointComponent: {},
+  RadarComponent: {},
+  VisualMapComponent: {},
 }));
 
 vi.mock('echarts/renderers', () => ({
   CanvasRenderer: {},
 }));
 
+import * as echartsCore from 'echarts/core';
 import PnLDistributionChart from '../../components/PnLDistributionChart';
 
 describe('PnLDistributionChart', () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.restoreAllMocks();
   });
 
@@ -57,6 +70,15 @@ describe('PnLDistributionChart', () => {
     ],
     data_quality: { stale_price_count: 0, missing_cost_basis_count: 1, missing_change_pct_count: 1, holdings_coverage_pct: 100 },
     available_agent_tools: ['get_fund_detail'],
+    agent_permissions: {
+      decision_boundary: 'facts_only',
+      read_scope: ['portfolio'],
+      write_scope: ['source_event_feedback'],
+      requires_confirmation: ['add_transaction'],
+      disabled_operations: ['broker_trade_execution', 'backup_producer'],
+    },
+    agent_capabilities: [],
+    recommended_agent_actions: [],
     agent_brief: 'Portfolio overview',
   };
 
@@ -68,12 +90,12 @@ describe('PnLDistributionChart', () => {
 
     render(<PnLDistributionChart dark={false} />);
 
+    // gate on a data-only element (heading renders during loading — would race)
     await waitFor(() => {
-      expect(screen.getByText('盈亏分布')).toBeInTheDocument();
+      expect(screen.getByText(/5 只持仓/)).toBeInTheDocument();
     });
 
     // Summary text with holdings count
-    expect(screen.getByText(/5 只持仓/)).toBeInTheDocument();
     expect(screen.getByText(/4 只有成本数据/)).toBeInTheDocument();
   });
 
@@ -123,5 +145,25 @@ describe('PnLDistributionChart', () => {
 
     // v3.0: uses Unicode ellipsis '…' (U+2026)
     expect(screen.getByTestId('chart-loading')).toBeInTheDocument();
+  });
+
+  it('colors gain buckets red (up) and loss buckets green (down) — CN convention', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockHarnessData),
+    } as Response);
+
+    render(<PnLDistributionChart dark={false} />);
+    // wait for data to load (count text renders only when loaded) so setOption fired
+    await waitFor(() => expect(screen.getByText(/5 只持仓/)).toBeInTheDocument());
+
+    const mockInstance = (echartsCore.init as ReturnType<typeof vi.fn>).mock?.results?.[0]?.value;
+    const callArg = mockInstance.setOption.mock.calls[0]?.[0];
+    // series[0].data = 8 buckets, each { value, itemStyle: { color } }
+    const buckets = callArg.series[0].data;
+    // bucket 6 = gain_20_30 (deviation +25%) → red (theme.up #d63649 → rgba 214,54,73)
+    expect(buckets[6].itemStyle.color).toMatch(/rgba\(214,\s*54,\s*73/);
+    // bucket 2 = loss_10_20 (deviation -11.1%, -10%) → green (theme.down #199c63 → rgba 25,156,99)
+    expect(buckets[2].itemStyle.color).toMatch(/rgba\(25,\s*156,\s*99/);
   });
 });

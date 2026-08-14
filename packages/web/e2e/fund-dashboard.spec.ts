@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = process.env.CI ? 'http://localhost:8080' : 'http://localhost:5176';
+const BASE = process.env.BASE_URL || (process.env.CI ? 'http://localhost:8080' : 'http://localhost:5173');
 
 test.describe('Fund Dashboard', () => {
   test('Dashboard loads and shows portfolio stats', async ({ page }) => {
@@ -12,7 +12,7 @@ test.describe('Fund Dashboard', () => {
     });
 
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(3000);
 
     // Title should contain something meaningful
@@ -39,7 +39,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Sidebar navigation to a fund shows detail page', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(3000);
 
     // Find a fund button in the sidebar menu buttons (not the overview/nasdaq-overview buttons)
@@ -56,7 +56,7 @@ test.describe('Fund Dashboard', () => {
     if (fundName && fundName.trim().length > 3) {
       await fundBtn.click();
       await page.waitForTimeout(2500);
-      await page.waitForLoadState('networkidle', { timeout: 15000 });
+      await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
 
       // Should now show detail content
       const detailContent = page.locator('main');
@@ -70,7 +70,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Fund detail tabs switch correctly', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(3000);
 
     // Click a fund
@@ -90,7 +90,7 @@ test.describe('Fund Dashboard', () => {
     }
     await fundBtn.click();
     await page.waitForTimeout(2500);
-    await page.waitForLoadState('networkidle', { timeout: 15000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
 
     // Check for tab elements (role=tab or button tabs)
     const tabs = page.locator('[role="tab"], button').filter({
@@ -112,7 +112,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Transaction table displays data', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(3000);
 
     // Click a fund first
@@ -132,7 +132,7 @@ test.describe('Fund Dashboard', () => {
     }
     await fundBtn.click();
     await page.waitForTimeout(2500);
-    await page.waitForLoadState('networkidle', { timeout: 15000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
 
     // Click transactions/交易记录 tab
     const txTab = page.locator('button').filter({ hasText: '交易记录' }).first();
@@ -152,7 +152,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Dark mode toggle works and persists', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(2000);
 
     // Get initial mode
@@ -206,7 +206,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Search filters sidebar funds', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(2000);
 
     // Find search input by placeholder
@@ -250,7 +250,7 @@ test.describe('Fund Dashboard', () => {
 
   test('Held-only toggle filters correctly', async ({ page }) => {
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
     await page.waitForTimeout(2000);
 
     // Find the switch element with data-state

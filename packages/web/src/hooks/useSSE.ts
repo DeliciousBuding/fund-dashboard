@@ -31,7 +31,21 @@ export function useSSE(
   onMessageRef.current = onMessage
 
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const esRef = useRef<EventSource | null>(null)
+  // Exponential backoff bookkeeping: consecutive failures grow the reconnect
+  // delay (base → 2× → 4× → 8× ... capped), reset to the base on a successful
+  // onopen. Kept in a ref so it survives across reconnects without re-render.
+  const consecutiveFailuresRef = useRef(0)
+  const MAX_BACKOFF_MS = 60000
+
+  const computeBackoff = useCallback(() => {
+    const base = reconnectMs
+    const n = consecutiveFailuresRef.current
+    // base * 2^n, capped at MAX_BACKOFF_MS
+    const raw = base * Math.pow(2, n)
+    return Math.min(raw, MAX_BACKOFF_MS)
+  }, [reconnectMs])
 
   const connect = useCallback(() => {
     // Clean up any existing connection
@@ -44,8 +58,15 @@ export function useSSE(
     esRef.current = es
 
     es.onopen = () => {
+      // Successful open — reset backoff to the base delay.
+      consecutiveFailuresRef.current = 0
       setConnected(true)
       setError(null)
+      // Clear CONNECTING watchdog since we successfully connected.
+      if (watchdogRef.current) {
+        clearTimeout(watchdogRef.current)
+        watchdogRef.current = null
+      }
     }
 
     es.onmessage = (event) => {
@@ -67,22 +88,44 @@ export function useSSE(
         es.close()
         esRef.current = null
 
+        // Clear CONNECTING watchdog (CLOSED resolved, no need for watchdog).
+        if (watchdogRef.current) {
+          clearTimeout(watchdogRef.current)
+          watchdogRef.current = null
+        }
+
+        // Exponential backoff: increase delay with each consecutive failure.
+        const delay = computeBackoff()
+        consecutiveFailuresRef.current += 1
+
         // Schedule reconnect
         if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
         reconnectTimerRef.current = setTimeout(() => {
           connect()
-        }, reconnectMs)
+        }, delay)
       } else {
-        // CONNECTING — still trying
+        // CONNECTING — still trying, delegate to browser-native retry
         setError('Reconnecting...')
+
+        // Watchdog: if EventSource stays stuck in CONNECTING, force-close
+        // it after reconnectMs so the hook can take over with its own backoff
+        // reconnect rather than waiting indefinitely on the browser.
+        if (watchdogRef.current) clearTimeout(watchdogRef.current)
+        watchdogRef.current = setTimeout(() => {
+          watchdogRef.current = null
+          es.close()
+          // Invoke onerror — it will see CLOSED and trigger the backoff reconnect.
+          if (es.onerror) es.onerror()
+        }, reconnectMs)
       }
     }
-  }, [url, reconnectMs])
+  }, [url, reconnectMs, computeBackoff])
 
   useEffect(() => {
     connect()
 
     return () => {
+      if (watchdogRef.current) clearTimeout(watchdogRef.current)
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       if (esRef.current) {
         esRef.current.close()

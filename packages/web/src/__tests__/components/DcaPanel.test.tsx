@@ -17,9 +17,9 @@ describe('DcaPanel', () => {
     deviation_pct: 25,
     dca_rate: 0.8,
     actual_amount: 80,
-    signal: '低于成本',
+    signal: 'decrease',
     range: '-20%~-10%',
-    explanation: '净值偏离成本线，触发适度加仓',
+    explanation: 'legacy explanation',
   };
 
   it('renders fallback plan with initial props and computes real plan on click', async () => {
@@ -36,19 +36,19 @@ describe('DcaPanel', () => {
     expect(screen.getByText('选择模式后计算模拟扣款。')).toBeInTheDocument();
 
     // Click compute → fetch triggers → real plan replaces fallback
-    fireEvent.click(screen.getByText('计算'));
+    fireEvent.click(screen.getByRole('button', { name: '计算' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/低于成本/)).toBeInTheDocument();
+      expect(screen.getByText(/80% · 减仓/)).toBeInTheDocument();
     });
 
-    expect(screen.getByText('净值偏离成本线，触发适度加仓')).toBeInTheDocument();
+    expect(screen.getByText(/当前价格相对成本偏离 25.00%，减仓，投入 80.00/)).toBeInTheDocument();
     expect(screen.getByText('¥ 80.00')).toBeInTheDocument();
     expect(screen.queryByText(/建议扣款/)).not.toBeInTheDocument();
   });
 
   it('switches between cost deviation and change pct mode tabs', async () => {
-    const changePctPlan = { ...mockPlan, mode: 'change_pct' as const, signal: '跌幅较大', explanation: '近期跌幅明显，触发加仓信号' };
+    const changePctPlan = { ...mockPlan, mode: 'change_pct' as const, signal: 'dip_buy', explanation: 'legacy change expl' };
 
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({
@@ -64,20 +64,19 @@ describe('DcaPanel', () => {
 
     // Click cost deviation mode tab and compute
     fireEvent.click(screen.getByText('成本偏离'));
-    fireEvent.click(screen.getByText('计算'));
+    fireEvent.click(screen.getByRole('button', { name: '计算' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/低于成本/)).toBeInTheDocument();
+      expect(screen.getByText(/80% · 减仓/)).toBeInTheDocument();
     });
 
-    // Switch to change pct mode and compute again
+    // Switch to change pct mode — auto-recompute (#190) uses second mock
     fireEvent.click(screen.getByText('涨跌幅模式'));
-    fireEvent.click(screen.getByText('计算'));
 
     await waitFor(() => {
-      expect(screen.getByText(/跌幅较大/)).toBeInTheDocument();
+      expect(screen.getByText(/80% · 跌幅加仓/)).toBeInTheDocument();
     });
-    expect(screen.getByText('近期跌幅明显，触发加仓信号')).toBeInTheDocument();
+    expect(screen.getByText(/最近涨跌幅 3.50%，跌幅加仓，投入 80.00/)).toBeInTheDocument();
   });
 
   it('displays base_amount and signal in plan output', async () => {
@@ -88,7 +87,7 @@ describe('DcaPanel', () => {
 
     render(<DcaPanel fundCode="019173" heldShares={1000} latestNav={1.5} totalCost={-1200} dark={false} />);
 
-    fireEvent.click(screen.getByText('计算'));
+    fireEvent.click(screen.getByRole('button', { name: '计算' }));
 
     await waitFor(() => {
       expect(screen.getByText('¥ 80.00')).toBeInTheDocument();
@@ -97,9 +96,9 @@ describe('DcaPanel', () => {
     // base_amount (100) reflected in the actual_amount display
     expect(screen.getByText('模拟扣款')).toBeInTheDocument();
     // signal displayed alongside dca_rate
-    expect(screen.getByText(/低于成本/)).toBeInTheDocument();
+    expect(screen.getByText(/80% · 减仓/)).toBeInTheDocument();
     // explanation shown
-    expect(screen.getByText('净值偏离成本线，触发适度加仓')).toBeInTheDocument();
+    expect(screen.getByText(/当前价格相对成本偏离 25.00%，减仓，投入 80.00/)).toBeInTheDocument();
   });
 
   it('never renders "建议扣款" advisory text', async () => {
@@ -113,10 +112,10 @@ describe('DcaPanel', () => {
     // Before compute
     expect(screen.queryByText(/建议扣款/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('计算'));
+    fireEvent.click(screen.getByRole('button', { name: '计算' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/低于成本/)).toBeInTheDocument();
+      expect(screen.getByText(/80% · 减仓/)).toBeInTheDocument();
     });
 
     // After compute

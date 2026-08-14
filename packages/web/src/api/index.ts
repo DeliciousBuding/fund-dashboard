@@ -1,4 +1,5 @@
 import { z } from "zod";
+import i18n from "../i18n";
 import {
   FundInfoSchema,
   FundDetailSchema,
@@ -23,6 +24,7 @@ import {
   SourceEventSchema,
   CompareResultSchema,
 } from "./types";
+import type { Transaction } from "./types";
 
 // Re-export all types so existing imports don't break
 export type {
@@ -97,6 +99,18 @@ async function fetchJson<T>(path: string, schema: z.ZodType<T>, signal?: AbortSi
   return promise;
 }
 
+
+/** Accept (portfolioId?, signal?) or legacy (signal?) for list endpoints. */
+function portfolioIdAndSignal(
+  a?: number | AbortSignal,
+  b?: AbortSignal,
+): [number | undefined, AbortSignal | undefined] {
+  if (typeof AbortSignal !== "undefined" && a instanceof AbortSignal) {
+    return [undefined, a];
+  }
+  return [typeof a === "number" ? a : undefined, b];
+}
+
 // ═══════ Fund endpoints ═══════
 
 export async function fetchPortfolio(portfolioId?: number, signal?: AbortSignal): Promise<z.infer<typeof PortfolioSchema>> {
@@ -119,41 +133,76 @@ export async function fetchInvestmentSourceBrief(limit = 20, portfolioId?: numbe
   return fetchJson(`${BASE}/portfolio/source-brief?limit=${limit}${pidParam}`, InvestmentSourceBriefSchema, signal);
 }
 
-export async function fetchFunds(signal?: AbortSignal): Promise<z.infer<typeof FundInfoSchema>[]> {
-  return fetchJson(`${BASE}/funds`, z.array(FundInfoSchema), signal);
+export async function fetchFunds(portfolioIdOrSignal?: number | AbortSignal, signal?: AbortSignal): Promise<z.infer<typeof FundInfoSchema>[]> {
+  const [portfolioId, sig] = portfolioIdAndSignal(portfolioIdOrSignal, signal);
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
+  return fetchJson(`${BASE}/funds${qs}`, z.array(FundInfoSchema), sig);
 }
 
-export async function fetchFundDetail(code: string, signal?: AbortSignal): Promise<z.infer<typeof FundDetailSchema>> {
-  return fetchJson(`${BASE}/funds/${code}`, FundDetailSchema, signal);
+export async function fetchFundDetail(code: string, portfolioIdOrSignal?: number | AbortSignal, signal?: AbortSignal): Promise<z.infer<typeof FundDetailSchema>> {
+  const [portfolioId, sig] = portfolioIdAndSignal(portfolioIdOrSignal, signal);
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
+  return fetchJson(`${BASE}/funds/${encodeURIComponent(code)}${qs}`, FundDetailSchema, sig);
 }
 
 export async function fetchNav(code: string, signal?: AbortSignal): Promise<z.infer<typeof NavPointSchema>[]> {
-  return fetchJson(`${BASE}/funds/${code}/nav`, z.array(NavPointSchema), signal);
+  return fetchJson(`${BASE}/funds/${encodeURIComponent(code)}/nav`, z.array(NavPointSchema), signal);
 }
 
-export async function fetchXirr(code: string, signal?: AbortSignal): Promise<z.infer<typeof XirrResultSchema>> {
-  return fetchJson(`${BASE}/funds/${code}/xirr`, XirrResultSchema, signal);
+export async function fetchXirr(
+  code: string,
+  portfolioIdOrSignal?: number | AbortSignal,
+  signal?: AbortSignal,
+): Promise<z.infer<typeof XirrResultSchema>> {
+  const [portfolioId, sig] = portfolioIdAndSignal(portfolioIdOrSignal, signal);
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
+  return fetchJson(`${BASE}/funds/${encodeURIComponent(code)}/xirr${qs}`, XirrResultSchema, sig);
 }
 
 export async function fetchDrawdown(code: string, signal?: AbortSignal): Promise<z.infer<typeof DrawdownResultSchema>> {
-  return fetchJson(`${BASE}/funds/${code}/drawdown`, DrawdownResultSchema, signal);
+  return fetchJson(`${BASE}/funds/${encodeURIComponent(code)}/drawdown`, DrawdownResultSchema, signal);
 }
 
 export async function fetchDcaPlan(
   code: string,
-  options: { base?: number; mode?: 'nav_deviation' | 'change_pct' } = {},
+  options: { base?: number; mode?: 'nav_deviation' | 'change_pct'; portfolioId?: number } = {},
   signal?: AbortSignal,
 ): Promise<z.infer<typeof DcaPlanSchema>> {
   const params = new URLSearchParams();
   if (options.base != null) params.set('base', String(options.base));
   if (options.mode) params.set('mode', options.mode);
+  if (options.portfolioId != null) params.set('portfolio_id', String(options.portfolioId));
   const qs = params.toString();
-  return fetchJson(`${BASE}/funds/${code}/dca${qs ? `?${qs}` : ''}`, DcaPlanSchema, signal);
+  return fetchJson(`${BASE}/funds/${encodeURIComponent(code)}/dca${qs ? `?${qs}` : ''}`, DcaPlanSchema, signal);
 }
 
 export async function fetchPortfolioXirr(portfolioId?: number, signal?: AbortSignal): Promise<z.infer<typeof XirrResultSchema>> {
   const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
   return fetchJson(`${BASE}/portfolio/xirr${qs}`, XirrResultSchema, signal);
+}
+
+/** Portfolio value timeline for Overview chart (facts only). */
+export interface PortfolioTimelinePoint {
+  date: string;
+  total_value: number;
+  total_cost: number;
+  pnl: number;
+  pnl_pct: number;
+}
+
+export async function fetchPortfolioTimeline(
+  portfolioId?: number,
+  signal?: AbortSignal,
+): Promise<PortfolioTimelinePoint[]> {
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
+  // Backend returns raw points without envelope; pnl_pct is float64.
+  return fetchJson(`${BASE}/portfolio/timeline${qs}`, z.array(z.object({
+    date: z.string(),
+    total_value: z.number(),
+    total_cost: z.number(),
+    pnl: z.number(),
+    pnl_pct: z.number(),
+  }).passthrough()), signal);
 }
 
 // ═══════ Portfolio Penetration ═══════
@@ -181,27 +230,52 @@ export async function fetchPortfolios(signal?: AbortSignal): Promise<PortfolioDe
 // ═══════ Security (stock + fund unified) ═══════
 
 /** Fetch all securities — funds and stocks combined. */
-export async function fetchSecurities(signal?: AbortSignal): Promise<z.infer<typeof SecurityInfoSchema>[]> {
-  return fetchJson(`${BASE}/securities`, z.array(SecurityInfoSchema), signal);
+export async function fetchSecurities(portfolioIdOrSignal?: number | AbortSignal, signal?: AbortSignal): Promise<z.infer<typeof SecurityInfoSchema>[]> {
+  const [portfolioId, sig] = portfolioIdAndSignal(portfolioIdOrSignal, signal);
+  const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : '';
+  return fetchJson(`${BASE}/securities${qs}`, z.array(SecurityInfoSchema), sig);
 }
 
 // ═══════ Transaction CRUD ═══════
 
+/** Prefer short status-based ApiError; never surface raw JSON error bodies to UI. */
+async function mutationError(res: Response): Promise<ApiError> {
+  let detail = '';
+  try {
+    const text = await res.text();
+    if (text) {
+      try {
+        const j = JSON.parse(text) as { error?: unknown; message?: unknown };
+        const e = j?.error ?? j?.message;
+        if (typeof e === 'string' && e.trim() && e.length <= 120 && !/^\s*[{\[]/.test(e)) {
+          detail = e.trim();
+        }
+      } catch {
+        // non-JSON body — ignore technical dump
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  const base = `HTTP ${res.status}`;
+  return new ApiError(detail && !/expected\s|Zod|ECONN|at path/i.test(detail) ? `${base}: ${detail}` : base, res.status);
+}
+
 async function fetchPost(path: string, body: any, signal?: AbortSignal): Promise<any> {
   const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-  if (!res.ok) { const msg = await res.text().catch(() => ''); throw new ApiError(msg || `HTTP ${res.status}`, res.status); }
+  if (!res.ok) throw await mutationError(res);
   return res.json();
 }
 
 async function fetchPut(path: string, body: any, signal?: AbortSignal): Promise<any> {
   const res = await fetch(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-  if (!res.ok) { const msg = await res.text().catch(() => ''); throw new ApiError(msg || `HTTP ${res.status}`, res.status); }
+  if (!res.ok) throw await mutationError(res);
   return res.json();
 }
 
 async function fetchDelete(path: string): Promise<any> {
   const res = await fetch(path, { method: 'DELETE' });
-  if (!res.ok) { const msg = await res.text().catch(() => ''); throw new ApiError(msg || `HTTP ${res.status}`, res.status); }
+  if (!res.ok) throw await mutationError(res);
   return res.json();
 }
 
@@ -209,26 +283,42 @@ export async function addTransactionApi(tx: {
   fund_code: string; trade_time: string; direction: 'buy' | 'sell' | 'dividend';
   trade_type: string; confirm_amount: number; confirm_share?: number; fee?: number; order_id?: string;
 }): Promise<{ ok: boolean; imported: number }> {
-  return fetchPost(`${BASE}/admin/import-transactions`, { transactions: [{ ...tx, order_id: tx.order_id || `web_${crypto.randomUUID()}` }] });
+  // SPA path is edge-auth only; do not call /api/admin/* (requires MCP_API_KEY).
+  return fetchPost(`${BASE}/transactions/import`, { transactions: [{ ...tx, order_id: tx.order_id || `web_${crypto.randomUUID()}` }] });
 }
 
 export async function updateTransactionApi(seq: number, fields: Record<string, any>): Promise<any> {
-  return fetchPut(`${BASE}/admin/transactions/${seq}`, fields);
+  return fetchPut(`${BASE}/transactions/${seq}`, fields);
 }
 
 export async function deleteTransactionApi(seq: number): Promise<any> {
-  return fetchDelete(`${BASE}/admin/transactions/${seq}`);
+  return fetchDelete(`${BASE}/transactions/${seq}`);
 }
 
 // ═══════ Transaction CSV ═══════
 
-/** Transaction type for CSV export — imported from types for reuse */
-import type { Transaction } from "./types";
-
-/** Export transactions as CSV string */
-export function transactionsToCsv(transactions: Transaction[], fundName: string): string {
-  const headers = ['交易时间','确认日期','类型','金额','份额','成交净值','推算净值','手续费','结算','交易日'];
-  const dirMap: Record<string, string> = { buy: '买入', sell: '卖出', dividend: '分红', convert_in: '转入', convert_out: '转出', forced_redeem: '强赎' };
+/** Export transactions as CSV string (headers / direction labels follow active locale) */
+export function transactionsToCsv(transactions: Transaction[], _fundName: string): string {
+  const headers = [
+    i18n.t('fundDetail.csv.tradeTime'),
+    i18n.t('fundDetail.csv.confirmDate'),
+    i18n.t('fundDetail.csv.direction'),
+    i18n.t('fundDetail.csv.amount'),
+    i18n.t('fundDetail.csv.shares'),
+    i18n.t('fundDetail.csv.dealNav'),
+    i18n.t('fundDetail.csv.inferredNav'),
+    i18n.t('fundDetail.csv.fee'),
+    i18n.t('fundDetail.csv.settlement'),
+    i18n.t('fundDetail.csv.tradeDay'),
+  ];
+  const dirMap: Record<string, string> = {
+    buy: i18n.t('fundDetail.dir.buy'),
+    sell: i18n.t('fundDetail.dir.sell'),
+    dividend: i18n.t('fundDetail.dir.dividend'),
+    convert_in: i18n.t('fundDetail.dir.convert_in'),
+    convert_out: i18n.t('fundDetail.dir.convert_out'),
+    forced_redeem: i18n.t('fundDetail.dir.forced_redeem'),
+  };
   const rows = transactions.map(tx => [
     tx.trade_time.substring(0, 16),
     tx.confirm_date,
@@ -248,12 +338,35 @@ export function transactionsToCsv(transactions: Transaction[], fundName: string)
 // ═══════ Market index endpoints ═══════
 
 export async function fetchIndices(signal?: AbortSignal): Promise<z.infer<typeof MarketIndexSchema>[]> {
-  return fetchJson(`${BASE}/market/indices`, z.array(MarketIndexSchema), signal);
+  // Go returns { indices: { [code]: quote }, count, ... }; FE contract is MarketIndex[].
+  const GoIndicesEnvelope = z.object({
+    indices: z.record(z.string(), z.object({
+      name: z.string().optional().default(''),
+      market: z.string().optional().default(''),
+      price: z.number().nullable().optional().default(null),
+      change_pct: z.number().nullable().optional().default(null),
+      change: z.number().nullable().optional().default(null),
+      change_amt: z.number().nullable().optional().default(null),
+      updated_at: z.string().optional().default(''),
+    }).passthrough()).optional().default({}),
+  }).passthrough();
+
+  const raw = await fetchJson(`${BASE}/market/indices`, z.union([z.array(MarketIndexSchema), GoIndicesEnvelope]), signal);
+  if (Array.isArray(raw)) return raw;
+  return Object.entries(raw.indices ?? {}).map(([code, quote]) => ({
+    code,
+    name: quote.name || code,
+    market: quote.market || '',
+    price: quote.price ?? null,
+    change_pct: quote.change_pct ?? null,
+    change_amt: quote.change_amt ?? quote.change ?? null,
+    updated_at: quote.updated_at || '',
+  }));
 }
 
 /** Fetch live US stock data — price, profile, history */
 export async function fetchUSStock(code: string, signal?: AbortSignal): Promise<z.infer<typeof USStockInfoSchema>> {
-  return fetchJson(`${BASE}/stocks/${code}`, USStockInfoSchema, signal);
+  return fetchJson(`${BASE}/stocks/${encodeURIComponent(code)}`, USStockInfoSchema, signal);
 }
 
 /** Fetch current USD/CNY exchange rate */
@@ -262,9 +375,15 @@ export async function fetchExchangeRate(signal?: AbortSignal): Promise<z.infer<t
 }
 
 /** Fetch historical data for a market index */
-export async function fetchIndexHistory(code: string, range?: string, signal?: AbortSignal): Promise<z.infer<typeof IndexHistorySchema>> {
+export async function fetchIndexHistory(code: string, range?: string, interval?: string, signal?: AbortSignal): Promise<z.infer<typeof IndexHistorySchema>> {
   const r = range || '1y';
-  return fetchJson(`${BASE}/market/index/${code}/history?range=${r}`, IndexHistorySchema, signal);
+  const params = new URLSearchParams({ range: r });
+  if (interval) params.set('interval', interval);
+  return fetchJson(
+    `${BASE}/market/index/${encodeURIComponent(code)}/history?${params.toString()}`,
+    IndexHistorySchema,
+    signal,
+  );
 }
 
 /** Fetch a single live index quote (cached fallback on failure) */
@@ -272,7 +391,7 @@ export async function fetchIndexLive(code: string, signal?: AbortSignal): Promis
   previous_close?: number; change?: number; high?: number; low?: number;
   open?: number; volume?: number; currency?: string; market_time?: string; source: string;
 }> {
-  return fetchJson(`${BASE}/market/index/${code}`, MarketIndexSchema.passthrough(), signal) as any;
+  return fetchJson(`${BASE}/market/index/${encodeURIComponent(code)}`, MarketIndexSchema.passthrough(), signal) as any;
 }
 
 export function downloadCsv(content: string, filename: string) {
@@ -293,11 +412,16 @@ export function downloadBlob(blob: Blob, filename: string) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-/** Download transactions as Excel (.xlsx) from the server */
+/** Download transactions as Excel (.xlsx) from the server.
+ *  Accept-Language mirrors SPA locale so headers/direction match CSV i18n (#154). */
 export async function downloadTransactionsXlsx(transactions: Transaction[], fundName: string) {
+  const lang = (i18n.language || 'zh').toLowerCase().startsWith('en') ? 'en' : 'zh';
   const res = await fetch('/api/export/transactions-xlsx', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept-Language': lang,
+    },
     body: JSON.stringify({ transactions, fundName }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -307,12 +431,20 @@ export async function downloadTransactionsXlsx(transactions: Transaction[], fund
 
 // ═══════ Source Events (V4) ═══════
 
-export async function fetchCompare(codes: string[], signal?: AbortSignal): Promise<z.infer<typeof CompareResultSchema>> {
-  return fetchJson(`${BASE}/analysis/compare?codes=${codes.join(',')}`, CompareResultSchema, signal);
+export async function fetchCompare(
+  codes: string[],
+  portfolioIdOrSignal?: number | AbortSignal,
+  signal?: AbortSignal,
+): Promise<z.infer<typeof CompareResultSchema>> {
+  const [portfolioId, sig] = portfolioIdAndSignal(portfolioIdOrSignal, signal);
+  const params = new URLSearchParams();
+  params.set('codes', codes.join(','));
+  if (portfolioId != null) params.set('portfolio_id', String(portfolioId));
+  return fetchJson(`${BASE}/analysis/compare?${params.toString()}`, CompareResultSchema, sig);
 }
 
 export async function fetchSourceEvents(
-  opts: { code?: string; source?: string; show_read?: boolean; limit?: number } = {},
+  opts: { code?: string; source?: string; show_read?: boolean; limit?: number; portfolioId?: number } = {},
   signal?: AbortSignal,
 ): Promise<z.infer<typeof SourceEventsResponseSchema>> {
   const params = new URLSearchParams();
@@ -320,6 +452,8 @@ export async function fetchSourceEvents(
   if (opts.source) params.set('source', opts.source);
   if (opts.show_read) params.set('show_read', '1');
   if (opts.limit != null) params.set('limit', String(opts.limit));
+  // Reserved for multi-portfolio source-event scoping once schema gains portfolio_id.
+  if (opts.portfolioId != null) params.set('portfolio_id', String(opts.portfolioId));
   const qs = params.toString();
   return fetchJson(`${BASE}/portfolio/source-events${qs ? `?${qs}` : ''}`, SourceEventsResponseSchema, signal);
 }

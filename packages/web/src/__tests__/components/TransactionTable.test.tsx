@@ -186,7 +186,8 @@ describe('TransactionTable', () => {
       />,
     )
 
-    expect(screen.getByText('无匹配交易')).toBeInTheDocument()
+    // empty list uses noTx copy; search-no-match uses noMatch (covered above)
+    expect(screen.getByText('暂无交易记录')).toBeInTheDocument()
   })
 
   it('calls onAdd when "添加交易" button is clicked', async () => {
@@ -235,7 +236,7 @@ describe('TransactionTable', () => {
       />,
     )
 
-    // Row with seq=1 should have reduced opacity
+    // Row with seq=1 should have reduced opacity (opacity.disabled token, #145)
     const rows = document.querySelectorAll('tr')
     const deletingRow = Array.from(rows).find(r => r.style.opacity === '0.4')
     expect(deletingRow).toBeDefined()

@@ -10,7 +10,10 @@ export function useDarkMode() {
   })
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-mode', dark ? 'dark' : 'light')
+    // data-theme is the DESIGN/index.css SSOT; keep data-mode for backward compat (#104).
+    const mode = dark ? 'dark' : 'light'
+    document.documentElement.setAttribute('data-theme', mode)
+    document.documentElement.setAttribute('data-mode', mode)
     try { localStorage.setItem('fund-dark-mode', String(dark)) } catch {}
   }, [dark])
 

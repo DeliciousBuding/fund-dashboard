@@ -15,6 +15,8 @@ export const InvestmentHarnessHoldingSignalSchema = z.object({
   cost_per_share: z.number().nullable(),
   change_pct: z.number().nullable(),
   deviation_pct: z.number().nullable(),
+  /** Snapshot unrealized PnL % (preferred for distribution charts). */
+  pnl_pct: z.number().nullable().optional(),
   signal_tags: z.array(z.string()),
   data_points: z.object({
     has_price: z.boolean(),
@@ -38,6 +40,26 @@ export const InvestmentHarnessSnapshotSchema = z.object({
     holdings_coverage_pct: z.number(), // G2 fix
   }),
   available_agent_tools: z.array(z.string()),
+  agent_permissions: z.object({
+    decision_boundary: z.literal('facts_only'),
+    read_scope: z.array(z.string()),
+    write_scope: z.array(z.string()),
+    requires_confirmation: z.array(z.string()),
+    disabled_operations: z.array(z.string()),
+  }),
+  agent_capabilities: z.array(z.object({
+    tool: z.string(),
+    scope: z.enum(['read', 'write', 'maintenance', 'external_context']),
+    permission: z.enum(['allowed', 'requires_confirmation', 'disabled']),
+    risk_level: z.enum(['low', 'medium', 'high']),
+    use_for: z.string(),
+  })),
+  recommended_agent_actions: z.array(z.object({
+    priority: z.enum(['high', 'medium', 'low']),
+    tool: z.string(),
+    reason: z.string(),
+    input: z.record(z.unknown()).optional(),
+  })),
   agent_brief: z.string(),
 });
 export type InvestmentHarnessSnapshot = z.infer<typeof InvestmentHarnessSnapshotSchema>;

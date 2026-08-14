@@ -1,30 +1,51 @@
-# Production Dockerfile — Bun + Hono backend
-# @fund-dashboard/contracts is a workspace member in dev. In the image we copy it
-# directly into node_modules and drop the dep line — avoids workspace resolution
-# (root workspaces lists web too, which isn't copied). contracts is pure TS; its
-# only runtime dep (zod) is already in server deps.
-FROM oven/bun:1.2.9-alpine
+# Go Backend Dockerfile — multi-stage, static binary on Alpine + Vite SPA.
+#
+# Build:  docker build -f deploy/Dockerfile -t ghcr.io/deliciousbuding/fund-dashboard:<sha> .
+# Run:    docker compose -f deploy/docker-compose.yml up -d
+# Env:    FUND_HTTP_ADDR, FUND_DB_PATH, FUND_STATIC_DIR, MCP_API_KEY, PUBLIC_MCP_KEY, FUND_EDGE_KEY
+
+FROM golang:1.25-alpine AS go-build
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /fund-dashboard -ldflags="-s -w" ./cmd/fund-dashboard/
+
+FROM node:20-alpine AS web-build
+WORKDIR /src
+COPY packages/web/package.json packages/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY packages/contracts/ packages/contracts/
+COPY packages/web/ packages/web/
+RUN npm run build --workspace packages/web
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata curl && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone && \
+    addgroup -S fund && adduser -S -G fund -H -s /sbin/nologin fund
 
 WORKDIR /app
 
-COPY packages/server/package.json ./
-# Drop the workspace contracts dep — we place contracts into node_modules directly
-RUN sed -i '/@fund-dashboard\/contracts/d' package.json
-# contracts as a local node_modules package
-COPY packages/contracts/ ./node_modules/@fund-dashboard/contracts/
+COPY --from=go-build /fund-dashboard /app/fund-dashboard
+COPY --from=web-build /src/packages/web/dist /app/web
 
-RUN bun install --production
+# data dir is volume-mounted; ensure ownership so non-root can write SQLite/WAL.
+RUN mkdir -p /app/data /app/backups && chown -R fund:fund /app
 
-COPY packages/server/ ./
-
-RUN mkdir -p /app/data
-
-COPY deploy/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+USER fund
 
 EXPOSE 8765
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-  CMD wget -q -O - http://127.0.0.1:8765/api/health || exit 1
+  CMD curl -fsS http://127.0.0.1:8765/api/health || exit 1
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/app/fund-dashboard"]

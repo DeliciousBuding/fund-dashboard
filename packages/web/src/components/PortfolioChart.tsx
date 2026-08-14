@@ -1,57 +1,21 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Text } from "@cloudflare/kumo";
-import { use as echartsUse, graphic } from "echarts/core";
-import { LineChart, BarChart } from "echarts/charts";
-import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from "echarts/components";
-import { CanvasRenderer } from "echarts/renderers";
-import { getTheme, chartAxis, chartTooltip, chartLegend, chartDataZoom, hexToRgba } from "../styles/theme";
+import { getTheme, chartAxis, chartTooltip, chartLegend, chartDataZoom, chartHeight, space} from "../styles/theme";
 import { useEChart } from "../hooks/useEChart";
-import { Card } from "./ui/Card";
+import { ChartShell, useChartData, lineSeries, barSeries, useCoreCharts } from "./charts";
+import { fetchPortfolioTimeline } from "../api";
 
-echartsUse([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
-
-interface TimelinePoint {
-  date: string;
-  total_value: number;
-  total_cost: number;
-  pnl: number;
-  pnl_pct: number | string;
-}
+useCoreCharts();
 
 export default function PortfolioChart({ dark, portfolioId }: { dark: boolean; portfolioId?: number }) {
   const { t } = useTranslation();
   const theme = getTheme(dark);
-  const [tl, setTl] = useState<TimelinePoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setLoading(true);
-    setError(null);
-    const qs = portfolioId != null ? `?portfolio_id=${portfolioId}` : "";
-    fetch(`/api/portfolio/timeline${qs}`, { signal: ctrl.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<TimelinePoint[]>;
-      })
-      .then((data) => {
-        setTl(data);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (e.name !== "AbortError") {
-          console.warn("[timeline]", e);
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    return () => ctrl.abort();
-  }, [portfolioId]);
+  const { data, loading, error } = useChartData(
+    (signal) => fetchPortfolioTimeline(portfolioId, signal),
+    [portfolioId],
+  );
+  const tl = data ?? [];
 
   const option = useMemo(() => {
     if (!tl.length) return {} as Record<string, unknown>;
@@ -86,25 +50,16 @@ export default function PortfolioChart({ dark, portfolioId }: { dark: boolean; p
       ],
       dataZoom: chartDataZoom(theme),
       series: [
-        {
-          name: t("portfolio.marketValue"), type: "line", data: values, smooth: true, symbol: "none",
-          lineStyle: { color: theme.blue, width: 2.5 },
-          areaStyle: {
-            color: new graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: hexToRgba(theme.blue, 0.26) },
-              { offset: 1, color: hexToRgba(theme.blue, 0) },
-            ]),
-          },
-        },
-        {
-          name: t("portfolio.cost"), type: "line", data: costs, smooth: true, symbol: "none",
-          lineStyle: { color: theme.amber, width: 1.5, type: "dashed" },
-        },
-        {
-          name: t("portfolio.dailyPnL"), type: "bar", data: pnls, yAxisIndex: 1,
-          itemStyle: { color: (p: any) => (Number(p.value) || 0) >= 0 ? theme.up : theme.down, borderRadius: [2, 2, 0, 0] },
+        lineSeries({ name: t("portfolio.marketValue"), data: values, color: theme.blue, area: true, areaAlpha: 0.26, width: 2.5 }),
+        lineSeries({ name: t("portfolio.cost"), data: costs, color: theme.amber, dashed: true, width: 1.5 }),
+        barSeries({
+          name: t("portfolio.dailyPnL"),
+          data: pnls,
+          yAxisIndex: 1,
+          upDown: { up: theme.up, down: theme.down },
+          borderRadius: [2, 2, 0, 0],
           barWidth: "60%",
-        },
+        }),
       ],
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,27 +67,18 @@ export default function PortfolioChart({ dark, portfolioId }: { dark: boolean; p
 
   const ref = useEChart(option, [option]);
 
-  const placeholder = (msg: string, testid: string) => (
-    <div data-testid={testid} style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center", color: theme.textMuted, fontVariantNumeric: "tabular-nums" }}>
-      {msg}
-    </div>
-  );
-
   return (
-    <Card dark={dark} style={{ marginBottom: 20 }}>
-      <div style={{ padding: "4px 0 16px" }}>
-        <Text variant="heading3" as="h3">{t("portfolio.titleChart")}</Text>
-        <Text variant="secondary" as="span" size="xs" style={{ marginTop: 2, display: "block" }}>
-          {t("portfolio.chartDesc")}
-        </Text>
-      </div>
-      {loading
-        ? placeholder(t("common.loading", "加载中…"), "chart-loading")
-        : error
-          ? placeholder(t("common.loadError", "加载失败"), "chart-error")
-          : !tl.length
-            ? placeholder(t("common.noData", "暂无数据"), "chart-empty")
-            : <div ref={ref} style={{ height: 420 }} />}
-    </Card>
+    <ChartShell
+      dark={dark}
+      title={t("portfolio.titleChart")}
+      subtitle={t("portfolio.chartDesc")}
+      loading={loading}
+      error={error}
+      empty={!tl.length}
+      height={chartHeight.default}
+      marginBottom={space[5]}
+    >
+      <div ref={ref} style={{ height: chartHeight.default }} />
+    </ChartShell>
   );
 }

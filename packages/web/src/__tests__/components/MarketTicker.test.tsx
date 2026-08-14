@@ -24,7 +24,7 @@ describe('MarketTicker', () => {
   it('displays index data after successful fetch', async () => {
     const mockIndices = [
       { code: '^IXIC', name: 'NASDAQ', market: 'us', price: 18000, change_pct: 1.5, change_amt: 270, updated_at: '2024-01-01' },
-      { code: 'sh000001', name: '上证指数', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
+      { code: '000001.SS', name: 'SSE Composite', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
     ];
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -48,7 +48,7 @@ describe('MarketTicker', () => {
       { code: '^NDX', name: 'NASDAQ 100', market: 'us', price: 16000, change_pct: 1.2, change_amt: 192, updated_at: '2024-01-01' },
       { code: '^GSPC', name: 'S&P 500', market: 'us', price: 5000, change_pct: 0.8, change_amt: 40, updated_at: '2024-01-01' },
       { code: '^DJI', name: 'Dow Jones', market: 'us', price: 38000, change_pct: 0.3, change_amt: 114, updated_at: '2024-01-01' },
-      { code: 'sh000001', name: '上证指数', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
+      { code: '000001.SS', name: 'SSE Composite', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
     ];
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -75,7 +75,7 @@ describe('MarketTicker', () => {
       { code: '^NDX', name: 'NASDAQ 100', market: 'us', price: 16000, change_pct: 1.2, change_amt: 192, updated_at: '2024-01-01' },
       { code: '^GSPC', name: 'S&P 500', market: 'us', price: 5000, change_pct: 0.8, change_amt: 40, updated_at: '2024-01-01' },
       { code: '^DJI', name: 'Dow Jones', market: 'us', price: 38000, change_pct: 0.3, change_amt: 114, updated_at: '2024-01-01' },
-      { code: 'sh000001', name: '上证指数', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
+      { code: '000001.SS', name: 'SSE Composite', market: 'cn', price: 3000, change_pct: 0.5, change_amt: 15, updated_at: '2024-01-01' },
     ];
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -186,4 +186,25 @@ describe('MarketTicker', () => {
     expect(zeroEl).toBeInTheDocument();
     expect(zeroEl.style.color).toBe('rgb(214, 54, 73)');
   });
+
+  it('matches Yahoo CN codes into A-share group (#101)', async () => {
+    const mockIndices = [
+      { code: '000001.SS', name: 'SSE', market: 'CN', price: 3800, change_pct: 0.4, change_amt: 15, updated_at: '2026-07-17' },
+      { code: '399001.SZ', name: 'SZSE', market: 'CN', price: 12000, change_pct: -0.2, change_amt: -20, updated_at: '2026-07-17' },
+      { code: '399006.SZ', name: 'ChiNext', market: 'CN', price: 2500, change_pct: 0.1, change_amt: 2, updated_at: '2026-07-17' },
+      { code: '^HSI', name: 'HSI', market: 'HK', price: 24000, change_pct: 1.0, change_amt: 240, updated_at: '2026-07-17' },
+    ];
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockIndices),
+    } as Response);
+    render(<MarketTicker />);
+    await waitFor(() => {
+      expect(screen.getByText('上证')).toBeInTheDocument();
+    });
+    expect(screen.getByText('深成指')).toBeInTheDocument();
+    expect(screen.getByText('创业板')).toBeInTheDocument();
+    expect(screen.getByText('恒生')).toBeInTheDocument();
+  });
+
 });

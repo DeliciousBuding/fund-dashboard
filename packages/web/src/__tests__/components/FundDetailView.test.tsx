@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react'
+import { renderWithRouter as render } from '../test-utils';
 
 // Mock echarts before component import (hoisted by Vitest)
 vi.mock('echarts/core', () => ({
@@ -16,7 +17,12 @@ vi.mock('echarts/core', () => ({
 
 vi.mock('echarts/charts', () => ({
   LineChart: {},
+  BarChart: {},
   ScatterChart: {},
+  RadarChart: {},
+  TreemapChart: {},
+  SunburstChart: {},
+  HeatmapChart: {},
 }));
 
 vi.mock('echarts/components', () => ({
@@ -25,6 +31,9 @@ vi.mock('echarts/components', () => ({
   LegendComponent: {},
   DataZoomComponent: {},
   MarkLineComponent: {},
+  MarkPointComponent: {},
+  RadarComponent: {},
+  VisualMapComponent: {},
 }));
 
 vi.mock('echarts/renderers', () => ({
@@ -123,7 +132,7 @@ describe('FundDetailView', () => {
     expect(screen.getByText('1.5000')).toBeInTheDocument();
   });
 
-  it('renders "导出 CSV" and "导入 CSV" buttons', async () => {
+  it('renders export control without dead CSV import button', async () => {
     mockAllFetches();
 
     render(<FundDetailView code="019173" dark={false} />);
@@ -133,7 +142,7 @@ describe('FundDetailView', () => {
     });
 
     expect(screen.getByText('导出')).toBeInTheDocument();
-    expect(screen.getByText('导入 CSV')).toBeInTheDocument();
+    expect(screen.queryByText('导入 CSV')).not.toBeInTheDocument();
   });
 
   it('renders tab navigation with chart, dca, overview, and transactions tabs', async () => {

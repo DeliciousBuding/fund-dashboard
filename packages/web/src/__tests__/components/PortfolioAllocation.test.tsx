@@ -11,27 +11,45 @@ vi.mock('echarts/core', () => ({
   })),
 }));
 
-vi.mock('echarts/charts', () => ({ SunburstChart: {} }));
-vi.mock('echarts/components', () => ({ TooltipComponent: {} }));
+vi.mock('echarts/charts', () => ({
+  LineChart: {},
+  BarChart: {},
+  ScatterChart: {},
+  SunburstChart: {},
+  RadarChart: {},
+  TreemapChart: {},
+  HeatmapChart: {},
+}));
+vi.mock('echarts/components', () => ({
+  GridComponent: {},
+  TooltipComponent: {},
+  LegendComponent: {},
+  DataZoomComponent: {},
+  MarkLineComponent: {},
+  MarkPointComponent: {},
+  RadarComponent: {},
+  VisualMapComponent: {},
+}));
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }));
 
 import PortfolioAllocation from '../../components/PortfolioAllocation';
+import { useAppStore } from '../../stores/appStore';
 
 const mockAllocation = {
   total_value: 830,
   by_security_type: [
-    { key: 'stock', label: '股票', value: 680, weight_pct: 81.93, count: 2 },
-    { key: 'fund', label: '基金', value: 150, weight_pct: 18.07, count: 1 },
+    { key: 'stock', label: 'Stock', value: 680, weight_pct: 81.93, count: 2 },
+    { key: 'fund', label: 'Fund', value: 150, weight_pct: 18.07, count: 1 },
   ],
   by_market: [
-    { key: 'US', label: '美股', value: 380, weight_pct: 45.78, count: 1 },
-    { key: 'HK', label: '港股', value: 300, weight_pct: 36.15, count: 1 },
+    { key: 'us_stock', label: 'US Stocks', value: 380, weight_pct: 45.78, count: 1 },
+    { key: 'hk_stock', label: 'HK Stocks', value: 300, weight_pct: 36.15, count: 1 },
   ],
   by_fund_type: [
     { key: 'QDII-股票', label: 'QDII-股票', value: 150, weight_pct: 18.07, count: 1 },
   ],
-  risk_flags: ['股票资产占比高于 80%'],
-  agent_brief: '资产配置：股票 81.93%，基金 18.07%。风险提示：股票资产占比高于 80%。',
+  risk_flags: ['Stock weight above 80%'],
+  agent_brief: 'Allocation: Stock 81.93%, Fund 18.07%. Risk: Stock weight above 80%.',
 };
 
 const mockHarness = {
@@ -47,6 +65,15 @@ const mockHarness = {
   ],
   data_quality: { stale_price_count: 0, missing_cost_basis_count: 0, missing_change_pct_count: 0, holdings_coverage_pct: 100 },
   available_agent_tools: [],
+  agent_permissions: {
+    decision_boundary: 'facts_only' as const,
+    read_scope: ['portfolio'],
+    write_scope: ['source_event_feedback'],
+    requires_confirmation: ['add_transaction'],
+    disabled_operations: ['broker_trade_execution', 'backup_producer'],
+  },
+  agent_capabilities: [],
+  recommended_agent_actions: [],
   agent_brief: 'test',
 };
 
@@ -67,8 +94,8 @@ describe('PortfolioAllocation', () => {
     });
     expect(screen.getByText('股票')).toBeInTheDocument();
     expect(screen.getByText('美股')).toBeInTheDocument();
-    expect(screen.getByText('股票资产占比高于 80%')).toBeInTheDocument();
-    expect(screen.getByText(/资产配置：股票 81.93%/)).toBeInTheDocument();
+    expect(screen.getByText('Stock weight above 80%')).toBeInTheDocument();
+    expect(screen.getByText(/Allocation: Stock 81.93%/)).toBeInTheDocument();
   });
 
   it('renders sunburst chart container when holding data loads', async () => {
@@ -109,5 +136,26 @@ describe('PortfolioAllocation', () => {
       expect(screen.getByText('资产配置')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('sunburst-chart')).not.toBeInTheDocument();
+  });
+
+  it('passes active portfolioId into allocation and harness URLs', async () => {
+    useAppStore.setState({ portfolioId: 2 });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockAllocation) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockHarness) } as Response);
+
+    render(<PortfolioAllocation dark={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('资产配置')).toBeInTheDocument();
+    });
+
+    const urls = fetchSpy.mock.calls.map(([input]) =>
+      typeof input === 'string' ? input : String((input as Request)?.url ?? input),
+    );
+    expect(urls.some((u) => u.includes('/api/portfolio/allocation?portfolio_id=2'))).toBe(true);
+    expect(urls.some((u) => u.includes('/api/portfolio/harness?portfolio_id=2'))).toBe(true);
+
+    useAppStore.setState({ portfolioId: 1 });
   });
 });

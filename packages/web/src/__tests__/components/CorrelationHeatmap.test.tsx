@@ -13,17 +13,43 @@ vi.mock('echarts/core', () => ({
   },
 }))
 
-vi.mock('echarts/charts', () => ({ HeatmapChart: {} }))
+vi.mock('echarts/charts', () => ({
+  LineChart: {},
+  BarChart: {},
+  ScatterChart: {},
+  HeatmapChart: {},
+  RadarChart: {},
+  TreemapChart: {},
+  SunburstChart: {},
+}))
 vi.mock('echarts/components', () => ({
   GridComponent: {},
   TooltipComponent: {},
+  LegendComponent: {},
+  DataZoomComponent: {},
+  MarkLineComponent: {},
+  MarkPointComponent: {},
   VisualMapComponent: {},
+  RadarComponent: {},
 }))
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
+import * as echartsCore from 'echarts/core'
 import CorrelationHeatmap from '../../components/CorrelationHeatmap'
 
 const mockHarness = {
+  generated_at: '2026-06-19T00:00:00.000Z',
+  decision_boundary: 'facts_only' as const,
+  total_value: 50000,
+  holdings_count: 5,
+  allocation: {
+    total_value: 50000,
+    by_security_type: [],
+    by_market: [],
+    by_fund_type: [],
+    risk_flags: [],
+    agent_brief: '资产配置',
+  },
   holding_signals: [
     { code: 'F01', name: '纳指100ETF', weight_pct: 30, security_type: 'fund', market: 'CN', held_shares: 1000, current_value: 15000, latest_nav: 1.5, cost_per_share: 1.2, change_pct: 4.2, deviation_pct: 25, signal_tags: [], data_points: { has_price: true, has_cost_basis: true, has_change_pct: true } },
     { code: 'F02', name: '沪深300', weight_pct: 25, security_type: 'fund', market: 'CN', held_shares: 800, current_value: 12000, latest_nav: 1.6, cost_per_share: 1.5, change_pct: 1.5, deviation_pct: 6.7, signal_tags: [], data_points: { has_price: true, has_cost_basis: true, has_change_pct: true } },
@@ -31,8 +57,18 @@ const mockHarness = {
     { code: 'F04', name: '科创50', weight_pct: 15, security_type: 'fund', market: 'CN', held_shares: 400, current_value: 8000, latest_nav: 0.9, cost_per_share: 0.85, change_pct: -1.2, deviation_pct: 5.9, signal_tags: [], data_points: { has_price: true, has_cost_basis: true, has_change_pct: true } },
     { code: 'F05', name: '恒生科技', weight_pct: 10, security_type: 'fund', market: 'CN', held_shares: 200, current_value: 5000, latest_nav: 1.1, cost_per_share: 1.0, change_pct: 0.8, deviation_pct: 10, signal_tags: [], data_points: { has_price: true, has_cost_basis: true, has_change_pct: true } },
   ],
-  total_value: 50000,
-  holdings_count: 5,
+  data_quality: { stale_price_count: 0, missing_cost_basis_count: 0, missing_change_pct_count: 0, holdings_coverage_pct: 100 },
+  available_agent_tools: ['get_fund_detail'],
+  agent_permissions: {
+    decision_boundary: 'facts_only' as const,
+    read_scope: ['portfolio'],
+    write_scope: ['source_event_feedback'],
+    requires_confirmation: ['add_transaction'],
+    disabled_operations: ['broker_trade_execution', 'backup_producer'],
+  },
+  agent_capabilities: [],
+  recommended_agent_actions: [],
+  agent_brief: 'Portfolio overview',
 }
 
 function makeNav(base: number, noise: number): { date: string; unit_nav: number }[] {
@@ -66,6 +102,7 @@ function mockFetchWithNav() {
 
 describe('CorrelationHeatmap', () => {
   afterEach(() => {
+    vi.clearAllMocks()
     vi.restoreAllMocks()
   })
 
@@ -105,20 +142,33 @@ describe('CorrelationHeatmap', () => {
     render(<CorrelationHeatmap dark={false} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Network error')).toBeInTheDocument()
+      // useChartData sanitizes network dumps to common.loadError
+      expect(screen.getByText('加载失败')).toBeInTheDocument()
     })
   })
 
-  it('stays loading when holdings are empty', async () => {
+  it('shows empty placeholder when holdings are empty (was an infinite-spinner bug)', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ ...mockHarness, holding_signals: [] }),
     } as Response)
 
     render(<CorrelationHeatmap dark={false} />)
-    // With empty holdings, second useEffect does not trigger
+    // Consolidated fetcher resolves empty holdings to {[], null} → empty state
+    // (previously the second useEffect never fired and the chart spun forever).
     await waitFor(() => {
-      expect(screen.getByText('正在计算相关性矩阵...')).toBeInTheDocument()
+      expect(screen.getByTestId('chart-empty')).toBeInTheDocument()
     })
+  })
+
+  it('uses theme.blue for the visualMap inRange (stable color guard)', async () => {
+    mockFetchWithNav()
+    render(<CorrelationHeatmap dark={false} />)
+
+    await waitFor(() => expect(screen.getByText(/5 只基金/)).toBeInTheDocument())
+    const mockInstance = (echartsCore.init as ReturnType<typeof vi.fn>).mock?.results?.[0]?.value
+    const callArg = mockInstance.setOption.mock.calls[0]?.[0]
+    // visualMap inRange tops out at theme.blue (#3172d9 light)
+    expect(callArg.visualMap.inRange.color).toContain('#3172d9')
   })
 })

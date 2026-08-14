@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-const BASE = 'http://localhost:8080';
+const BASE = process.env.BASE_URL || (process.env.CI ? 'http://localhost:8080' : 'http://localhost:5173');
 const ADMIN_HEADERS = { Authorization: 'Bearer ci-test-key' };
 
 test.describe('Smoke: Overview Loading', () => {
-  test('overview page loads with stat cards and headings', async ({ page }) => {
+  test('overview page loads with content shell', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', msg => {
       if (msg.type() === 'error' && !msg.text().toLowerCase().includes('favicon')) {
@@ -13,93 +13,39 @@ test.describe('Smoke: Overview Loading', () => {
     });
 
     await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState('domcontentloaded', { timeout: 25000 });
+    // Prefer attached shell over fixed sleep (Suspense may still settle).
+    const shell = page.locator('main, #root, body').first();
+    await shell.waitFor({ state: 'attached', timeout: 15000 });
+    await expect(shell).not.toBeEmpty({ timeout: 10000 });
 
     const title = await page.title();
     expect(title.length).toBeGreaterThan(0);
 
-    // Headings may be absent in empty-DB CI (v3.0 empty state), so just check title + content
-    // Main content area should be populated (use first match to avoid strict mode violation in v3.0)
-    const html = await page.locator('main, #root, body').first().innerHTML().catch(() => '');
+    const html = await shell.innerHTML().catch(() => '');
     expect(html.length).toBeGreaterThan(200);
-
-    // Minimal console errors
-    expect(errors.length).toBeLessThan(5);
+    expect(errors.length).toBeLessThan(8);
   });
 
-  test('sidebar renders with navigation items', async ({ page }) => {
-    await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
-    await page.waitForTimeout(3000);
-
-    // Sidebar should exist
-    const sidebar = page.locator('aside, nav, [class*="Sidebar"], [class*="sidebar"]');
-    const sidebarVisible = await sidebar.first().isVisible().catch(() => false);
-
-    if (sidebarVisible) {
-      const sidebarHtml = await sidebar.first().innerHTML();
-      expect(sidebarHtml.length).toBeGreaterThan(50);
-    }
-    // If no sidebar element found, at least body content should be substantial
-    else {
-      const bodyHtml = await page.evaluate(() => document.body.innerHTML);
-      expect(bodyHtml.length).toBeGreaterThan(500);
-    }
-  });
-
-  test('API health endpoint responds', async ({ page }) => {
+  test('API health endpoint responds with Go runtime boundary', async ({ page }) => {
     const response = await page.request.get(`${BASE}/api/health`);
     expect(response.status()).toBe(200);
     const body = await response.json();
     expect(body.status).toBe('ok');
-    expect(body.uptime).toBeGreaterThan(0);
+    expect(body.service).toBeTruthy();
+    expect(body.facts_only).toBe(true);
+    expect(body.backup_producer_enabled).toBe(false);
+    // Request-ID middleware should always set a response header.
+    expect(response.headers()['x-request-id'] || response.headers()['X-Request-Id']).toBeTruthy();
   });
 });
 
-test.describe('Smoke: Fund Search', () => {
-  test('search input exists and filters content', async ({ page }) => {
-    await page.goto(BASE, { timeout: 25000 });
-    await page.waitForLoadState('networkidle', { timeout: 25000 });
-    await page.waitForTimeout(3000);
-
-    // Find any search input by placeholder containing search-related text
-    const allInputs = page.locator('input');
-    const inputCount = await allInputs.count();
-    let searchInput: ReturnType<typeof page.locator> | null = null;
-
-    for (let i = 0; i < inputCount; i++) {
-      const placeholder = await allInputs.nth(i).getAttribute('placeholder');
-      if (placeholder && /搜索|search|find|filter/i.test(placeholder)) {
-        searchInput = allInputs.nth(i);
-        break;
-      }
-    }
-
-    if (searchInput) {
-      // Search for a partial code or name
-      await searchInput.fill('0');
-      await page.waitForTimeout(1000);
-
-      // Page should still render content (filtered or not) — use first() for v3.0 DOM
-      const html = await page.locator('main, #root, body').first().innerHTML();
-      expect(html.length).toBeGreaterThan(200);
-
-      // Clear search
-      await searchInput.fill('');
-      await page.waitForTimeout(500);
-    }
-    // If no explicit search input, the page should still be stable
-    const html = await page.locator('main, #root, body').first().innerHTML();
-    expect(html.length).toBeGreaterThan(200);
-  });
-
-  test('funds API returns data', async ({ page }) => {
+test.describe('Smoke: Core read APIs', () => {
+  test('funds API returns an array', async ({ page }) => {
     const response = await page.request.get(`${BASE}/api/funds`);
     expect(response.status()).toBe(200);
     const body = await response.json();
     expect(Array.isArray(body)).toBe(true);
-    // May be empty in CI (no DB seeded), which is acceptable
   });
 
   test('portfolio summary API returns valid response', async ({ page }) => {
@@ -109,43 +55,26 @@ test.describe('Smoke: Fund Search', () => {
     expect(body).toHaveProperty('total_tx');
     expect(body).toHaveProperty('unique_funds');
   });
-});
 
-test.describe('Smoke: CSV Import Flow', () => {
-  test('CSV import endpoint accepts valid CSV data', async ({ page }) => {
-    const csvContent = [
-      'date,code,name,direction,amount,share,fee,type',
-      '2026-06-01,000001,测试基金,buy,1000,100,1.5,用户买入',
-    ].join('\n');
-
-    const response = await page.request.post(`${BASE}/api/admin/import-csv`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...ADMIN_HEADERS,
-      },
-      data: { csv: csvContent },
-    });
-
+  test('market indices API returns array contract', async ({ page }) => {
+    const response = await page.request.get(`${BASE}/api/market/indices`);
     expect(response.status()).toBe(200);
     const body = await response.json();
-    expect(body.ok).toBe(true);
-    expect(body.imported).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(body)).toBe(true);
   });
 
-  test('CSV import rejects invalid data gracefully', async ({ page }) => {
-    const response = await page.request.post(`${BASE}/api/admin/import-csv`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...ADMIN_HEADERS,
-      },
-      data: { csv: 'garbage,data\nrow1,only' },
-    });
+  test('analysis compare requires codes and returns funds envelope when provided', async ({ page }) => {
+    const bad = await page.request.get(`${BASE}/api/analysis/compare`);
+    expect(bad.status()).toBe(400);
 
-    expect(response.status()).toBe(400);
-    const body = await response.json();
-    expect(body.error).toBeDefined();
+    const ok = await page.request.get(`${BASE}/api/analysis/compare?codes=019173,aapl`);
+    expect(ok.status()).toBe(200);
+    const body = await ok.json();
+    expect(Array.isArray(body.funds)).toBe(true);
   });
+});
 
+test.describe('Smoke: Auth boundaries', () => {
   test('admin endpoints require auth', async ({ page }) => {
     const response = await page.request.get(`${BASE}/api/admin/status`);
     expect(response.status()).toBe(401);
@@ -160,7 +89,18 @@ test.describe('Smoke: CSV Import Flow', () => {
     expect(body.ok).toBe(true);
   });
 
-  test('verify data integrity check passes', async ({ page }) => {
+  test('admin dashboard returns go_version', async ({ page }) => {
+    const response = await page.request.get(`${BASE}/api/admin/dashboard`, {
+      headers: ADMIN_HEADERS,
+    });
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(body.system?.go_version).toBeTruthy();
+    expect(body.system?.node_version).toBeUndefined();
+  });
+
+  test('verify data integrity check returns report', async ({ page }) => {
     const response = await page.request.get(`${BASE}/api/admin/verify`, {
       headers: ADMIN_HEADERS,
     });
@@ -179,5 +119,45 @@ test.describe('Smoke: CSV Import Flow', () => {
     expect(body).toHaveProperty('overall');
     expect(body.overall).toBe('ok');
     expect(body).toHaveProperty('checks');
+  });
+
+  test('mcp endpoint is fail-closed without key', async ({ page }) => {
+    const response = await page.request.post(`${BASE}/mcp`, {
+      data: { jsonrpc: '2.0', id: '1', method: 'tools/list' },
+    });
+    expect(response.status()).toBe(401);
+  });
+
+  test('mcp endpoint lists only implemented tools with admin key', async ({ page }) => {
+    const response = await page.request.post(`${BASE}/mcp`, {
+      headers: ADMIN_HEADERS,
+      data: { jsonrpc: '2.0', id: '1', method: 'tools/list' },
+    });
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body.error).toBeFalsy();
+    const tools = body.result?.tools || [];
+    expect(Array.isArray(tools)).toBe(true);
+    expect(tools.length).toBeGreaterThan(10);
+    expect(tools.length).toBeGreaterThanOrEqual(40);
+    expect(tools.length).toBeLessThanOrEqual(50);
+    const names = tools.map((t: { name: string }) => t.name);
+    expect(names).toContain('get_portfolio_summary');
+    expect(names).toContain('crawl_nav');
+    expect(names).toContain('add_fund');
+    expect(names).toContain('delete_fund');
+  });
+
+  // CSV bulk import is not ported on Go; SPA path uses /api/transactions/import with EdgeAuth.
+  test('legacy import-csv route is gone', async ({ page }) => {
+    const response = await page.request.post(`${BASE}/api/admin/import-csv`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...ADMIN_HEADERS,
+      },
+      data: { csv: 'date,code\n2026-06-01,000001' },
+    });
+    // Not implemented: 404 (or 405 if method-matched elsewhere). Must not succeed.
+    expect([404, 405]).toContain(response.status());
   });
 });

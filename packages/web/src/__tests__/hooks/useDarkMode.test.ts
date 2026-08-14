@@ -6,11 +6,13 @@ describe('useDarkMode', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-mode');
+    document.documentElement.removeAttribute('data-theme');
   });
 
   afterEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-mode');
+    document.documentElement.removeAttribute('data-theme');
   });
 
   it('defaults to light mode when no localStorage value is set and system prefers light', () => {
@@ -66,19 +68,21 @@ describe('useDarkMode', () => {
     expect(localStorage.getItem('fund-dark-mode')).toBe('false');
   });
 
-  it('sets data-mode attribute on document element', () => {
+  it('sets data-theme and data-mode attributes on document element', () => {
     const { result } = renderHook(() => useDarkMode());
 
     act(() => {
       result.current.toggle();
     });
 
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(document.documentElement.getAttribute('data-mode')).toBe('dark');
 
     act(() => {
       result.current.toggle();
     });
 
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     expect(document.documentElement.getAttribute('data-mode')).toBe('light');
   });
 

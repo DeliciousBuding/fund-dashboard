@@ -1,0 +1,699 @@
+// Package jobs provides background job orchestration: price refresh,
+// DCA materialization, integrity checks, and their scheduling.
+package jobs
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
+	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
+)
+
+// PriceRefresher updates nav_history from external price sources.
+// It depends on the datasource.PriceSource interface, not on concrete
+// implementations — swap eastmoney for yahoo or a test stub freely.
+type PriceRefresher struct {
+	db            *sql.DB
+	driver        string // "sqlite" (default) or "pg" — freshness dialect
+	sources       map[datasource.SecurityType]datasource.PriceSource
+	clock         func() time.Time
+	navSchemaOnce sync.Once
+	navSchemaErr  error
+}
+
+// NewPriceRefresher creates a PriceRefresher. At least one source must
+// be provided for datasource.TypeFund; TypeStock is optional.
+func NewPriceRefresher(db *sql.DB, opts ...PriceRefresherOption) *PriceRefresher {
+	r := &PriceRefresher{
+		db:      db,
+		driver:  "sqlite",
+		sources: map[datasource.SecurityType]datasource.PriceSource{},
+		clock:   time.Now,
+	}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
+}
+
+// PriceRefresherOption configures a PriceRefresher.
+type PriceRefresherOption func(*PriceRefresher)
+
+// WithSource registers a PriceSource for a given security type.
+func WithSource(secType datasource.SecurityType, src datasource.PriceSource) PriceRefresherOption {
+	return func(r *PriceRefresher) {
+		r.sources[secType] = src
+	}
+}
+
+// WithDBDriver sets the SQL dialect hint for freshness queries ("sqlite" or "pg").
+func WithDBDriver(driver string) PriceRefresherOption {
+	return func(r *PriceRefresher) {
+		if strings.TrimSpace(driver) != "" {
+			r.driver = strings.ToLower(strings.TrimSpace(driver))
+		}
+	}
+}
+
+// WithClock injects a clock for deterministic tests.
+func WithClock(fn func() time.Time) PriceRefresherOption {
+	return func(r *PriceRefresher) {
+		r.clock = fn
+	}
+}
+
+// RefreshResult summarizes a price refresh run.
+type RefreshResult struct {
+	Securities int    `json:"securities"`
+	Added      int    `json:"added"`
+	Latest     string `json:"latest"`
+}
+
+// RefreshSecurity fetches and persists price history for a single security.
+// When local nav_history already has rows, only points on/after the latest date
+// are upserted (upstream may still return a full series — we drop the old tail).
+func (r *PriceRefresher) RefreshSecurity(ctx context.Context, code string, secType datasource.SecurityType) (*RefreshResult, error) {
+	src, ok := r.sources[secType]
+	if !ok {
+		return nil, fmt.Errorf("no source registered for type %s", secType)
+	}
+
+	points, err := src.FetchHistory(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("refresh %s: %w", code, err)
+	}
+	if len(points) == 0 {
+		return &RefreshResult{Securities: 1, Added: 0, Latest: "none"}, nil
+	}
+
+	r.ensureNavSchema(ctx)
+	if r.navSchemaErr != nil {
+		return nil, fmt.Errorf("nav_history schema: %w", r.navSchemaErr)
+	}
+
+	// Incremental upsert: keep last known date inclusive so same-day NAV corrections apply.
+	if since, ok, err := latestNavDate(ctx, r.db, code); err != nil {
+		return nil, err
+	} else if ok {
+		filtered := filterPointsSince(points, since)
+		if len(filtered) == 0 {
+			slog.Debug("price refresh up-to-date", "code", code, "latest", since)
+			return &RefreshResult{Securities: 1, Added: 0, Latest: since}, nil
+		}
+		points = filtered
+	}
+
+	added, err := upsertNavHistory(ctx, r.db, code, string(secType), points)
+	if err != nil {
+		return nil, err
+	}
+
+	latest := points[len(points)-1].Date
+	if err := recalcSnapshot(ctx, r.db, code); err != nil {
+		return nil, fmt.Errorf("recalc snapshot %s: %w", code, err)
+	}
+	slog.Info("price refresh", "code", code, "type", secType, "added", added, "latest", latest)
+	return &RefreshResult{Securities: 1, Added: added, Latest: latest}, nil
+}
+
+// RefreshAllHeld refreshes every security with held_shares > 0 in portfolio_snapshot.
+// Prefer RefreshStaleHeld for scheduled jobs; keep this for explicit full crawl.
+func (r *PriceRefresher) RefreshAllHeld(ctx context.Context) (securities, totalAdded int, err error) {
+	held, err := r.getHeldSecurities(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(held) == 0 {
+		slog.Info("no held securities to refresh")
+		return 0, 0, nil
+	}
+
+	codes := make([]string, 0, len(held))
+	for _, h := range held {
+		codes = append(codes, h.Code)
+	}
+	return r.RefreshCodes(ctx, codes)
+}
+
+// RefreshStaleHeld refreshes only held securities with missing or stale NAV
+// (same selection as admin/MCP stale_only). Fresh holdings are skipped entirely.
+func (r *PriceRefresher) RefreshStaleHeld(ctx context.Context) (securities, totalAdded int, err error) {
+	svc := adminsvc.NewServiceWithDriver(r.db, r.driver)
+	report, err := svc.GetFreshness(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("freshness for stale refresh: %w", err)
+	}
+	codes := heldRefreshCodes(report)
+	if len(codes) == 0 {
+		slog.Info("price refresh stale_only: nothing to do")
+		return 0, 0, nil
+	}
+	slog.Info("price refresh stale_only", "codes", len(codes))
+	return r.RefreshCodes(ctx, codes)
+}
+
+// RefreshCodes refreshes an explicit list of security codes (order preserved).
+func (r *PriceRefresher) RefreshCodes(ctx context.Context, codes []string) (securities, totalAdded int, err error) {
+	if len(codes) == 0 {
+		return 0, 0, nil
+	}
+	for i, code := range codes {
+		if err := ctx.Err(); err != nil {
+			return i, totalAdded, err
+		}
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		added, _, cerr := r.CrawlCode(ctx, code)
+		if cerr != nil {
+			slog.Error("price refresh failed", "code", code, "error", cerr)
+			continue
+		}
+		totalAdded += added
+		securities++
+		if i < len(codes)-1 {
+			if err := sleepContext(ctx, 1500*time.Millisecond); err != nil {
+				return securities, totalAdded, err
+			}
+		}
+	}
+	slog.Info("price refresh complete", "securities", securities, "new_rows", totalAdded, "requested", len(codes))
+	return securities, totalAdded, nil
+}
+
+// heldRefreshCodes merges stale + missing held NAV codes (admin/MCP parity).
+func heldRefreshCodes(report adminsvc.FreshnessReport) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(report.StaleSecurities)+len(report.MissingNAVSecurities))
+	for _, item := range report.StaleSecurities {
+		code := adminsvc.NormalizeSecurityCode(item.Code)
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		out = append(out, code)
+	}
+	for _, item := range report.MissingNAVSecurities {
+		code := adminsvc.NormalizeSecurityCode(item.Code)
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		out = append(out, code)
+	}
+	return out
+}
+
+func latestNavDate(ctx context.Context, db *sql.DB, code string) (string, bool, error) {
+	var d sql.NullString
+	err := db.QueryRowContext(ctx, `
+		SELECT MAX(date) FROM nav_history WHERE fund_code = ?
+	`, code).Scan(&d)
+	if err != nil {
+		return "", false, fmt.Errorf("latest nav date %s: %w", code, err)
+	}
+	if !d.Valid || strings.TrimSpace(d.String) == "" {
+		return "", false, nil
+	}
+	return d.String, true, nil
+}
+
+// filterPointsSince keeps points with date >= since (lexicographic YYYY-MM-DD).
+func filterPointsSince(points []datasource.PricePoint, since string) []datasource.PricePoint {
+	if since == "" {
+		return points
+	}
+	out := make([]datasource.PricePoint, 0, len(points))
+	for _, p := range points {
+		if p.Date >= since {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+// heldSharesDust is the minimum absolute share count treated as a real holding.
+// Matches SPA filters (held_shares > 0.001) and scheduler/MCP held queries.
+const heldSharesDust = 0.001
+
+type heldRow struct {
+	Code string
+	Type datasource.SecurityType
+}
+
+func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]heldRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT fund_code, COALESCE(security_type, 'fund')
+		FROM portfolio_snapshot WHERE held_shares > 0.001
+		LIMIT 5000
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("getHeldSecurities: %w", err)
+	}
+	defer rows.Close()
+
+	var held []heldRow
+	for rows.Next() {
+		var (
+			code    string
+			secType string
+		)
+		if err := rows.Scan(&code, &secType); err != nil {
+			return nil, err
+		}
+		held = append(held, heldRow{Code: code, Type: datasource.SecurityType(secType)})
+	}
+	return held, rows.Err()
+}
+
+func upsertNavHistory(ctx context.Context, db *sql.DB, code, secType string, points []datasource.PricePoint) (int, error) {
+	// Soft-cap series length defense-in-depth (#241).
+	if len(points) > 5000 {
+		points = points[len(points)-5000:]
+	}
+	if len(points) == 0 {
+		return 0, nil
+	}
+	// One transaction for the whole series: avoids per-row autocommit fsync
+	// (especially painful if journal_mode is not WAL). Holdings upsert already
+	// uses BeginTx; keep NAV parity.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin nav_history upsert: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Only count rows that are newly inserted or whose values actually change.
+	// Plain ON CONFLICT DO UPDATE makes PG RowsAffected=1 for no-op rewrites (#87).
+	insert, err := tx.PrepareContext(ctx, `
+		INSERT INTO nav_history (date, fund_code, unit_nav, daily_change_pct, security_type)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(fund_code, date) DO UPDATE SET
+			unit_nav = excluded.unit_nav,
+			daily_change_pct = excluded.daily_change_pct,
+			security_type = excluded.security_type
+		WHERE nav_history.unit_nav IS DISTINCT FROM excluded.unit_nav
+			OR nav_history.daily_change_pct IS DISTINCT FROM excluded.daily_change_pct
+			OR COALESCE(nav_history.security_type, '') IS DISTINCT FROM COALESCE(excluded.security_type, '')
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer insert.Close()
+
+	added := 0
+	for _, p := range points {
+		res, err := insert.ExecContext(ctx, p.Date, code, p.Price, p.ChangePct, secType)
+		if err != nil {
+			return 0, fmt.Errorf("insert nav_history(%s, %s): %w", code, p.Date, err)
+		}
+		n, _ := res.RowsAffected()
+		added += int(n)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit nav_history upsert: %w", err)
+	}
+	return added, nil
+}
+
+// ensureNavSchema is a best-effort SQLite/legacy column backfill, run once per refresher.
+// Production Azure PG already has these columns via EnsurePGSchema; only missing columns are ALTERed.
+func (r *PriceRefresher) ensureNavSchema(ctx context.Context) {
+	r.navSchemaOnce.Do(func() {
+		r.navSchemaErr = r.ensureNavSchemaOnce(ctx)
+		if r.navSchemaErr != nil {
+			slog.Error("ensure nav_history schema", "error", r.navSchemaErr)
+		}
+	})
+}
+
+func (r *PriceRefresher) ensureNavSchemaOnce(ctx context.Context) error {
+	cols, err := navHistoryColumns(ctx, r.db)
+	if err != nil {
+		return err
+	}
+
+	var firstErr error
+	if _, ok := cols["daily_change_pct"]; !ok {
+		if err := addNavHistoryColumn(ctx, r.db, "daily_change_pct", "REAL DEFAULT 0"); err != nil {
+			firstErr = err
+		}
+	}
+	if _, ok := cols["security_type"]; !ok {
+		if err := addNavHistoryColumn(ctx, r.db, "security_type", "TEXT DEFAULT 'fund'"); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+// navHistoryColumns returns lowercased column names for nav_history.
+// SQLite PRAGMA first (local/CI); fall back to PG information_schema.
+func navHistoryColumns(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(nav_history)`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var cid int
+			var name, ctype string
+			var notnull, pk int
+			var dflt sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+				return nil, err
+			}
+			out[strings.ToLower(name)] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if len(out) > 0 {
+			return out, nil
+		}
+	} else if ctx.Err() != nil {
+		return out, ctx.Err()
+	} else {
+		// PRAGMA fails on PG (or missing table) — fall through to information_schema.
+		slog.Debug("nav_history PRAGMA table_info failed; trying information_schema", "error", err)
+	}
+
+	rows, err = db.QueryContext(ctx, `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'nav_history'
+	`)
+	if err != nil {
+		return out, fmt.Errorf("list nav_history columns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out[strings.ToLower(name)] = struct{}{}
+	}
+	return out, rows.Err()
+}
+
+func addNavHistoryColumn(ctx context.Context, db *sql.DB, name, def string) error {
+	stmt := fmt.Sprintf("ALTER TABLE nav_history ADD COLUMN %s %s", name, def)
+	if _, err := db.ExecContext(ctx, stmt); err != nil {
+		// Concurrent/race: column may already exist after probe; treat as success.
+		if isDuplicateColumnErr(err) {
+			return nil
+		}
+		slog.Error("alter nav_history", "column", name, "error", err)
+		return fmt.Errorf("add column %s: %w", name, err)
+	}
+	return nil
+}
+
+func isDuplicateColumnErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate column") ||
+		strings.Contains(msg, "already exists")
+}
+
+// recalcSnapshot recomputes portfolio_snapshot using the production column shape:
+// latest_nav / current_value / unrealized_pnl / pnl_pct / held_shares / total_cost.
+// Matches admin.recalcSnapshotTx so crawl/scheduler and transaction writes stay aligned.
+func recalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
+	if code == "" {
+		return nil
+	}
+
+	var shares sql.NullFloat64
+	var cost sql.NullFloat64
+	var txFundName sql.NullString
+	if err := db.QueryRowContext(ctx, `
+		SELECT SUM(COALESCE(signed_share_change, 0)), SUM(COALESCE(signed_cash_flow, 0)), MAX(fund_name)
+		FROM transactions
+		WHERE fund_code = ?
+	`, code).Scan(&shares, &cost, &txFundName); err != nil {
+		return fmt.Errorf("recalc snapshot transactions: %w", err)
+	}
+
+	heldShares := 0.0
+	totalCost := 0.0
+	if shares.Valid {
+		heldShares = shares.Float64
+	}
+	if cost.Valid {
+		totalCost = cost.Float64
+	}
+	// Float residue after full sells (~1e-15) is not a real position (#90).
+	// Align with SPA / scheduler held filters (held_shares > 0.001).
+	if heldShares > -heldSharesDust && heldShares < heldSharesDust {
+		heldShares = 0
+	}
+
+	var detailName sql.NullString
+	var securityType sql.NullString
+	if err := db.QueryRowContext(ctx, `
+		SELECT fund_name, security_type
+		FROM fund_details
+		WHERE fund_code = ?
+	`, code).Scan(&detailName, &securityType); err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("recalc snapshot identity: %w", err)
+	}
+
+	fundName := code
+	if detailName.Valid && detailName.String != "" {
+		fundName = detailName.String
+	} else if txFundName.Valid && txFundName.String != "" {
+		fundName = txFundName.String
+	}
+	secType := "fund"
+	if securityType.Valid && securityType.String != "" {
+		secType = securityType.String
+	}
+
+	var latestNAV sql.NullFloat64
+	if err := db.QueryRowContext(ctx, `
+		SELECT unit_nav
+		FROM nav_history
+		WHERE fund_code = ?
+		ORDER BY date DESC
+		LIMIT 1
+	`, code).Scan(&latestNAV); err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("recalc snapshot latest nav: %w", err)
+	}
+
+	currentValue := 0.0
+	if latestNAV.Valid {
+		currentValue = heldShares * latestNAV.Float64
+	}
+	unrealized := currentValue + totalCost
+	pnlPct := 0.0
+	if totalCost != 0 {
+		denom := totalCost
+		if denom < 0 {
+			denom = -denom
+		}
+		pnlPct = unrealized / denom * 100
+	}
+
+	if heldShares == 0 {
+		currentValue = 0
+		unrealized = 0
+		pnlPct = 0
+	}
+
+	var latestNAVArg any
+	if latestNAV.Valid {
+		latestNAVArg = latestNAV.Float64
+	}
+
+	// Explicit portfolio_id (default 1). Never use unconstrained scalar SELECT under multi-row PK.
+	// SQLite still has PRIMARY KEY(fund_code) only (composite key is a PG/migration target).
+	// Use UPDATE+INSERT so both single-column PK and composite PK shapes work.
+	portfolioID := int64(1)
+	if err := db.QueryRowContext(ctx, `
+		SELECT portfolio_id FROM portfolio_snapshot
+		WHERE fund_code = ?
+		ORDER BY portfolio_id
+		LIMIT 1
+	`, code).Scan(&portfolioID); err != nil {
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("recalc snapshot portfolio_id: %w", err)
+		}
+		portfolioID = 1
+	}
+	if portfolioID <= 0 {
+		portfolioID = 1
+	}
+	res, err := db.ExecContext(ctx, `
+		UPDATE portfolio_snapshot SET
+			fund_name = ?, held_shares = ?, total_cost = ?, latest_nav = ?,
+			current_value = ?, unrealized_pnl = ?, pnl_pct = ?, security_type = ?
+		WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
+	`, fundName, heldShares, totalCost, latestNAVArg, currentValue, unrealized, pnlPct, secType, code, portfolioID)
+	if err != nil {
+		return fmt.Errorf("recalc snapshot update: %w", err)
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return fmt.Errorf("recalc snapshot rows affected: %w", raErr)
+	}
+	if n == 0 {
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO portfolio_snapshot
+				(fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, code, fundName, heldShares, totalCost, latestNAVArg, currentValue, unrealized, pnlPct, secType, portfolioID)
+		if err != nil {
+			return fmt.Errorf("recalc snapshot insert: %w", err)
+		}
+	}
+	return nil
+}
+
+// CrawlAllHeld is the MCP/admin-facing alias for RefreshAllHeld.
+func (r *PriceRefresher) CrawlAllHeld(ctx context.Context) (securities int, added int, err error) {
+	return r.RefreshAllHeld(ctx)
+}
+
+// CrawlCode refreshes one security code. Type is inferred from portfolio_snapshot or fund_details, default fund.
+func (r *PriceRefresher) CrawlCode(ctx context.Context, code string) (added int, latest string, err error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return 0, "", fmt.Errorf("code is required")
+	}
+	if len(code) > 32 {
+		return 0, "", fmt.Errorf("code too long")
+	}
+	secType := datasource.TypeFund
+	var raw string
+	err = r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(security_type, 'fund') FROM portfolio_snapshot WHERE fund_code = ?
+		UNION ALL
+		SELECT COALESCE(security_type, 'fund') FROM fund_details WHERE fund_code = ?
+		LIMIT 1
+	`, code, code).Scan(&raw)
+	if err == nil && raw != "" {
+		secType = datasource.SecurityType(raw)
+	} else if err != nil && err != sql.ErrNoRows {
+		return 0, "", err
+	}
+	result, err := r.RefreshSecurity(ctx, code, secType)
+	if err != nil {
+		return 0, "", err
+	}
+	return result.Added, result.Latest, nil
+}
+
+// RecalcSnapshot is the exported maintenance entrypoint used by MCP/admin.
+func RecalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
+	return recalcSnapshot(ctx, db, code)
+}
+
+// RecalcAllSnapshots rebuilds portfolio_snapshot for every distinct fund_code in transactions.
+// Soft-fails per code (logs each failure). Hard errors (list/scan) return err with failed=nil.
+// Per-code failures return err=nil and failed_codes so admin/MCP can expose status partial|error.
+func RecalcAllSnapshots(ctx context.Context, db *sql.DB) (codes int, failed []string, err error) {
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT fund_code FROM transactions WHERE fund_code IS NOT NULL AND fund_code <> '' LIMIT 5000`)
+	if err != nil {
+		return 0, nil, fmt.Errorf("list codes for snapshot recalc: %w", err)
+	}
+	defer rows.Close()
+	var list []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return 0, nil, err
+		}
+		list = append(list, code)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, err
+	}
+	for _, code := range list {
+		if err := ctx.Err(); err != nil {
+			logRecalcPartial(codes, failed)
+			if len(failed) > 0 {
+				// Surface completed work + failures; cancel is already in ctx for callers.
+				return codes, failed, nil
+			}
+			return codes, failed, err
+		}
+		if err := recalcSnapshot(ctx, db, code); err != nil {
+			slog.Error("recalc snapshot failed", "code", code, "error", err)
+			failed = append(failed, code)
+			continue
+		}
+		codes++
+	}
+	if len(failed) > 0 {
+		logRecalcPartial(codes, failed)
+	}
+	return codes, failed, nil
+}
+
+// logRecalcPartial records ok/failed counts and the full failed code list for ops.
+func logRecalcPartial(ok int, failed []string) {
+	if len(failed) == 0 {
+		return
+	}
+	sample := failed
+	if len(sample) > 8 {
+		sample = sample[:8]
+	}
+	slog.Error("recalc snapshots finished with failures",
+		"ok", ok,
+		"failed", len(failed),
+		"sample", strings.Join(sample, ","),
+		"failed_codes", failed,
+	)
+}
+
+// RecalcAllStatus maps ok/failed counts to crawl-nav-style status strings.
+// complete | partial | error (all attempted codes failed).
+func RecalcAllStatus(ok int, failed []string) string {
+	if len(failed) == 0 {
+		return "complete"
+	}
+	if ok == 0 {
+		return "error"
+	}
+	return "partial"
+}
+
+// sleepContext waits d or returns early when ctx is canceled (#247).
+func sleepContext(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}

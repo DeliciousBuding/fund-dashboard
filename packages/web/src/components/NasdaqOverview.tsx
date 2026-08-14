@@ -1,61 +1,70 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
-import { Text, LayerCard, Grid, Table, Tabs } from '@cloudflare/kumo'
-import { use as echartsUse, graphic } from 'echarts/core'
-import { LineChart, ScatterChart } from 'echarts/charts'
-import {
-  GridComponent, TooltipComponent, LegendComponent,
-  DataZoomComponent, MarkLineComponent, MarkPointComponent,
-} from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-import { getTheme, chartAxis, chartTooltip, chartLegend, chartDataZoom, hexToRgba } from '../styles/theme'
-import { useEChart } from '../hooks/useEChart'
+import { useMemo } from 'react'
+import { Text, Grid, Table } from '@cloudflare/kumo'
 import { Card } from './ui/Card'
-import {
-  fetchFundDetail, fetchNav,
-  type FundInfo, type NavPoint,
-} from '../api'
+import { getTheme, chartTooltip, chartLegend, chartDataZoom, hexToRgba, chartShadowColor, space, radius, fontSize, fontWeight, opacity, chartHeight } from '../styles/theme'
+import { useEChart } from '../hooks/useEChart'
+import { useNasdaqData } from '../hooks/useNasdaqData'
+import { useQueryRange } from '../hooks/useQueryRange'
+import { ChartShell, useCoreCharts, type RangeOption, getDateRange, lineSeries, scatterSeries } from './charts'
+import type { FundInfo } from '../api'
 import StatCard from './StatCard'
-import { fmt, getDateRange } from '../utils'
+import { fmt } from '../services/format'
 import { useTranslation } from 'react-i18next'
+import { useAppStore } from '../stores/appStore'
 
-echartsUse([
-  LineChart, ScatterChart,
-  GridComponent, TooltipComponent, LegendComponent,
-  DataZoomComponent, MarkLineComponent, MarkPointComponent,
-  CanvasRenderer,
-])
+useCoreCharts();
 
-/** Fill between daily NAV points with interpolated mid-points for smooth curves.
- *  Adds 3 sub-points per day so the line never looks flat between consecutive trading days. */
-function fillDateGaps(dates: string[], values: number[]): { dates: string[], values: number[] } {
-  if (dates.length < 2) return { dates, values };
-  const SUB_STEPS = 3; // interpolated mid-points per day
-  const filledDates: string[] = [];
-  const filledValues: number[] = [];
+interface NasdaqTradeMarker {
+  value: [string, number];
+  date: string;
+  amt: number;
+  count: number;
+  close: string;
+  returnPct: number;
+  funds: { fund: string; code: string; amt: number; count: number }[];
+}
 
-  for (let i = 0; i < dates.length; i++) {
-    if (i === dates.length - 1) {
-      filledDates.push(dates[i]);
-      filledValues.push(values[i]);
-      break;
-    }
-    const prev = new Date(dates[i]);
-    const curr = new Date(dates[i + 1]);
-    const diffDays = Math.round((curr.getTime() - prev.getTime()) / 86400000);
-    const totalSteps = Math.max(diffDays, 1) * SUB_STEPS;
-
-    for (let step = 0; step < totalSteps; step++) {
-      const frac = step / totalSteps;
-      const mid = new Date(prev.getTime() + (curr.getTime() - prev.getTime()) * frac);
-      const iso = mid.toISOString().substring(0, 10);
-      const time = mid.toISOString().substring(11, 16);
-      // Only show date label on the first sub-point of each actual date
-      const label = step === 0 ? dates[i] : `${iso} ${time}`;
-      filledDates.push(label);
-      filledValues.push(+(values[i] + (values[i + 1] - values[i]) * frac).toFixed(4));
-    }
-  }
-  return { dates: filledDates, values: filledValues };
+function aggregateTradeMarkers(
+  allTx: { code: string; name: string; tx: { trade_time: string; direction: string; amount: number }[] }[],
+  direction: 'buy' | 'sell',
+  dateToIdx: Record<string, number>,
+  slicedDates: string[],
+  slicedCloses: number[],
+  returnPcts: number[],
+): NasdaqTradeMarker[] {
+  const byDate = new Map<string, NasdaqTradeMarker>();
+  allTx.forEach(({ code, name, tx }) => {
+    tx.forEach(t => {
+      if (t.direction !== direction) return;
+      const td = t.trade_time.substring(0, 10);
+      const idx = dateToIdx[td];
+      if (idx === undefined) return;
+      let marker = byDate.get(td);
+      if (!marker) {
+        const ret = returnPcts[idx];
+        marker = {
+          value: [slicedDates[idx], ret],
+          date: slicedDates[idx],
+          amt: 0,
+          count: 0,
+          close: slicedCloses[idx].toFixed(2),
+          returnPct: ret,
+          funds: [],
+        };
+        byDate.set(td, marker);
+      }
+      marker.amt += t.amount || 0;
+      marker.count += 1;
+      let fund = marker.funds.find(item => item.code === code);
+      if (!fund) {
+        fund = { fund: name, code, amt: 0, count: 0 };
+        marker.funds.push(fund);
+      }
+      fund.amt += t.amount || 0;
+      fund.count += 1;
+    });
+  });
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export default function NasdaqOverview({ nasdaqFunds, onSelect, dark }: {
@@ -63,158 +72,141 @@ export default function NasdaqOverview({ nasdaqFunds, onSelect, dark }: {
 }) {
   const { t } = useTranslation();
   const theme = getTheme(dark);
-  const [proxyNav, setProxyNav] = useState<NavPoint[]>([]);
-  const [allTx, setAllTx] = useState<{ code: string; name: string; tx: { trade_time: string; direction: string; amount: number }[] }[]>([]);
-  const [range, setRange] = useState('tx');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const portfolioId = useAppStore((s) => s.portfolioId);
+  const NASDAQ_RANGES = ['tx', '1m', '3m', '6m', '1y', 'all'] as const;
+  const [range, setRange] = useQueryRange('ndxRange', 'tx', NASDAQ_RANGES);
 
-  const proxyFund = useMemo(() =>
-    nasdaqFunds.find(f => f.code === '019173') || nasdaqFunds[0],
-    [nasdaqFunds]
-  );
-  const proxyCode = proxyFund?.code || '019173';
+  const {
+    indexData, allTx, indexDates, indexCloses, allTxDates,
+    stats, loading, error,
+  } = useNasdaqData({ nasdaqFunds, range, portfolioId });
 
-  useEffect(() => {
-    abortRef.current?.abort();
-    const ctrl = new AbortController(); abortRef.current = ctrl; const sig = ctrl.signal;
-    if (!proxyCode) return;
-    setLoading(true);
-    setError(null);
-    fetchNav(proxyCode, sig)
-      .then(d => {
-        if (!sig.aborted) {
-          setProxyNav(d);
-          setLoading(false);
-        }
-      })
-      .catch(e => {
-        if (e.name !== 'AbortError') {
-          console.warn('[nasdaqNav]', e);
-          setError(e.message);
-          setLoading(false);
-        }
-      });
-    Promise.all(nasdaqFunds.map(f => fetchFundDetail(f.code, sig).then(d => ({
-      code: f.code, name: f.name,
-      tx: d.transactions.filter(t => t.direction === 'buy' || t.direction === 'sell')
-    }))))
-      .then(d => { if (!sig.aborted) setAllTx(d); })
-      .catch(e => { if (e.name !== 'AbortError') console.warn('[nasdaqTx]', e); });
-    return () => { ctrl.abort(); };
-  }, [proxyCode, nasdaqFunds]);
+  const RANGE_TABS: RangeOption[] = [
+    { value: 'tx', label: t('chart.range.tx') },
+    { value: '1m', label: t('chart.range.1m') },
+    { value: '3m', label: t('chart.range.3m') },
+    { value: '6m', label: t('chart.range.6m') },
+    { value: '1y', label: t('chart.range.1y') },
+    { value: 'all', label: t('chart.range.all') },
+  ];
 
-  const allTxDates = useMemo(() => {
-    const dates = new Set<string>();
-    allTx.forEach(({ tx }) => tx.forEach(t => dates.add(t.trade_time.substring(0, 10))));
-    return [...dates].sort();
-  }, [allTx]);
+  const { totalBuyCount, totalSellCount, totalBuyAmt, heldFunds, clearedFunds, navPnl, navValue, latestReturn } = stats;
 
-  const dates10 = useMemo(() => proxyNav.map(d => d.date.substring(0, 10)), [proxyNav]);
-
-  const scaleMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    if (!proxyNav.length) return map;
-    const proxyLatestNav = proxyNav[proxyNav.length - 1].unit_nav;
-    if (!proxyLatestNav || proxyLatestNav <= 0) return map;
-    for (const f of nasdaqFunds) map[f.code] = (f.latest_nav && f.latest_nav > 0) ? proxyLatestNav / f.latest_nav : 1;
-    return map;
-  }, [nasdaqFunds, proxyNav]);
-
-  // ═══════ Chart option ═══════
-
+  // Build echarts option using chart library factories
   const chartOption = useMemo(() => {
-    if (!proxyNav.length) return {} as Record<string, unknown>;
+    if (!indexData?.data.length) return {} as Record<string, unknown>;
 
-    const navs = proxyNav.map(d => d.unit_nav);
-    const [i0, i1] = getDateRange(range, dates10, allTxDates);
-    const slicedDates = dates10.slice(i0, i1 + 1);
-    const slicedNavs = navs.slice(i0, i1 + 1);
+    // Range slice
+    const [i0, i1] = getDateRange(range, indexDates, allTxDates);
+    const slicedDates = indexDates.slice(i0, i1 + 1);
+    const slicedCloses = indexCloses.slice(i0, i1 + 1);
+    const N = slicedCloses.length;
+    if (N < 2) return {} as Record<string, unknown>;
 
-    // Fill gaps between sparse dates with linear interpolation for smooth curves
-    const filled = fillDateGaps(slicedDates, slicedNavs);
-    const chartDates = filled.dates;
-    const chartNavs = filled.values;
-    const N = chartNavs.length;
+    // Cumulative return %: (close - baseClose) / baseClose * 100
+    const baseClose = slicedCloses[0] || 1;
+    const returnPcts = slicedCloses.map(c => +(((c - baseClose) / baseClose) * 100).toFixed(2));
 
-    // Cumulative return % (first point = 0%)
-    const baseNav = chartNavs[0] || 1;
-    const returnPcts = chartNavs.map(n => +(((n - baseNav) / baseNav) * 100).toFixed(2));
-    // Daily change % (on filled data shows smooth transitions)
-    const dailyPcts = chartNavs.map((n, i) => i === 0 ? 0 : +(((n - chartNavs[i-1]) / chartNavs[i-1]) * 100).toFixed(2));
+    // Date to index map for marker placement
+    const dateToIdx: Record<string, number> = {};
+    slicedDates.forEach((d, i) => { dateToIdx[d] = i; });
 
-    // Map original dates for transaction markers
-    const originalIndices: Record<string, number> = {};
-    slicedDates.forEach((d, i) => {
-      const idx = chartDates.indexOf(d);
-      if (idx >= 0) originalIndices[d] = idx;
-    });
-
-    const buyPoints: any[] = [], sellPoints: any[] = [];
-    allTx.forEach(({ code, name, tx }) => {
-      const s = scaleMap[code] || 1;
-      tx.forEach(t => {
-        const td = t.trade_time.substring(0, 10);
-        const idx = originalIndices[td];
-        if (idx === undefined) return;
-        const point = { value: [chartDates[idx], returnPcts[idx]], fund: name, code, amt: t.amount, normAmt: t.amount * s, nav: chartNavs[idx].toFixed(4) };
-        if (t.direction === 'buy') buyPoints.push(point);
-        else sellPoints.push(point);
+    const buyPoints = aggregateTradeMarkers(allTx, 'buy', dateToIdx, slicedDates, slicedCloses, returnPcts);
+    const sellPoints = aggregateTradeMarkers(allTx, 'sell', dateToIdx, slicedDates, slicedCloses, returnPcts);
+    const formatMarkerTooltip = (d: NasdaqTradeMarker | undefined, label: string, color: string) => {
+      if (!d) return '';
+      const rows = d.funds.slice(0, 5).map(item => {
+        const count = item.count > 1 ? ` ×${item.count}` : '';
+        return `${item.fund}${count}: ¥${item.amt.toFixed(0)}`;
       });
-    });
+      const more = d.funds.length > 5 ? `<br/>+${d.funds.length - 5} ${t('common.units')}` : '';
+      return `<b style="color:${color}">${label} ${d.count}${t('tx.trades')}</b><br/>${t('nasdaq.totalLine', { amount: d.amt.toFixed(0) })}<br/>NDX: ${d.close}<br/>${rows.join('<br/>')}${more}`;
+    };
 
-    const totalBuyCount = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'buy').length, 0);
-    const totalSellCount = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'sell').length, 0);
-    const isUp = returnPcts[N-1] >= 0;
-    const lineColor = isUp ? theme.down : theme.up; // CN convention: green=up, red=down for returns
+    // CN convention: red = up/profit, green = down/loss
+    const isUp = returnPcts[N - 1] >= 0;
+    const lineColor = isUp ? theme.up : theme.down;
 
-    // Split area: green above zero, red below (CN convention)
-    const aboveData = returnPcts.map(v => v >= 0 ? v : 0);
-    const belowData = returnPcts.map(v => v < 0 ? v : 0);
-
-    const series: any[] = [
-      // Green area (above zero)
-      { name: '收益(正)', type: 'line', data: aboveData, smooth: 0.6, symbol: 'none', yAxisIndex: 0, z: 2,
-        lineStyle: { color: 'transparent', width: 0 },
-        areaStyle: { color: new graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: hexToRgba(theme.down, 0.18) }, { offset: 1, color: hexToRgba(theme.down, 0) }]) },
-        tooltip: { show: false }, legendHoverLink: false },
-      // Red area (below zero)
-      { name: '收益(负)', type: 'line', data: belowData, smooth: 0.6, symbol: 'none', yAxisIndex: 0, z: 2,
-        lineStyle: { color: 'transparent', width: 0 },
-        areaStyle: { color: new graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 1, color: hexToRgba(theme.up, 0.18) }, { offset: 0, color: hexToRgba(theme.up, 0) }]) },
-        tooltip: { show: false }, legendHoverLink: false },
-      // Main return curve
-      { name: t('nasdaq.cumulativeReturn', '累计收益'), type: 'line', data: returnPcts, yAxisIndex: 0, z: 10,
-        smooth: 0.6, symbol: 'none',
-        lineStyle: { color: lineColor, width: 2.5, cap: 'round', shadowBlur: 6, shadowColor: hexToRgba(lineColor, 0.3) },
-        markLine: { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: theme.border, width: 1 }, data: [{ yAxis: 0, label: { formatter: '0%', fontSize: 10 } }] },
-        markPoint: { data: [
-          { type: 'max', name: t('nasdaq.max', '最高'), symbol: 'pin', symbolSize: 32, itemStyle: { color: lineColor } },
-          { type: 'min', name: t('nasdaq.min', '最低'), symbol: 'pin', symbolSize: 32, itemStyle: { color: theme.textMuted }, symbolRotate: 180 }],
-          label: { fontSize: 10, fontWeight: 600 } },
+    // Main cumulative return line (via library factory)
+    const mainSeries = lineSeries({
+      name: t('nasdaq.cumulativeReturn'),
+      data: returnPcts,
+      color: lineColor,
+      smooth: true,
+      area: true,
+      areaAlpha: 0.18,
+      width: 2.5,
+      z: 10,
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { type: 'dashed', color: theme.border, width: 1 },
+        data: [{ yAxis: 0, label: { formatter: '0%', fontSize: fontSize.xs } }],
       },
-    ];
+      markPoint: {
+        data: [
+          { type: 'max', name: t('nasdaq.max'), symbol: 'pin', symbolSize: 36, itemStyle: { color: lineColor } },
+          { type: 'min', name: t('nasdaq.min'), symbol: 'pin', symbolSize: 36, itemStyle: { color: theme.textMuted }, symbolRotate: 180 },
+        ],
+        label: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold },
+      },
+    });
+    // Nasdaq-specific line aesthetic: shadow + rounded caps
+    (mainSeries.lineStyle as any).cap = 'round';
+    (mainSeries.lineStyle as any).shadowBlur = 8;
+    (mainSeries.lineStyle as any).shadowColor = hexToRgba(lineColor, 0.3);
 
-    // Buy scatter
+    const series: Record<string, unknown>[] = [mainSeries];
+
+    // Buy scatter markers (rich per-fund data + dynamic symbolSize by amount)
     if (buyPoints.length) {
-      series.push({ name: `${t('nasdaq.buy', '买入')} (${totalBuyCount})`, type: 'scatter', data: buyPoints, yAxisIndex: 0, z: 20,
-        symbolSize: (val: any) => Math.min(16, Math.max(6, val.normAmt / 500)), symbol: 'circle',
-        itemStyle: { color: theme.blue, borderColor: theme.surface, borderWidth: 1, opacity: 0.85 },
-        emphasis: { scale: 1.4, itemStyle: { opacity: 1 } },
-        tooltip: { formatter: (p: any) => { const d = p.data; return d?.fund ? `<b>${t('nasdaq.buy', '买入')}</b><br/>${d.fund}<br/>¥${(d.amt||0).toFixed(0)}<br/>${t('nasdaq.nav', '净值')}: ${d.nav}` : ''; } },
+      const buySeries = scatterSeries({
+        name: t('nasdaq.seriesBuy', { days: buyPoints.length, count: totalBuyCount }),
+        data: buyPoints,
+        color: theme.up,
+        borderColor: theme.markerBorder,
+        borderWidth: 2,
+        symbolSize: (_value: unknown, params: any) => Math.min(24, Math.max(12, ((params?.data?.amt || 0) / 300))),
+        symbol: 'circle',
+        z: 100,
+        opacity: opacity.seriesStrong,
       });
+      (buySeries.itemStyle as any).shadowBlur = 4;
+      (buySeries.itemStyle as any).shadowColor = chartShadowColor(theme);
+      buySeries.emphasis = { scale: 1.6, itemStyle: { opacity: opacity.solid, shadowBlur: 8 } };
+      buySeries.tooltip = {
+        formatter: (p: any) => {
+          return formatMarkerTooltip(p.data, t('nasdaq.buy'), theme.up);
+        },
+      };
+      series.push(buySeries);
     }
+
+    // Sell scatter markers
     if (sellPoints.length) {
-      series.push({ name: `${t('nasdaq.sell', '卖出')} (${totalSellCount})`, type: 'scatter', data: sellPoints, yAxisIndex: 0, z: 20,
-        symbolSize: (val: any) => Math.min(16, Math.max(6, val.normAmt / 500)), symbol: 'diamond',
-        itemStyle: { color: theme.amber, borderColor: theme.surface, borderWidth: 1, opacity: 0.85 },
-        emphasis: { scale: 1.4, itemStyle: { opacity: 1 } },
-        tooltip: { formatter: (p: any) => { const d = p.data; return d?.fund ? `<b>${t('nasdaq.sell', '卖出')}</b><br/>${d.fund}<br/>¥${(d.amt||0).toFixed(0)}<br/>${t('nasdaq.nav', '净值')}: ${d.nav}` : ''; } },
+      const sellSeries = scatterSeries({
+        name: t('nasdaq.seriesSell', { days: sellPoints.length, count: totalSellCount }),
+        data: sellPoints,
+        color: theme.down,
+        borderColor: theme.markerBorder,
+        borderWidth: 2,
+        symbolSize: (_value: unknown, params: any) => Math.min(24, Math.max(12, ((params?.data?.amt || 0) / 300))),
+        symbol: 'diamond',
+        z: 100,
+        opacity: opacity.seriesStrong,
       });
+      (sellSeries.itemStyle as any).shadowBlur = 4;
+      (sellSeries.itemStyle as any).shadowColor = chartShadowColor(theme);
+      sellSeries.emphasis = { scale: 1.6, itemStyle: { opacity: opacity.solid, shadowBlur: 8 } };
+      sellSeries.tooltip = {
+        formatter: (p: any) => {
+          return formatMarkerTooltip(p.data, t('nasdaq.sell'), theme.down);
+        },
+      };
+      series.push(sellSeries);
     }
+
+    const totalPoints = slicedDates.length;
 
     return {
       tooltip: {
@@ -227,141 +219,119 @@ export default function NasdaqOverview({ nasdaqFunds, onSelect, dark }: {
         },
         formatter: (params: any[]) => {
           const date = params[0]?.axisValue || '';
-          const ret = params.find(p => p.seriesName === t('nasdaq.cumulativeReturn', '累计收益'));
-          const origIdx = originalIndices[date];
+          const retSeries = params.find((p: any) => p.seriesName === t('nasdaq.cumulativeReturn'));
           let html = `<b>${date}</b>`;
-          if (origIdx !== undefined) html += `<br/>净值: ${slicedNavs[origIdx]?.toFixed(4) || '-'}`;
-          if (ret && ret.value !== undefined) {
-            const v = Number(ret.value) || 0;
-            html += `<br/>累计收益: <b style="color:${v >= 0 ? theme.down : theme.up}">${v >= 0 ? '+' : ''}${v}%</b>`;
+          if (retSeries && retSeries.value !== undefined) {
+            const v = Number(retSeries.value) || 0;
+            html += `<br/>${t('nasdaq.cumulativeReturn')}: <b style="color:${v >= 0 ? theme.up : theme.down}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</b>`;
           }
-          const buys = params.filter(p => p.seriesName?.startsWith(t('nasdaq.buy', '买入')));
-          const sells = params.filter(p => p.seriesName?.startsWith(t('nasdaq.sell', '卖出')));
-          buys.forEach(p => { if (p.data?.fund) html += `<br/>🔵 ${p.data.fund} ¥${(p.data.amt||0).toFixed(0)}`; });
-          sells.forEach(p => { if (p.data?.fund) html += `<br/>🟠 ${p.data.fund} ¥${(p.data.amt||0).toFixed(0)}`; });
+          const buys = params.filter((p: any) => (p.seriesName as string)?.startsWith(t('nasdaq.buy')));
+          const sells = params.filter((p: any) => (p.seriesName as string)?.startsWith(t('nasdaq.sell')));
+          buys.forEach((p: any) => {
+            if (p.data?.count) html += `<br/><span style="color:${theme.up}">&#9679;</span> ${t('nasdaq.tooltipBuy', { count: p.data.count, amount: (p.data.amt || 0).toFixed(0) })}`;
+          });
+          sells.forEach((p: any) => {
+            if (p.data?.count) html += `<br/><span style="color:${theme.down}">&#9670;</span> ${t('nasdaq.tooltipSell', { count: p.data.count, amount: (p.data.amt || 0).toFixed(0) })}`;
+          });
           return html;
         },
       },
-      legend: { selected: { '收益(正)': false, '收益(负)': false },
-        data: series.filter(s => s.name && !s.name.startsWith('收益(')).map(s => s.name),
-        top: 0, ...chartLegend(theme),
+      legend: {
+        data: series.filter(s => s.name).map(s => s.name),
+        top: 0,
+        ...chartLegend(theme),
       },
-      grid: { top: 40, right: 50, bottom: 60, left: 55 },
-      xAxis: { type: 'category', data: chartDates,
-        axisLabel: { fontSize: 9, rotate: N > 90 ? 45 : 0, color: theme.textMuted, interval: Math.max(1, Math.floor(N / 15)) },
-        axisLine: { lineStyle: { color: theme.border } } },
+      grid: { top: 40, right: 55, bottom: 60, left: 55 },
+      xAxis: {
+        type: 'category',
+        data: slicedDates,
+        axisLabel: {
+          fontSize: fontSize.xs,
+          rotate: totalPoints > 90 ? 45 : 0,
+          color: theme.textMuted,
+          interval: Math.max(1, Math.floor(totalPoints / 15)),
+        },
+        axisLine: { lineStyle: { color: theme.border } },
+      },
       yAxis: [
-        { type: 'value', name: '%', nameTextStyle: { fontSize: 10, color: theme.textMuted },
-          axisLabel: { fontSize: 10, formatter: '{value}%', color: theme.textMuted },
-          splitLine: { lineStyle: { color: theme.hairline } } },
+        {
+          type: 'value',
+          name: '%',
+          nameTextStyle: { fontSize: fontSize.xs, color: theme.textMuted },
+          axisLabel: { fontSize: fontSize.xs, formatter: '{value}%', color: theme.textMuted },
+          splitLine: { lineStyle: { color: theme.hairline } },
+        },
       ],
       dataZoom: chartDataZoom(theme),
       series,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proxyNav, allTx, range, dates10, allTxDates, nasdaqFunds, scaleMap, proxyFund, dark]);
+  }, [indexData, allTx, indexDates, indexCloses, allTxDates, range, dark, t, theme, totalBuyCount, totalSellCount]);
 
   const chartRef = useEChart(chartOption, [chartOption]);
 
-  // ═══════ Stats (computed from data) ═══════
-  const totalBuyCount = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'buy').length, 0);
-  const totalSellCount = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'sell').length, 0);
-  const totalBuyAmt = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'buy').reduce((a, t) => a + t.amount, 0), 0);
-  const totalSellAmt = allTx.reduce((s, { tx }) => s + tx.filter(t => t.direction === 'sell').reduce((a, t) => a + t.amount, 0), 0);
-  const heldFunds = nasdaqFunds.filter(f => f.held_shares > 0.001);
-  const navPnl = heldFunds.reduce((s, f) => s + (f.unrealized_pnl || 0), 0);
-  const navValue = heldFunds.reduce((s, f) => s + (f.current_value || 0), 0);
-
-  const latestReturn = (() => {
-    if (!proxyNav.length) return 0;
-    const navs = proxyNav.map(d => d.unit_nav);
-    const [i0, i1] = getDateRange(range, dates10, allTxDates);
-    const base = navs[i0] || 1;
-    const latest = navs[i1] || base;
-    return +(((latest - base) / base) * 100).toFixed(2);
-  })();
-
-  // ── Placeholder helper ──────────────────────────────────────────
-  const placeholder = (msg: string, testid: string) => (
-    <div data-testid={testid} style={{ height: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', color: theme.textMuted, fontVariantNumeric: 'tabular-nums' }}>
-      <Text variant="secondary" as="span" size="sm">{msg}</Text>
-    </div>
-  );
-
   return (
     <div>
-      <Text variant="heading1" as="h1">{t('nasdaq.title', '纳斯达克总览')}</Text>
-      <div style={{ marginTop: 8, marginBottom: 16 }}>
+      <Text variant="heading1" as="h1">{t('nasdaq.title')}</Text>
+      <div style={{ marginTop: 8, marginBottom: space[4] }}>
         <Text variant="secondary" as="span">
-          {nasdaqFunds.length} {t('nasdaq.fundCount', '只纳指基金')} · {totalBuyCount} {t('nasdaq.buyCount', '笔买入')} / {totalSellCount} {t('nasdaq.sellCount', '笔卖出')} · {t('nasdaq.benchmark', '基准')}: {proxyFund?.name || ''}
+          {nasdaqFunds.length} {t('nasdaq.fundCount')} · {totalBuyCount} {t('nasdaq.buyCount')} / {totalSellCount} {t('nasdaq.sellCount')} · {t('nasdaq.benchmark')}: {t('nasdaq.benchmarkDesc')}
         </Text>
       </div>
-      <Grid variant="4up" gap="base" style={{ marginBottom: 20 }}>
-        <StatCard label={t('nasdaq.funds', '纳指基金')} value={`${nasdaqFunds.length} ${t('common.units', '只')}`} />
-        <StatCard label={t('nasdaq.totalBuy', '总买入')} value={`¥ ${totalBuyAmt.toLocaleString()}`} />
-        {heldFunds.length > 0 && <StatCard label={t('nasdaq.holdValue', '持仓市值')} value={`¥ ${navValue.toFixed(0)}`} />}
-        <StatCard label={t('nasdaq.pnl', '纳指盈亏')} value={fmt(navPnl)} color={navPnl > 0 ? 'up' : navPnl < 0 ? 'down' : undefined} />
-        <StatCard label={t('nasdaq.periodReturn', '区间收益')} value={`${latestReturn >= 0 ? '+' : ''}${latestReturn}%`}
+      <Grid variant="4up" gap="base" style={{ marginBottom: space[5] }}>
+        <StatCard label={t('nasdaq.funds')} value={`${nasdaqFunds.length} ${t('common.units')}`} />
+        <StatCard label={t('nasdaq.totalBuy')} value={`¥ ${totalBuyAmt.toLocaleString()}`} />
+        {heldFunds.length > 0 && <StatCard label={t('nasdaq.holdValue')} value={`¥ ${navValue.toFixed(0)}`} />}
+        <StatCard label={t('nasdaq.pnl')} value={fmt(navPnl)} color={navPnl > 0 ? 'up' : navPnl < 0 ? 'down' : undefined} />
+        <StatCard label={t('nasdaq.periodReturn')} value={`${latestReturn >= 0 ? '+' : ''}${latestReturn}%`}
           color={latestReturn > 0 ? 'up' : latestReturn < 0 ? 'down' : undefined} />
       </Grid>
-      <Card dark={dark} style={{ marginBottom: 20 }}>
-        <div style={{ padding: '4px 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div>
-            <Text variant="heading3" as="h3">{t('nasdaq.chartTitle', '纳指收益走势')}</Text>
-            <div style={{ marginTop: 4 }}><Text variant="secondary" as="span" size="xs">{t('nasdaq.chartDesc', '累计收益率曲线 (线性插值平滑) + 买卖点标记')}</Text></div>
-          </div>
-          <Tabs tabs={RANGE_TABS} value={range} onValueChange={setRange} variant="segmented" size="sm" />
-        </div>
-        {loading
-          ? placeholder(t('common.loading', '加载中…'), 'chart-loading')
-          : error
-            ? placeholder(error, 'chart-error')
-            : !proxyNav.length
-              ? placeholder(t('common.noData', '暂无数据'), 'chart-empty')
-              : <div ref={chartRef} style={{ height: 500 }} />}
-      </Card>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-        <LayerCard className="p-0">
-          <div style={{ padding: '16px 20px 12px' }}><Text variant="heading3" as="h3">{t('nasdaq.held', '纳指持仓')}</Text></div>
+      <ChartShell
+        dark={dark}
+        title={t('nasdaq.chartTitle')}
+        subtitle={t('nasdaq.chartDesc')}
+        ranges={RANGE_TABS} range={range} onRangeChange={setRange}
+        loading={loading} error={error} empty={!indexData?.data.length}
+        testidPrefix="chart" height={chartHeight.large}
+        marginBottom={space[5]}
+      >
+        <div ref={chartRef} style={{ height: chartHeight.large }} />
+      </ChartShell>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: space[5], marginBottom: space[5] }}>
+        <Card dark={dark} glass padded={false}>
+          <div style={{ padding: `${space[4]}px ${space[5]}px ${space[3]}px` }}><Text variant="heading3" as="h3">{t('nasdaq.held')}</Text></div>
           <Table>
-            <Table.Header><Table.Row><Table.Head>{t('common.fund', '基金')}</Table.Head><Table.Head>{t('common.shares', '份额')}</Table.Head><Table.Head>{t('common.nav', '净值')}</Table.Head><Table.Head>{t('common.value', '市值')}</Table.Head><Table.Head>{t('common.pnl', '盈亏')}</Table.Head></Table.Row></Table.Header>
+            <Table.Header><Table.Row><Table.Head>{t('common.fund')}</Table.Head><Table.Head>{t('common.shares')}</Table.Head><Table.Head>{t('common.nav')}</Table.Head><Table.Head>{t('common.value')}</Table.Head><Table.Head>{t('common.pnl')}</Table.Head></Table.Row></Table.Header>
             <Table.Body>
-              {heldFunds.sort((a, b) => (b.current_value ?? 0) - (a.current_value ?? 0)).map(f => {
+              {[...heldFunds].sort((a, b) => (b.current_value ?? 0) - (a.current_value ?? 0)).map(f => {
                 const pnl = f.unrealized_pnl ?? 0;
                 return (
                   <Table.Row key={f.code} onClick={() => onSelect(f.code)} style={{ cursor: 'pointer' }}>
                     <Table.Cell><Text bold as="span">{f.name}</Text><br/><Text variant="secondary" as="span" size="xs">{f.code}</Text></Table.Cell>
                     <Table.Cell>{f.held_shares.toFixed(2)}</Table.Cell>
                     <Table.Cell>{f.latest_nav?.toFixed(4) ?? '-'}</Table.Cell>
-                    <Table.Cell style={{ fontWeight: 500 }}>¥ {(f.current_value ?? 0).toFixed(2)}</Table.Cell>
+                    <Table.Cell style={{ fontWeight: fontWeight.medium }}>¥ {(f.current_value ?? 0).toFixed(2)}</Table.Cell>
                     <Table.Cell><span style={{ color: Number(pnl) > 0 ? theme.up : Number(pnl) < 0 ? theme.down : 'inherit' }}>{fmt(pnl)}</span></Table.Cell>
                   </Table.Row>
                 );
               })}
             </Table.Body>
           </Table>
-        </LayerCard>
-        <LayerCard className="p-0">
-          <div style={{ padding: '16px 20px 12px' }}><Text variant="heading3" as="h3">{t('nasdaq.cleared', '已清仓纳指')}</Text></div>
+        </Card>
+        <Card dark={dark} glass padded={false}>
+          <div style={{ padding: `${space[4]}px ${space[5]}px ${space[3]}px` }}><Text variant="heading3" as="h3">{t('nasdaq.cleared')}</Text></div>
           <Table>
-            <Table.Header><Table.Row><Table.Head>{t('common.fund', '基金')}</Table.Head><Table.Head>{t('nasdaq.historyTx', '历史交易')}</Table.Head></Table.Row></Table.Header>
+            <Table.Header><Table.Row><Table.Head>{t('common.fund')}</Table.Head><Table.Head>{t('nasdaq.historyTx')}</Table.Head></Table.Row></Table.Header>
             <Table.Body>
-              {nasdaqFunds.filter(f => f.held_shares <= 0.001).map(f => (
+              {clearedFunds.map(f => (
                 <Table.Row key={f.code} onClick={() => onSelect(f.code)} style={{ cursor: 'pointer' }}>
                   <Table.Cell><Text as="span">{f.name}</Text><br/><Text variant="secondary" as="span" size="xs">{f.code}</Text></Table.Cell>
-                  <Table.Cell>{allTx.find(tx => tx.code === f.code)?.tx.length ?? 0} {t('nasdaq.txCount', '笔交易')}</Table.Cell>
+                  <Table.Cell>{allTx.find(tx => tx.code === f.code)?.tx.length ?? 0} {t('nasdaq.txCount')}</Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>
           </Table>
-        </LayerCard>
+        </Card>
       </div>
     </div>
   );
 }
-
-const RANGES = [
-  { key: 'tx', label: '交易区间' }, { key: '1m', label: '近1月' }, { key: '3m', label: '近3月' },
-  { key: '6m', label: '近6月' }, { key: '1y', label: '近1年' }, { key: 'all', label: '全部' },
-];
-const RANGE_TABS = RANGES.map(r => ({ value: r.key, label: r.label }));
