@@ -72,6 +72,8 @@ jobs:
         run: |
           chmod +x scripts/seed-ci-db.sh
           ./scripts/seed-ci-db.sh deploy/ci-data
+          # container runs as unprivileged 'fund' user; make ci-data writable
+          chmod -R 777 deploy/ci-data
 
       - name: Build image
         uses: docker/build-push-action@v6
@@ -144,6 +146,8 @@ jobs:
         run: |
           chmod +x scripts/seed-ci-db.sh
           ./scripts/seed-ci-db.sh deploy/ci-data
+          # container runs as unprivileged 'fund' user; make ci-data writable
+          chmod -R 777 deploy/ci-data
 
       - name: Build image
         uses: docker/build-push-action@v6
