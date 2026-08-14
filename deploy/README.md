@@ -12,7 +12,22 @@ The `deploy/Dockerfile` is multi-stage: `golang:1.26-alpine` compiles the backen
 `node:24-alpine` builds the SPA, and the final `alpine:3.20` image runs as an
 unprivileged `fund` user with `EXPOSE 8765`.
 
-## Run locally
+## Run with Docker Compose (production)
+
+`deploy/docker-compose.yml` runs the published image with SQLite persistence and
+secrets read from a `.env` file:
+
+```bash
+cp .env.example .env
+# edit .env: set MCP_API_KEY (openssl rand -hex 32), FUND_EDGE_KEY for SPA writes
+docker compose -f deploy/docker-compose.yml up -d
+```
+
+The compose file mounts `./data` for the database, runs as the unprivileged
+`fund` user, and includes a `/api/health` healthcheck. `.env`, `data/` and all
+`*.db*` files are git-ignored.
+
+## Run locally (bare docker run)
 
 ```bash
 docker run --rm -p 8765:8765 \
