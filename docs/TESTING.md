@@ -1,7 +1,6 @@
 # TESTING — fund-dashboard test system
 最后更新：2026-07-21 15:50
 
-> **测试体系 SSOT**（ops 仓 `fund-dashboard-ops`）。产品 live 拓扑见 [`STATE.md`](./STATE.md)。  
 > 本文件回答：测什么、默认跑什么、何时加宽、关键路径对应哪条检查。
 
 ## 1. Pyramid（分层）
@@ -52,7 +51,7 @@ cd packages/web && CI=1 BASE_URL=http://127.0.0.1:8080 npx playwright test e2e/
 
 ## 3. CI 合同
 
-见 [`RELEASE-GOVERNANCE.md`](./RELEASE-GOVERNANCE.md) 与 `.github/workflows/ci.yml`：
+见 `.github/workflows/ci.yml`：
 
 1. `test-go` → `build-go` → `test-web` → `build-web`
 2. **`smoke-e2e`**（seed → image → compose → curl auth → **仅** `e2e/smoke.spec.ts`）
@@ -110,10 +109,6 @@ cd packages/web && CI=1 BASE_URL=http://127.0.0.1:8080 npx playwright test e2e/
 | 复制整段 CREATE TABLE 到每个测试 | testutil / seed |
 | 用 HANDOFF/历史 MASTER 当测试政策 | 本文件 + AGENTS 验证段 |
 
-## 7. Public mirror
+## 7. 边界
 
-生产门禁与本文件以 **ops** 为准。public 仓可有 Bun 历史测试；**不得**替代 `go test` / smoke-prod。
-
-## 8. 程序进度
-
-Spec-driven 执行索引：[`progress/modern-test-system-MASTER.md`](./progress/modern-test-system-MASTER.md) · Issues #286–#292。
+`go test` / `smoke-prod` 是本仓库唯一测试权威；Bun 时代测试已随旧代码移除。
