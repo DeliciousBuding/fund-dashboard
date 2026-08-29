@@ -4,6 +4,7 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { BottomNav } from "../components/shell/BottomNav";
 import { CommandPalette } from "../components/shell/CommandPalette";
+import { OfflineBanner } from "../components/shell/OfflineBanner";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TopBar } from "../components/shell/TopBar";
 import { ErrorBoundary } from "../components/ui/error-boundary";
@@ -37,6 +38,7 @@ export function AppShell() {
     <div className="flex min-h-screen bg-bg text-fg">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
+        <OfflineBanner />
         <TopBar title={pageTitle(pathname)} />
         <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-20 pt-4 md:px-6 md:pb-8">
           <AnimatePresence mode="wait" initial={false}>
