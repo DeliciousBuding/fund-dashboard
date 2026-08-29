@@ -1,9 +1,8 @@
-最后更新：2026-08-14
+最后更新：2026-08-29
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0">
   <img src="https://img.shields.io/badge/runtime-Go%201.25-00ADD8?logo=go" alt="Go">
-  <img src="https://img.shields.io/badge/ui-React%2018-61dafb?logo=react" alt="React 18">
   <img src="https://img.shields.io/badge/backend-chi%20%2B%20SQLite-lightgrey" alt="chi+sqlite">
 </p>
 
@@ -25,13 +24,13 @@ Personal fund & stock investment analytics — NAV/price tracking, XIRR, drawdow
 
 ## Architecture
 
-见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。单容器 Go 后端（REST + MCP）+ 内嵌 React SPA + SQLite。
+见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。单容器 Go 后端（REST + MCP）+ SQLite。前端独立仓库维护（`packages/web` 于 2026-08-29 移出）。
 
 | Layer | Tech |
 |-------|------|
 | Backend | Go 1.25+, chi, modernc/sqlite（pgx/v5 可选） |
-| Frontend | React 18, Vite 5, ECharts, Vitest |
-| Image | 多架构（linux/amd64 + linux/arm64）prebuilt binary + SPA |
+| Contracts | zod（`packages/contracts`）——前端复用的 API 契约 SSOT |
+| Image | 多架构（linux/amd64 + linux/arm64）Go 静态二进制 |
 
 ## Quick start
 
@@ -39,10 +38,6 @@ Personal fund & stock investment analytics — NAV/price tracking, XIRR, drawdow
 # Backend
 go test ./... -count=1
 go run ./cmd/fund-dashboard
-
-# Frontend
-npm ci
-npm run dev --workspace packages/web
 
 # CI-style container smoke
 ./scripts/seed-ci-db.sh
@@ -58,10 +53,9 @@ curl -fsS http://127.0.0.1:18080/api/health
 ```
 cmd/fund-dashboard/     Go entrypoint
 internal/               app, httpapi, mcp, service, jobs, datasource, agenttools, ...
-packages/web/           React SPA
-packages/contracts/     Zod contracts (frontend)
+packages/contracts/     Zod contracts（前后端共享）
 deploy/                 Dockerfile, CI compose, seed SQL
-docs/                   architecture, design system, testing, changelog
+docs/                   architecture, testing, changelog
 ```
 
 ## Documentation map
@@ -69,7 +63,6 @@ docs/                   architecture, design system, testing, changelog
 | Doc | Role |
 |-----|------|
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 架构与分层 |
-| [`DESIGN.md`](./DESIGN.md) | UI 设计系统 SSOT |
 | [`TESTING.md`](./TESTING.md) | 测试体系 SSOT |
 | [`CHANGELOG.md`](../CHANGELOG.md) | 产品 / 修复变更流水 |
 

@@ -20,7 +20,6 @@ errors.log
 .env.*
 
 # Build output
-packages/web/dist/
 bin/
 dist/
 *.exe
@@ -37,7 +36,6 @@ coverage/
 .tmp/
 *.tgz
 test-results/
-playwright-report/
 
 # IDE
 .idea/

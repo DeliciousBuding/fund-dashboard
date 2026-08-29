@@ -16,7 +16,7 @@
 
 - 分支命名：`feature/`（新功能）、`fix/`（缺陷）、`refactor/`（重构）、`docs/`（文档）、`chore/`（杂项）
 - 一个分支只做一件事，便于 review 与回滚
-- 合并到 `main` 后自动触发 CI：`test-go` / `build-go` / `test-web` / `build-web` / `smoke-e2e`，全绿后构建多架构镜像推送到 GHCR
+- 合并到 `main` 后自动触发 CI：`test-go` / `build-go` / `smoke-e2e`，全绿后构建多架构镜像推送到 GHCR
 
 ## 提交规范
 
@@ -54,11 +54,6 @@ fix: clamp portfolio id to avoid absurd values
 # 后端
 go test ./... -count=1
 go vet ./...
-
-# 前端
-npm ci
-npm test          # vitest
-npm run build     # vite build
 ```
 
 提交前请确保：

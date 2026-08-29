@@ -19,6 +19,8 @@
 
 ## [Unreleased]
 
+- **chore** 前端移出：删除 `packages/web`（React/Vite/Playwright/Vitest），仓库变为纯 Go 后端 + zod contracts；镜像改为 API-only（Dockerfile/CI/release 同步；`FUND_STATIC_DIR` 移除出 compose）。
+- **修复** scheduler price 窗口改为**每日 20:00 全量刷新持仓 NAV**（原工作日 20:00 stale-only），QDII T+2 净值不再滞后；DCA materialization 保持仅工作日。
 - **chore** 删除 LEGACY `packages/crawler`（Python AKShare 离线爬虫；生产已是 Go datasource/jobs）。
 - **改进** `GetMarketIndices` stale refresh 走 singleflight + 12s 上游超时，避免 HTTP/MCP 惊群。
 - **改进** SQLite 打开路径显式 `PRAGMA journal_mode=WAL` + `synchronous=NORMAL`（`db.Open` / `sqlitedb.Open`；只读跳过 mode change），与 runbook/scheduler checkpoint 对齐，避免 fresh/dump 退回 DELETE+FULL。

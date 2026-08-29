@@ -1,12 +1,12 @@
 # Fund Dashboard — Architecture
 
 > 基金 + 股票投资数据可视化与分析平台  
-> 最后更新：2026-08-14  
-> 版本：v3 — pure Go backend + React SPA + SQLite
+> 最后更新：2026-08-29  
+> 版本：v3 — pure Go backend + SQLite（前端独立仓库）
 
 ## 1. 总览
 
-单容器部署：Go 静态二进制（REST + MCP）内嵌 React SPA 静态资源，SQLite 持久化。
+单容器部署：Go 静态二进制（REST + MCP），SQLite 持久化。React / Vite SPA 于 2026-08-29 移出本仓库（`packages/web` 已删除），由独立前端仓库构建并指向 `/api/*`。
 
 ```
 Browser / AI Agent
@@ -16,7 +16,6 @@ edge proxy ── TLS + path-scoped EdgeKey + rate limits + CSP
       │
       ▼
 :8765  fund-dashboard (Go binary, single container)
-      ├── SPA static (FUND_STATIC_DIR)
       ├── REST /api/*
       └── MCP /mcp (Bearer key)
       │
@@ -27,10 +26,12 @@ SQLite (FUND_DB_PATH, e.g. /app/data/fund.db)
 | 层 | 技术 |
 |----|------|
 | 后端 | Go 1.25+ · `go-chi` · `cmd/fund-dashboard` + `internal/*` |
-| 前端 | React + Vite · `packages/web` |
 | 契约 | zod schemas 前后端共享 · `packages/contracts` |
 | 存储 | SQLite（默认）；可选 PostgreSQL 双驱动（`FUND_DB_DRIVER=pg`） |
 | MCP | Streamable HTTP `/mcp`；operator / analyst 双 scope |
+| 前端 | 独立仓库（React SPA 详见前端仓库 README） |
+
+> 历史前端：`packages/web`（React + Vite + echarts）已从本仓库移除（2026-08-29）。旧版架构中「单容器内嵌 SPA」已不再适用；`FUND_STATIC_DIR` 仍可作为可选静态目录挂载点，但生产镜像不再内嵌前端资源。
 
 ## 2. 后端分层
 
@@ -75,7 +76,7 @@ internal/httpapi / internal/mcp ── 对外暴露
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY`（空 key fail-closed） |
 | `/mcp` | `MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst） |
 | MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`） |
-| SPA 写路径 | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） |
+| 前端写路径 | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） |
 | `/api/health` | 匿名 |
 
 ## 5. 数据模型

@@ -105,6 +105,57 @@ func TestTickNonWindowDoesNotRunDCA(t *testing.T) {
 	}
 }
 
+// TestTickDailyWindowRefreshesPriceAndSignalsDCAWeekdaysOnly guards the
+// availability fix: the 20:00 window must run on every calendar day (QDII
+// publishes T+2), while DCA materialization — a financial decision — stays
+// weekday-only.
+func TestTickDailyWindowRefreshesPriceAndSignalsDCAWeekdaysOnly(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		`CREATE TABLE portfolio_snapshot (fund_code TEXT NOT NULL, held_shares REAL, security_type TEXT, portfolio_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (fund_code, portfolio_id))`,
+		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, security_type TEXT)`,
+		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
+		`CREATE TABLE crawl_log (fund_code TEXT PRIMARY KEY, source TEXT, rows_added INTEGER, latest_date TEXT, status TEXT, crawled_at TEXT)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stub := &stubDCARunner{}
+	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
+
+	// Saturday 20:00 — price window runs, DCA must NOT materialize.
+	saturday := time.Date(2026, 7, 18, 20, 1, 0, 0, cst)
+	s.tick(saturday)
+	if stub.calls != 0 {
+		t.Fatalf("dca calls on saturday=%d want 0", stub.calls)
+	}
+	if got := s.lastRun["price_dca"]; got != "2026-07-18" {
+		t.Fatalf("price_dca lastRun=%q want 2026-07-18 (saturday window should claim+run)", got)
+	}
+
+	// Sunday 20:00 — same: price runs, DCA skipped.
+	sunday := time.Date(2026, 7, 19, 20, 1, 0, 0, cst)
+	s.tick(sunday)
+	if stub.calls != 0 {
+		t.Fatalf("dca calls on sunday=%d want 0", stub.calls)
+	}
+
+	// Monday (weekday) 20:00 — price runs, DCA materializes.
+	monday := time.Date(2026, 7, 20, 20, 1, 0, 0, cst)
+	s.tick(monday)
+	if stub.calls != 1 {
+		t.Fatalf("dca calls on monday=%d want 1", stub.calls)
+	}
+	if stub.last.AsOf != "2026-07-20" {
+		t.Fatalf("as_of=%s want 2026-07-20", stub.last.AsOf)
+	}
+}
+
 func TestTickSaturdayRunsHoldingsPathOnce(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

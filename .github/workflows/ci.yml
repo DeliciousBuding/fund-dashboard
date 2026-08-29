@@ -5,11 +5,6 @@ on:
   pull_request:
     branches: [master, main]
   workflow_dispatch:
-    inputs:
-      full_e2e:
-        description: 'Run full Playwright suite (e2e-full job)'
-        type: boolean
-        default: false
 
 jobs:
   test-go:
@@ -42,39 +37,14 @@ jobs:
       - name: Build Go binary
         run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
 
-  test-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Install dependencies
-        run: npm ci
-      - name: Run web tests
-        run: cd packages/web && npx vitest run
-
-  build-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Install & build
-        run: npm ci && cd packages/web && npm run build
-
   # ── Container + API smoke (seeded DB) ──────────────────────────
+  # The web UI lives in a separate frontend repo; smoke covers the Go API only.
 
   smoke-e2e:
-    needs: [test-go, build-go, test-web, build-web]
+    needs: [test-go, build-go]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
 
       - name: Seed CI database
         run: |
@@ -100,7 +70,6 @@ jobs:
             sleep 1
           done
           curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
-          curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8080/ | grep -E '200|304'
 
       - name: API auth smoke
         run: |
@@ -119,78 +88,6 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q 'get_portfolio_summary'
 
-      - name: Install Playwright + run smoke
-        run: |
-          npm ci
-          cd packages/web
-          npx playwright install --with-deps chromium
-          CI=1 BASE_URL=http://localhost:8080 npx playwright test e2e/smoke.spec.ts
-
-      - name: Show docker logs on failure
-        if: failure()
-        run: docker compose -f deploy/docker-compose.ci.yml logs
-
-      - name: Cleanup
-        if: always()
-        run: docker compose -f deploy/docker-compose.ci.yml down -v || true
-
-  # ── Optional full Playwright suite (workflow_dispatch only) ───
-  # Does not block PR/push gates. Trigger:
-  #   gh workflow run ci.yml -f full_e2e=true
-  # or Actions UI → CI → Run workflow → full_e2e
-
-  e2e-full:
-    if: github.event_name == 'workflow_dispatch' && inputs.full_e2e == true
-    needs: [test-go, build-go, test-web, build-web]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Seed CI database
-        run: |
-          chmod +x scripts/seed-ci-db.sh
-          ./scripts/seed-ci-db.sh deploy/ci-data
-          # container runs as unprivileged 'fund' user; make ci-data writable
-          chmod -R 777 deploy/ci-data
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          push: false
-          tags: fund-dashboard:ci
-          load: true
-
-      - name: Start services
-        run: |
-          docker compose -f deploy/docker-compose.ci.yml up -d
-          for i in $(seq 1 40); do
-            curl -fsS http://localhost:8080/api/health 2>/dev/null | grep -q '"ok"' && break
-            sleep 1
-          done
-          curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
-
-      - name: Install Playwright + run full e2e
-        run: |
-          npm ci
-          cd packages/web
-          npx playwright install --with-deps chromium
-          CI=1 BASE_URL=http://localhost:8080 npx playwright test e2e/
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-full-report
-          path: packages/web/playwright-report/
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: Show docker logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.ci.yml logs
@@ -202,7 +99,7 @@ jobs:
   # ── Docker build & push to GHCR (parallel native runners) ──────
 
   build-and-push:
-    needs: [test-go, build-go, test-web, build-web, smoke-e2e]
+    needs: [test-go, build-go, smoke-e2e]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'))
     strategy:
       fail-fast: false

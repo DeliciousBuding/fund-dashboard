@@ -92,7 +92,7 @@ func (s *Scheduler) Start() {
 	})
 
 	go s.loop(s.stopCh)
-	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, weekdays 20:00 CST price stale_only+dca once/day, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
+	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, daily 20:00 CST price full-refresh held + DCA weekdays, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
 }
 
 // Stop terminates periodic execution.
@@ -172,15 +172,19 @@ func (s *Scheduler) tick(now time.Time) {
 	windowDay := now.Format("2006-01-02")
 
 	switch {
-	// Weekday 20:00 hour — price refresh + DCA materialization (local ledger), once per day.
-	case hour == 20 && day >= time.Monday && day <= time.Friday:
+	// Daily 20:00 hour — full price refresh of every held security, once per day.
+	// Every calendar day (including Sat/Sun): QDII funds publish T+2 and bond funds
+	// T+1, so a Saturday/Sunday run still picks up fresh NAVs. Full (not stale_only)
+	// refresh keeps last_nav within one window of the upstream even when upstream
+	// publishes late or publishes back-dated corrections.
+	case hour == 20:
 		if !s.claimWindow("price_dca", windowDay) {
 			return
 		}
-		slog.Info("price refresh window", "window", "20:00 CST weekday", "mode", "stale_only", "as_of", windowDay)
+		slog.Info("price refresh window", "window", "20:00 CST daily", "mode", "all_held", "as_of", windowDay)
 		ctx, cancel := s.jobContext(45 * time.Minute)
 		defer cancel()
-		if _, _, err := s.refresher.RefreshStaleHeld(ctx); err != nil {
+		if _, _, err := s.refresher.RefreshAllHeld(ctx); err != nil {
 			slog.Error("price refresh failed", "error", err)
 		}
 		// MarketTicker indices cache (#92) — best-effort Yahoo refresh.
@@ -189,7 +193,11 @@ func (s *Scheduler) tick(now time.Time) {
 			slog.Error("market indices refresh failed", "error", err)
 		}
 		idxCancel()
-		s.runDCAMaterialization(ctx, now)
+		// DCA materialization stays weekday-only (a financial decision — never on
+		// Saturday/Sunday; price refresh above is pure data sync).
+		if day >= time.Monday && day <= time.Friday {
+			s.runDCAMaterialization(ctx, now)
+		}
 
 	// Saturday 10:00 hour — fund holdings refresh, once per day.
 	case hour == 10 && day == time.Saturday:

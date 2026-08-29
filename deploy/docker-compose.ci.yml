@@ -1,4 +1,4 @@
-# CI E2E docker-compose — one Go image serves API/MCP and SPA.
+# CI E2E docker-compose — one Go image serves API/MCP.
 # Seed DB first: ./scripts/seed-ci-db.sh
 
 services:
@@ -11,7 +11,6 @@ services:
       - ./ci-data:/app/data
     environment:
       - FUND_DB_PATH=/app/data/fund.db
-      - FUND_STATIC_DIR=/app/web
       - FUND_HTTP_ADDR=0.0.0.0:8765
       - FUND_ENV=ci
       - MCP_API_KEY=ci-test-key

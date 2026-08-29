@@ -1,4 +1,8 @@
-# Go Backend Dockerfile — multi-stage, static binary on Alpine + Vite SPA.
+# Go Backend Dockerfile — multi-stage, static binary on Alpine (backend only).
+#
+# The web UI lives in a separate frontend repo/deployment (packages/web was
+# removed 2026-08-29); FUND_STATIC_DIR can still point at a mounted static dir
+# for development, but production builds no longer embed the SPA.
 #
 # Build:  docker build -f deploy/Dockerfile -t ghcr.io/deliciousbuding/fund-dashboard:<sha> .
 # Run:    docker compose -f deploy/docker-compose.yml up -d
@@ -16,16 +20,6 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /fund-dashboard -ldflags="-s -w" ./cmd/fund-dashboard/
 
-FROM node:24-alpine AS web-build
-WORKDIR /src
-COPY packages/web/package.json packages/web/package.json
-COPY packages/contracts/package.json packages/contracts/package.json
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY packages/contracts/ packages/contracts/
-COPY packages/web/ packages/web/
-RUN npm run build --workspace packages/web
-
 FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata curl && \
@@ -36,7 +30,6 @@ RUN apk add --no-cache ca-certificates tzdata curl && \
 WORKDIR /app
 
 COPY --from=go-build /fund-dashboard /app/fund-dashboard
-COPY --from=web-build /src/packages/web/dist /app/web
 
 # data dir is volume-mounted; ensure ownership so non-root can write SQLite/WAL.
 RUN mkdir -p /app/data /app/backups && chown -R fund:fund /app

@@ -64,23 +64,11 @@ jobs:
         with:
           go-version: '1.26.x'
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Go tests
         run: go test ./... -count=1
 
       - name: Build Go binary
         run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
-
-      - name: Install & test web
-        run: |
-          npm ci
-          cd packages/web && npx vitest run
-
-      - name: Build web
-        run: npm run build --workspace packages/web
 
   # Optional container smoke (no Playwright suite required for tag release).
   image-smoke:
@@ -116,7 +104,6 @@ jobs:
             sleep 1
           done
           curl -fsS http://localhost:8080/api/health | grep -q '"ok"'
-          curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8080/ | grep -E '200|304'
 
       - name: API auth smoke
         run: |

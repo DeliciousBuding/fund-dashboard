@@ -1,5 +1,5 @@
-// @fund-dashboard/contracts — single source of truth for API contracts.
-// Shared by packages/server (REST + MCP) and packages/web.
+// @fund-dashboard/contracts — single source of truth for REST/MCP API contracts.
+// Shared between the Go backend (types) and the frontend repo (zod validation).
 // v3.0 Reshape
 export * from "./schemas/common";
 export * from "./schemas/funds";

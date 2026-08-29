@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build reproducible release archives for GitHub Releases (pure Go).
+# Build reproducible release archives for GitHub Releases (pure Go backend).
+# The web UI is packaged separately by the frontend repo.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,19 +17,12 @@ STAGE_DIR="$OUT_DIR/stage"
 BIN_DIR="$STAGE_DIR/bin"
 
 rm -rf "$OUT_DIR"
-mkdir -p "$BIN_DIR" "$STAGE_DIR/web" "$STAGE_DIR/deploy" "$STAGE_DIR/meta"
+mkdir -p "$BIN_DIR" "$STAGE_DIR/deploy" "$STAGE_DIR/meta"
 
 echo "Building Go binary..."
 mkdir -p bin
 CGO_ENABLED=0 go build -o "bin/fund-dashboard" -ldflags="-s -w" ./cmd/fund-dashboard/
 cp bin/fund-dashboard "$BIN_DIR/fund-dashboard"
-
-if [ ! -f packages/web/dist/index.html ]; then
-  echo "Building web..."
-  npm ci
-  npm run build --workspace packages/web
-fi
-cp -R packages/web/dist "$STAGE_DIR/web/dist"
 
 cp deploy/docker-compose.yml "$STAGE_DIR/deploy/docker-compose.yml"
 cp deploy/docker-compose.ci.yml "$STAGE_DIR/deploy/docker-compose.ci.yml"
@@ -53,15 +47,13 @@ cat > "$STAGE_DIR/meta/release.json" <<EOF
   "version": "$VERSION",
   "git_sha": "$SHA",
   "runtime": "go",
-  "binary": "bin/fund-dashboard",
-  "web": "web/dist"
+  "binary": "bin/fund-dashboard"
 }
 EOF
 
 (
   cd "$STAGE_DIR"
   tar -czf "../fund-dashboard-bin-${VERSION}.tgz" bin
-  tar -czf "../fund-dashboard-web-${VERSION}.tgz" web
   tar -czf "../fund-dashboard-deploy-${VERSION}.tgz" deploy meta
 )
 

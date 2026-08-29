@@ -14,15 +14,5 @@ go test ./... -count=1 -coverprofile="$OUT/go.cover" -covermode=atomic
 go tool cover -func="$OUT/go.cover" | tee "$OUT/go-func.txt"
 go tool cover -func="$OUT/go.cover" | tail -1
 
-if [[ -d packages/web ]]; then
-  echo "==> vitest coverage (if configured)"
-  if npm test --silent -- --coverage 2>"$OUT/vitest-cover.err" | tee "$OUT/vitest-cover.txt"; then
-    echo "vitest coverage finished"
-  else
-    echo "vitest --coverage skipped or failed (non-fatal for observe script):"
-    tail -20 "$OUT/vitest-cover.err" || true
-  fi
-fi
-
 echo
 echo "✓ coverage artifacts in $OUT (observe-only; no threshold gate)"
