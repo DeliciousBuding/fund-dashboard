@@ -197,14 +197,17 @@ func (s Service) queryTrading(ctx context.Context, code string) (map[string]stri
 
 func (s Service) tableExists(ctx context.Context, table string) (bool, error) {
 	// Cross-dialect table existence check.
-	// Try information_schema (PG) first, fall through to sqlite_master.
+	// Try information_schema (PG) first; only fall through to sqlite_master when
+	// the information_schema query itself fails (i.e. we are on SQLite). On PG a
+	// successful count==0 means "table does not exist" — falling through to
+	// sqlite_master would error out because sqlite_master is not a PG table.
 	var count int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM information_schema.tables
 		WHERE table_schema = 'public' AND table_name = ?
 	`, table).Scan(&count)
-	if err == nil && count > 0 {
-		return true, nil
+	if err == nil {
+		return count > 0, nil
 	}
 	// Fall through: sqlite_master
 	if err := s.db.QueryRowContext(ctx, `

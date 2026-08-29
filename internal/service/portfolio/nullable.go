@@ -43,3 +43,10 @@ func nullableIntPtr(value sql.NullInt64) *int {
 	converted := int(value.Int64)
 	return &converted
 }
+
+func nullableInt64Ptr(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Int64
+}

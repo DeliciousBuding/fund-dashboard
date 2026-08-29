@@ -134,11 +134,17 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 			registerAnalysisRoutes(authed, deps.portfolio)
 		})
 		if deps.db != nil {
+			adminForSPA := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
+			r.Group(func(authedExt chi.Router) {
+				authedExt.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
+				registerSPAReadExtensions(authedExt, deps.portfolio, adminForSPA)
+			})
 			r.Group(func(browserWrites chi.Router) {
 				browserWrites.Use(BrowserWriteAuth(deps.auth, cfg.EdgeKey, cfg.EdgeAuthEnabled, cfg.AllowedOrigins))
-				registerSPATransactionRoutes(browserWrites, adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver))
+				registerSPATransactionRoutes(browserWrites, adminForSPA)
 				registerOpsDashboardRoutes(browserWrites, deps.db, deps.dbDriver, cfg.Version)
 				registerPortfolioWriteRoutes(browserWrites, deps.portfolio)
+				registerSPAWriteExtensions(browserWrites, deps.portfolio)
 			})
 			registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings)
 		}
