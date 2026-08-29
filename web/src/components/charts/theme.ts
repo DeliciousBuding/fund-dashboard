@@ -25,6 +25,20 @@ function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// ECharts visualMap 等需要程序化插值的场景只认 rgb/hsl/hex；oklch token 直接传入会渲染成黑色。
+// canvas fillStyle 赋值即触发浏览器 CSS Color 4 解析，读回为标准化 rgb/hex。
+let colorCtx: CanvasRenderingContext2D | null | undefined;
+
+function resolveCssColor(color: string): string {
+  if (!color || typeof document === "undefined") return color;
+  if (!color.startsWith("oklch") && !color.startsWith("oklab")) return color;
+  if (colorCtx === undefined) colorCtx = document.createElement("canvas").getContext("2d");
+  if (!colorCtx) return color; // jsdom 等无 canvas 实现的环境回退原值
+  colorCtx.fillStyle = "#010203"; // 哨兵：fillStyle 赋无效值时保持原值不变
+  colorCtx.fillStyle = color;
+  return colorCtx.fillStyle === "#010203" ? color : colorCtx.fillStyle;
+}
+
 export function currentThemeMode(): "dark" | "light" {
   if (typeof document === "undefined") return "dark";
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -33,19 +47,19 @@ export function currentThemeMode(): "dark" | "light" {
 export function readChartTheme(): ChartTheme {
   const mode = currentThemeMode();
   return {
-    fg: cssVar("--fg"),
-    fg2: cssVar("--fg-2"),
-    fg3: cssVar("--fg-3"),
-    border: cssVar("--border"),
-    surface1: cssVar("--surface-1"),
-    surface2: cssVar("--surface-2"),
-    accent: cssVar("--accent"),
-    up: cssVar("--up"),
-    down: cssVar("--down"),
-    warn: cssVar("--warn"),
-    danger: cssVar("--danger"),
-    info: cssVar("--info"),
-    palette: mode === "dark" ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT,
+    fg: resolveCssColor(cssVar("--fg")),
+    fg2: resolveCssColor(cssVar("--fg-2")),
+    fg3: resolveCssColor(cssVar("--fg-3")),
+    border: resolveCssColor(cssVar("--border")),
+    surface1: resolveCssColor(cssVar("--surface-1")),
+    surface2: resolveCssColor(cssVar("--surface-2")),
+    accent: resolveCssColor(cssVar("--accent")),
+    up: resolveCssColor(cssVar("--up")),
+    down: resolveCssColor(cssVar("--down")),
+    warn: resolveCssColor(cssVar("--warn")),
+    danger: resolveCssColor(cssVar("--danger")),
+    info: resolveCssColor(cssVar("--info")),
+    palette: (mode === "dark" ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT).map(resolveCssColor),
     mode,
   };
 }
