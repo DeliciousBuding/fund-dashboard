@@ -1,9 +1,9 @@
 # fund-dashboard — multi-stage: web (pnpm/Vite) → Go static binary (embeds SPA) → Alpine runtime.
 #
-# Build:  docker build -f deploy/Dockerfile -t ghcr.io/deliciousbuding/fund-dashboard:<sha> .
-# Run:    docker compose -f deploy/docker-compose.yml up -d
-# Env:    MCP_API_KEY (required), FUND_AUTH_PASSWORD_HASH / FUND_ALLOWED_ORIGINS /
-#         FUND_EDGE_AUTH_ENABLED / FUND_STATIC_DIR — see deploy/.env.example
+# 多产物：ARG BIN 选构建命令（fund-dashboard 默认；fund-migrate 供一次性数据迁移镜像）。
+# Build app:  docker build -f deploy/Dockerfile -t ghcr.io/deliciousbuding/fund-dashboard:<sha> .
+# Build migr: docker build -f deploy/Dockerfile --build-arg BIN=fund-migrate -t .../fund-migrate:<sha> .
+# Env: 见 deploy/.env.example（公网形态：FUND_AUTH_SECURE_COOKIE=true + FUND_ALLOWED_ORIGINS 必配）。
 
 # ── web build: Vite outputs straight into internal/webui/dist (go:embed source)
 FROM node:24-alpine AS web-build
@@ -20,6 +20,7 @@ RUN pnpm -C web build
 # ── go build: static binary, SPA embedded via //go:embed all:dist
 FROM golang:1.26-alpine AS go-build
 
+ARG BIN=fund-dashboard
 RUN apk add --no-cache git
 
 WORKDIR /src
@@ -30,10 +31,11 @@ RUN go mod download
 COPY . .
 # Fresh SPA from the web stage (never trust a locally built dist in context).
 COPY --from=web-build /src/internal/webui/dist ./internal/webui/dist
-RUN CGO_ENABLED=0 go build -o /fund-dashboard -ldflags="-s -w" ./cmd/fund-dashboard/
+RUN CGO_ENABLED=0 go build -o /out/${BIN} -ldflags="-s -w" ./cmd/${BIN}/
 
-FROM alpine:3.20
+FROM alpine:3.20 AS runtime
 
+ARG BIN=fund-dashboard
 RUN apk add --no-cache ca-certificates tzdata curl && \
     cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone && \
@@ -41,7 +43,7 @@ RUN apk add --no-cache ca-certificates tzdata curl && \
 
 WORKDIR /app
 
-COPY --from=go-build /fund-dashboard /app/fund-dashboard
+COPY --from=go-build /out/${BIN} /app/${BIN}
 
 # data dir is volume-mounted; ensure ownership so non-root can write SQLite/WAL.
 RUN mkdir -p /app/data /app/backups && chown -R fund:fund /app
