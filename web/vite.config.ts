@@ -18,6 +18,14 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     target: "es2022",
+    rollupOptions: {
+      output: {
+        // echarts 单独成 chunk：图表页懒加载时再拉，首屏不含（W7 预算 <400KB gzip）。
+        manualChunks: {
+          echarts: ["echarts/core", "echarts/charts", "echarts/components", "echarts/renderers"],
+        },
+      },
+    },
   },
   test: {
     environment: "node",

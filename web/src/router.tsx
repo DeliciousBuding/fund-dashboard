@@ -2,15 +2,14 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
 import { type AuthStatus, fetchAuthStatus } from "./lib/auth";
 import { queryClient } from "./lib/queryClient";
-import { DesignPage } from "./routes/_design";
 import { WipPage } from "./routes/_wip";
 import { AppShell } from "./routes/AppShell";
-import { OverviewPage } from "./routes/index";
 import { LoginPage } from "./routes/login";
 import { SetupPage } from "./routes/setup";
 
@@ -63,20 +62,20 @@ const protectedRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/",
-  component: OverviewPage,
+  component: lazyRouteComponent(() => import("./routes/index"), "OverviewPage"),
 });
 
 // 完整路由表一次到位：未落地页面挂 WipPage 占位（数据 API 已就绪，页面随波次替换）。
 const holdingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/holdings",
-  component: () => <WipPage title="持仓" wave="W3" />,
+  component: lazyRouteComponent(() => import("./routes/holdings"), "HoldingsPage"),
 });
 
 const holdingDetailRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/holdings/$code",
-  component: () => <WipPage title="标的详情" wave="W3" />,
+  component: lazyRouteComponent(() => import("./routes/holdings.$code"), "HoldingDetailPage"),
 });
 
 const transactionsRoute = createRoute({
@@ -137,7 +136,7 @@ const settingsRoute = createRoute({
 const designRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/_design",
-  component: DesignPage,
+  component: lazyRouteComponent(() => import("./routes/_design"), "DesignPage"),
 });
 
 const routeTree = rootRoute.addChildren([

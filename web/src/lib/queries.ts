@@ -61,9 +61,10 @@ export function usePortfolios() {
 
 export interface TimelinePoint {
   date: string;
-  value: number;
-  cost: number;
+  total_value: number;
+  total_cost: number;
   pnl: number;
+  pnl_pct: number;
 }
 
 export function useTimeline(portfolioId?: number) {
