@@ -2,13 +2,12 @@
 #
 # Setup:
 #   cp .env.example .env
-#   # fill MCP_API_KEY (openssl rand -hex 32); FUND_EDGE_KEY for frontend mutations
+#   # fill MCP_API_KEY (openssl rand -hex 32); web 登录密码首次访问 /setup 设置
 #   docker compose up -d
 #
 # Secrets are read from .env, never committed. The image runs as the
 # unprivileged 'fund' user; ./data is volume-mounted and must be writable.
-# The next-gen web UI ships embedded via go:embed (see docs/design/); until
-# then the image is API-only and no static dir is mounted.
+# The web UI ships embedded via go:embed (no static dir to mount).
 
 services:
   fund-dashboard:
@@ -30,6 +29,12 @@ services:
       - MCP_API_KEY=${MCP_API_KEY:?set MCP_API_KEY in .env, e.g. openssl rand -hex 32}
       - PUBLIC_MCP_KEY=${PUBLIC_MCP_KEY:-}
       - FUND_EDGE_KEY=${FUND_EDGE_KEY:-}
+      - FUND_EDGE_AUTH_ENABLED=${FUND_EDGE_AUTH_ENABLED:-true}
+      - FUND_AUTH_PASSWORD_HASH=${FUND_AUTH_PASSWORD_HASH:-}
+      - FUND_AUTH_SESSION_TTL=${FUND_AUTH_SESSION_TTL:-}
+      - FUND_AUTH_SESSION_MAX_AGE=${FUND_AUTH_SESSION_MAX_AGE:-}
+      - FUND_AUTH_SECURE_COOKIE=${FUND_AUTH_SECURE_COOKIE:-}
+      - FUND_ALLOWED_ORIGINS=${FUND_ALLOWED_ORIGINS:-}
       - FUND_BACKUP_DIR=/app/backups
       - TZ=${TZ:-Asia/Shanghai}
     logging:

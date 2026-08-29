@@ -20,6 +20,8 @@
 ## [Unreleased]
 
 - **文档** 新增 `docs/design/` 重设计定档（01 产品方向 / 02 技术栈 / 03 设计系统 / 04 鉴权安全 / 05 路线图 W0–W7）：下一代单租户 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌单二进制），MCP 保持 Bearer 双 key 不变。
+- **新功能** `web/` 前端回归（W0+W1.5）：Vite 7 + React 19 + TS strict + Tailwind v4 + TanStack Router/Query + Biome + pnpm workspace；登录/首次初始化页 + 受保护总览壳（真实组合 KPI）；构建直出 `internal/webui/dist` 经 go:embed 内嵌（未构建时服务占位页，二进制恒可编译）。
+- **新功能** 部署链：Dockerfile 三阶段（node 构建 web → go 构建嵌入 → alpine 运行）；补建 `deploy/.env.example`；compose 透传 `FUND_AUTH_*`/`FUND_ALLOWED_ORIGINS`/`FUND_EDGE_AUTH_ENABLED`；CI 新增 `test-web` 门禁（biome/vitest/tsc/build），smoke-e2e 改走 setup→cookie 会话流并断言 SPA 嵌入。
 - **新功能** 单租户登录鉴权（W1）：argon2id 密码哈希 + 服务端 session cookie（30d 滑动 / 90d 封顶），`/api/auth/*` 端点（status/setup/login/logout/password/sessions）；全部 `/api/*` 读路径收进 session 门内；浏览器写路径 session 优先、EdgeKey 兼容 fallback（`FUND_EDGE_AUTH_ENABLED=false` 可关）；CSRF = SameSite=Lax + `X-Fund-Request` 自定义头 + Origin 白名单（`FUND_ALLOWED_ORIGINS` env 化，移除硬编码生产域名）；登录限流（per-IP 5 次锁 15 分钟 + 全局 20/h，429+Retry-After）。
 - **改进** 安全兜底：全局 recover 中间件（panic → 500 JSON，不再断连）；应用层 CSP 头（script-src 'self' 等）；静态资源缓存分级（`/assets/*` immutable、index/sw/manifest no-cache）；未注册 `/api/*` 非 GET 路径返回 JSON 404（原 405）。
 - **修复** strip 遗留红测：`agenttools`/`contracts` 测试引用已删除的 docs/go-backend-rewrite 基线文件 → 改吃内嵌注册表/纯 Go 校验。

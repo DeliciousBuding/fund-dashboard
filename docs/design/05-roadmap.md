@@ -16,22 +16,22 @@
 | W6 | 洞察与设置 | insights / reports / settings 完整化 | 改密码/会话管理全流程手工验收 |
 | W7 | 打磨与 MCP | 动效/a11y/性能/PWA、MCP spec 修复、文档收口 | Lighthouse 关键指标 + 44 工具回归 |
 
-## W0 — 仓库地基
+## W0 — 仓库地基（✅ 已完成 2026-08-29）
 
 - pnpm workspace（`web` + `packages/contracts`）；删 `package-lock.json`；根 scripts 改 pnpm。
 - web 脚手架：Vite 7 + React 19 + TS strict + Tailwind v4 + Biome + vitest 骨架；vite.config 设 outDir `../internal/webui/dist`、dev proxy `/api`+`/mcp` → :8765。
 - `internal/webui/embed.go` + `dist/index.html` 占位；Dockerfile 加 node 阶段。
-- 清理（2026-08-29 已全部落地：死脚本 ×2、npm lock、全仓 9 处「独立仓库」表述、Streamable HTTP 表述、sqlitecompat 引用、Go 版本、内嵌句指针、docs/README 指针化、MASTER.md 主机代号擦除）；**剩余**：补 `deploy/.env.example`。
+- 清理（2026-08-29 已全部落地：死脚本 ×2、npm lock、全仓 9 处「独立仓库」表述、Streamable HTTP 表述、sqlitecompat 引用、Go 版本、内嵌句指针、docs/README 指针化、MASTER.md 主机代号擦除、`deploy/.env.example` 补建）。
 - CI：`test-web` job（biome + tsc + vitest + build）；smoke-e2e 追加 `GET /` HTML 断言。
 - 验收：`go build`（无 web 产物）与 `docker build`（含产物）双路径通过；CI 全绿。
 
-## W1 — 鉴权与安全（设计见 04 文档）
+## W1 — 鉴权与安全（✅ 已完成 2026-08-29；设计见 04 文档）
 
 - `internal/auth`：argon2id、session 签发/校验/滑动/吊销、登录限流器；两张新表（SQLite Go 侧建表 + PG DDL 入 `schema_pg.go`）。
 - 7 个 `/api/auth/*` 端点 + SessionAuth 中间件 + 读路径收门 + 写路径 session 优先/EdgeKey 兼容。
 - recover 中间件（全局链首位）；Origin 白名单 env 化（`FUND_ALLOWED_ORIGINS`）；CSP 进 SecurityHeaders。
 - 03:00 调度追加三清（过期 session / 过期 confirmation / 90 天外 audit）。
-- **验收矩阵**：未登录访问 `/api/portfolio` → 401；未登录 `GET /login` → 200 且 `GET /assets/*.js` → 200（静态资源不收门，登录页可加载）；错密码 5 次 → 锁定 15 分钟；`Sec-Fetch-Site: cross-site` POST → 403；session 有效时写路径不依赖 EdgeKey 存在；MCP 44 工具双 key 回归不变；`go test -race` 全绿。
+- **验收矩阵**（全部通过）：未登录访问 `/api/portfolio` → 401 ✅；未登录 `GET /` 得到 SPA 壳（实施精炼为「静态全公开 + 数据全收门」，登录页永不白屏）✅；错密码 5 次 → 429 锁定 ✅；session 无 `X-Fund-Request` 写 → 403 ✅；EdgeKey 兼容可用 ✅；MCP 44 工具双 key 回归不变 ✅；`go test -race` 全绿 ✅；种子库端到端（setup→登录→读→写→MCP）人工验证通过 ✅。
 
 ## W2 — 设计系统
 

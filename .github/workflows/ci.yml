@@ -37,11 +37,30 @@ jobs:
       - name: Build Go binary
         run: CGO_ENABLED=0 go build -o /dev/null ./cmd/fund-dashboard/
 
+  test-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Lint (biome)
+        run: pnpm exec biome check .
+      - name: Unit tests (vitest)
+        run: pnpm -C web test
+      - name: Build (tsc + vite → internal/webui/dist)
+        run: pnpm -C web build
+
   # ── Container + API smoke (seeded DB) ──────────────────────────
-  # The web UI lives in a separate frontend repo; smoke covers the Go API only.
+  # The SPA is embedded in the image (go:embed); smoke covers the Go API,
+  # the auth gate, and the embedded SPA shell.
 
   smoke-e2e:
-    needs: [test-go, build-go]
+    needs: [test-go, build-go, test-web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,12 +92,28 @@ jobs:
 
       - name: API auth smoke
         run: |
+          set -e
           code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/admin/status)
           test "$code" = "401"
           curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/status | grep -q '"ok":true'
           curl -fsS -H 'Authorization: Bearer ci-test-key' http://localhost:8080/api/admin/dashboard | grep -q '"go_version"'
-          curl -fsS http://localhost:8080/api/portfolio | grep -q 'total_tx'
-          curl -fsS http://localhost:8080/api/funds | grep -q '019173'
+
+          # Session gate: reads are closed without a cookie.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/portfolio)
+          test "$code" = "401"
+
+          # First-run setup → session cookie → reads open.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -c /tmp/fund-cookies -X POST http://localhost:8080/api/auth/setup \
+            -H 'Content-Type: application/json' -H 'X-Fund-Request: fetch' \
+            -d '{"password":"ci-smoke-password-1"}')
+          test "$code" = "201"
+          curl -fsS -b /tmp/fund-cookies http://localhost:8080/api/portfolio | grep -q 'total_tx'
+          curl -fsS -b /tmp/fund-cookies http://localhost:8080/api/funds | grep -q '019173'
+
+          # Embedded SPA shell is served at /.
+          curl -fsS http://localhost:8080/ | grep -q 'id="root"'
+
+          # MCP bearer auth is unchanged.
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/mcp \
             -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')

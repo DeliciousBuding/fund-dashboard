@@ -124,7 +124,7 @@ alpine:3.20     → 不变（非 root fund 用户、tzdata、healthcheck）
 | `scripts/package-release.sh` | ✅ 已删除（2026-08-29） | 引用 4 个不存在的 deploy 文件（另有 1 个有 `-f` 保护），set -e 下必然失败；release.yml 未调用 |
 | `scripts/_count_mcp_tools.py` | ✅ 已删除（2026-08-29） | 依赖 smoke-prod.sh 产出的 fd-tools.json，该脚本不在本仓 |
 | `package-lock.json` | ✅ 已删除（2026-08-29） | 切 pnpm（CI 无 npm 调用） |
-| `deploy/.env.example` | **W0 补建** | `deploy/README.md` 引用但文件不存在 |
+| `deploy/.env.example` | ✅ 已补建（2026-08-29） | `deploy/README.md` 引用但文件不存在 |
 | 「前端独立仓库」表述 | ✅ 已修（2026-08-29，全仓 9 处：ARCHITECTURE×2、根 README、docs/README、TESTING×3、deploy/README、compose/Dockerfile 注释、progress/MASTER） | 定档 monorepo，独立仓库从未存在 |
 | 「Streamable HTTP」表述 | ✅ 已修（2026-08-29，ARCHITECTURE + 根 README） | 实际是无 session 的手写 JSON-RPC POST（spec 兼容修见 05 路线图 W7） |
 | `docs/ARCHITECTURE.md`「生产镜像不再内嵌前端资源」句 | ✅ 已加演进指针（2026-08-29） | 现状属实但与 D7（go:embed 内嵌）方向冲突，已标注 W0 起恢复内嵌 |

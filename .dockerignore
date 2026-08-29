@@ -9,3 +9,8 @@ __pycache__/
 data/
 *.db.gz
 *.sql.gz
+
+# node/build artifacts are rebuilt inside the image (web-build stage)
+**/node_modules
+internal/webui/dist
+web/dist
