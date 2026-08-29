@@ -107,7 +107,7 @@ alpine:3.20     → 不变（非 root fund 用户、tzdata、healthcheck）
 - 生产 compose **零变更**（无 FUND_STATIC_DIR；嵌入即默认）。`FUND_STATIC_DIR` 保留为 dev/调试覆盖。
 
 ### 开发流
-- `pnpm -C web dev`：Vite dev server :5173，`/api` + `/mcp` proxy → `127.0.0.1:8765`。 <!-- leak-guard-allow:LG-29BAAA48 -->
+- `pnpm -C web dev`：Vite dev server :5173，`/api` + `/mcp` proxy → `localhost:8765`。
 - `go run ./cmd/fund-dashboard`：后端照旧。
 - 类生产本地验证：`pnpm -C web build && go build ./cmd/fund-dashboard`（嵌入产物）。
 
