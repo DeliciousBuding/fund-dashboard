@@ -73,8 +73,11 @@ function HarnessCard() {
           <div className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="pb-1.5 text-xs font-medium text-fg-2">推荐动作（供 Agent 参考）</div>
             <ul className="space-y-1">
-              {h.recommended_agent_actions.slice(0, 5).map((a, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-xs">
+              {h.recommended_agent_actions.slice(0, 5).map((a) => (
+                <li
+                  key={`${a.priority}-${a.tool}-${a.reason}`}
+                  className="flex items-baseline gap-2 text-xs"
+                >
                   <Badge
                     tone={
                       a.priority === "high"
@@ -120,8 +123,11 @@ function AlertsCard() {
           <p className="text-sm text-fg-3">无告警：涨跌、回撤、陈旧、定投命中均正常。</p>
         ) : (
           <ul className="space-y-2">
-            {list.map((a, i) => (
-              <li key={i} className="flex items-center gap-3 text-sm">
+            {list.map((a) => (
+              <li
+                key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
+                className="flex items-center gap-3 text-sm"
+              >
                 <Badge
                   tone={
                     a.severity === "critical"

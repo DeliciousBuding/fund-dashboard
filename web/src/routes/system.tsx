@@ -244,8 +244,11 @@ export function SystemPage() {
             </p>
           ) : (
             <ul className="space-y-2">
-              {(alerts.data?.alerts ?? []).map((a, i) => (
-                <li key={`${a.kind}-${a.code}-${i}`} className="flex items-center gap-3 text-sm">
+              {(alerts.data?.alerts ?? []).map((a) => (
+                <li
+                  key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
+                  className="flex items-center gap-3 text-sm"
+                >
                   <Badge
                     tone={
                       a.severity === "critical"
