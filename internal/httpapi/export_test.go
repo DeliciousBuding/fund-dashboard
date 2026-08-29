@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -66,7 +67,9 @@ func readExportRows(t *testing.T, rec *httptest.ResponseRecorder) [][]string {
 }
 
 func TestExportTransactionsXLSX(t *testing.T) {
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"})
+	db := testutil.OpenTempDB(t)
+	defer db.Close()
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 	req := httptest.NewRequest(http.MethodPost, "/api/export/transactions-xlsx", bytes.NewReader(sampleExportBody()))
 	req.Header.Set("Content-Type", "application/json")
 	// No Accept-Language → zh default
@@ -82,7 +85,9 @@ func TestExportTransactionsXLSX(t *testing.T) {
 }
 
 func TestExportTransactionsXLSXEnglish(t *testing.T) {
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"})
+	db := testutil.OpenTempDB(t)
+	defer db.Close()
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 	req := httptest.NewRequest(http.MethodPost, "/api/export/transactions-xlsx", bytes.NewReader(sampleExportBody()))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -98,7 +103,9 @@ func TestExportTransactionsXLSXEnglish(t *testing.T) {
 }
 
 func TestExportTransactionsXLSXRequiresRows(t *testing.T) {
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"})
+	db := testutil.OpenTempDB(t)
+	defer db.Close()
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 	req := httptest.NewRequest(http.MethodPost, "/api/export/transactions-xlsx", bytes.NewReader([]byte(`{"fundName":"x","transactions":[]}`)))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

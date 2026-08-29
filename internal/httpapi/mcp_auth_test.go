@@ -151,7 +151,7 @@ func TestSPATransactionImportUsesEdgeKeyNotAdminKey(t *testing.T) {
 func TestAnalysisCompareRouteReturnsFundsEnvelope(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
-	router := NewRouter(testCfg(), WithDB(db))
+	router := newAuthedRouter(t, testCfg(), db)
 
 	result := doJSONRequest(t, router, http.MethodGet, "/api/analysis/compare?codes=019173,aapl", nil, http.StatusOK)
 	funds, ok := result["funds"].([]any)

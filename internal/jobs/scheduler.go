@@ -217,23 +217,53 @@ func (s *Scheduler) tick(now time.Time) {
 		}
 		slog.Info("holdings refresh complete", "funds", funds, "added", added)
 
-	// Daily 03:00 hour — WAL checkpoint (SQLite only), once per day.
+	// Daily 03:00 hour — WAL checkpoint (SQLite only) + expired-state sweep, once per day.
 	case hour == 3:
 		if !s.claimWindow("wal", windowDay) {
 			return
 		}
-		// Probe SQLite before PRAGMA so PG never sees invalid syntax in server logs.
-		ctx, cancel := s.jobContext(5 * time.Second)
+		ctx, cancel := s.jobContext(30 * time.Second)
 		defer cancel()
+		// Probe SQLite before PRAGMA so PG never sees invalid syntax in server logs.
 		var probe int
 		if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sqlite_master LIMIT 1`).Scan(&probe); err != nil {
 			slog.Debug("WAL checkpoint skipped (non-SQLite driver)")
-			return
-		}
-		if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		} else if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
 		} else {
 			slog.Info("WAL checkpoint complete")
+		}
+		s.sweepExpiredState(ctx)
+	}
+}
+
+// sweepExpiredState piggybacks the daily 03:00 window: expired web sessions,
+// agent confirmations expired >7d, and audit events older than 90d (all three
+// tables previously grew unbounded). Best-effort; legacy databases may lack
+// the tables.
+func (s *Scheduler) sweepExpiredState(ctx context.Context) {
+	now := time.Now()
+	sweeps := []struct {
+		table string
+		query string
+		arg   any
+	}{
+		{"auth_sessions", `DELETE FROM auth_sessions WHERE expires_at < ?`, now.Unix()},
+		{"agent_confirmations", `DELETE FROM agent_confirmations WHERE expires_at < ?`, now.Add(-7 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)},
+		{"agent_audit_events", `DELETE FROM agent_audit_events WHERE created_at < ?`, now.Add(-90 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)},
+	}
+	for _, sweep := range sweeps {
+		res, err := s.db.ExecContext(ctx, sweep.query, sweep.arg)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such table") {
+				slog.Debug("sweep skipped (table absent)", "table", sweep.table)
+				continue
+			}
+			slog.Warn("daily sweep failed", "table", sweep.table, "error", err)
+			continue
+		}
+		if deleted, err := res.RowsAffected(); err == nil && deleted > 0 {
+			slog.Info("daily sweep", "table", sweep.table, "deleted", deleted)
 		}
 	}
 }

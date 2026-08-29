@@ -13,6 +13,7 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
+	authpkg "github.com/DeliciousBuding/fund-dashboard/internal/auth"
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
 	"github.com/DeliciousBuding/fund-dashboard/internal/confirmations"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
@@ -20,6 +21,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/agentstate"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	"github.com/DeliciousBuding/fund-dashboard/internal/webui"
 )
 
 type Runtime struct {
@@ -93,10 +95,26 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	scheduler := jobs.NewScheduler(refresher, db)
 	scheduler.Start()
 
+	// ── single-tenant auth (web login) ─────────────────────────────────
+	// On PG the auth tables are created by EnsurePGSchema; on SQLite we create
+	// them here (same pattern as agentstate).
+	authStore := authpkg.NewStore(db)
+	if cfg.DBDriver != "pg" {
+		if err := authStore.EnsureSchema(ctx); err != nil {
+			return nil, fmt.Errorf("ensure auth schema: %w", err)
+		}
+	}
+	authService := authpkg.NewService(authStore, authpkg.Options{
+		EnvHash: cfg.AuthPasswordHash,
+		TTL:     cfg.AuthSessionTTL,
+		MaxAge:  cfg.AuthSessionMaxAge,
+	})
+
 	// ── HTTP router ──────────────────────────────────────────────────
 	options := []httpapi.RouterOption{
 		httpapi.WithDB(db),
 		httpapi.WithDBDriver(cfg.DBDriver),
+		httpapi.WithAuth(authService),
 	}
 
 	if cfg.StaticDir != "" {
@@ -104,6 +122,9 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 			return nil, fmt.Errorf("open static dir: %w", err)
 		}
 		options = append(options, httpapi.WithStaticFS(os.DirFS(cfg.StaticDir)))
+	} else {
+		// Default: embedded SPA (dist/ when built, placeholder otherwise).
+		options = append(options, httpapi.WithStaticFS(webui.FS()))
 	}
 
 	if cfg.AgentOpsEnabled {

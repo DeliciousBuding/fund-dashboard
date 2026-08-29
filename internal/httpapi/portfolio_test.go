@@ -17,7 +17,7 @@ func TestPortfolioAgentRoutesExposeFactsOnlySurfaces(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(testCfg(), WithDB(db))
+	router := newAuthedRouter(t, testCfg(), db)
 
 	harness := doJSONRequest(t, router, http.MethodGet, "/api/portfolio/harness", nil, http.StatusOK)
 	if harness["decision_boundary"] != "facts_only" {
@@ -99,7 +99,7 @@ func TestPortfolioDashboardRoutesExposeFrontendCompatibleFacts(t *testing.T) {
 		t.Fatalf("seed portfolio definitions: %v", err)
 	}
 
-	router := NewRouter(testCfg(), WithDB(db))
+	router := newAuthedRouter(t, testCfg(), db)
 
 	summary := doJSONRequest(t, router, http.MethodGet, "/api/portfolio", nil, http.StatusOK)
 	if summary["total_tx"].(float64) != 2 ||
@@ -161,7 +161,7 @@ func TestPortfolioPenetrationRouteExposesFrontendCompatibleProjection(t *testing
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(testCfg(), WithDB(db))
+	router := newAuthedRouter(t, testCfg(), db)
 
 	penetration := doJSONRequest(t, router, http.MethodGet, "/api/portfolio/penetration", nil, http.StatusOK)
 	if penetration["total_portfolio_value"].(float64) != 150 ||
@@ -201,7 +201,7 @@ func TestPortfolioSourceEventsWriteFeedbackRoutes(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(testCfg(), WithDB(db))
+	router := newAuthedRouter(t, testCfg(), db)
 
 	created := doJSONRequest(t, router, http.MethodPost, "/api/portfolio/source-events", map[string]any{
 		"title":                 "Apple 发布新财报",

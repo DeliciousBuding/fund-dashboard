@@ -60,3 +60,10 @@ nul/
 
 # local git worktrees (spec-driven / parallel lanes)
 .worktrees/
+
+# webui embed build output (vite outDir); keep only .gitkeep in git
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+
+# deploy env template must be committable
+!deploy/.env.example

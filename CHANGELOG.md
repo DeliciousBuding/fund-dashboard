@@ -20,6 +20,10 @@
 ## [Unreleased]
 
 - **文档** 新增 `docs/design/` 重设计定档（01 产品方向 / 02 技术栈 / 03 设计系统 / 04 鉴权安全 / 05 路线图 W0–W7）：下一代单租户 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌单二进制），MCP 保持 Bearer 双 key 不变。
+- **新功能** 单租户登录鉴权（W1）：argon2id 密码哈希 + 服务端 session cookie（30d 滑动 / 90d 封顶），`/api/auth/*` 端点（status/setup/login/logout/password/sessions）；全部 `/api/*` 读路径收进 session 门内；浏览器写路径 session 优先、EdgeKey 兼容 fallback（`FUND_EDGE_AUTH_ENABLED=false` 可关）；CSRF = SameSite=Lax + `X-Fund-Request` 自定义头 + Origin 白名单（`FUND_ALLOWED_ORIGINS` env 化，移除硬编码生产域名）；登录限流（per-IP 5 次锁 15 分钟 + 全局 20/h，429+Retry-After）。
+- **改进** 安全兜底：全局 recover 中间件（panic → 500 JSON，不再断连）；应用层 CSP 头（script-src 'self' 等）；静态资源缓存分级（`/assets/*` immutable、index/sw/manifest no-cache）；未注册 `/api/*` 非 GET 路径返回 JSON 404（原 405）。
+- **修复** strip 遗留红测：`agenttools`/`contracts` 测试引用已删除的 docs/go-backend-rewrite 基线文件 → 改吃内嵌注册表/纯 Go 校验。
+- **运维** 每日 03:00 窗口追加过期数据清扫：过期 session、过期 >7d 的 agent_confirmations、>90d 的 agent_audit_events（三表此前只增不减）。
 - **chore** 删除死脚本 `scripts/package-release.sh`（引用 4 个不存在的 deploy 文件，必然失败）与 `scripts/_count_mcp_tools.py`（依赖仓外脚本）；删除根 `package-lock.json`（CI 无 npm 调用，W0 切 pnpm）。
 - **文档** `docs/README.md` 指针化（消除与根 README 重复）；`docs/progress/MASTER.md` 消化 strip 交接并擦除主机代号；ARCHITECTURE 修正 sqlitecompat/Streamable HTTP/内嵌句/Go 版本表述。
 

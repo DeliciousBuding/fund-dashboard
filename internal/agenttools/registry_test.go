@@ -2,8 +2,6 @@ package agenttools
 
 import (
 	"encoding/json"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/contracts"
@@ -165,16 +163,14 @@ func TestDefaultRegistryLoadsEmbeddedDraftWithDisabledBoundaries(t *testing.T) {
 	}
 }
 
+// loadDraftRegistry loads the canonical embedded registry (the historical
+// docs/go-backend-rewrite draft file was removed with the rewrite docs; the
+// embedded default_registry.json is the SSOT).
 func loadDraftRegistry(t *testing.T) *Registry {
 	t.Helper()
-	_, current, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("runtime caller failed")
-	}
-	path := filepath.Clean(filepath.Join(filepath.Dir(current), "..", "..", "docs", "go-backend-rewrite", "baseline", "go-tool-registry-draft.json"))
-	registry, err := LoadFile(path, WithDisabledBoundaries())
+	registry, err := DefaultRegistry()
 	if err != nil {
-		t.Fatalf("LoadFile(%s) returned error: %v", path, err)
+		t.Fatalf("DefaultRegistry returned error: %v", err)
 	}
 	return registry
 }

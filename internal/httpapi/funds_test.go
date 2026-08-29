@@ -12,7 +12,7 @@ func TestFundDetailRoutesExposeFrontendCompatibleFacts(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	detail := doJSONRequest(t, router, http.MethodGet, "/api/funds/019173", nil, http.StatusOK)
 	if detail["code"] != "019173" ||
@@ -89,7 +89,7 @@ func TestFundListRoutesExposeFrontendCompatibleSecurityRows(t *testing.T) {
 	db := openPortfolioHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	funds := doJSONArrayRequest(t, router, http.MethodGet, "/api/funds", http.StatusOK)
 	if len(funds) != 2 {

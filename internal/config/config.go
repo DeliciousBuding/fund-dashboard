@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -35,25 +36,45 @@ type Config struct {
 	BackupProducerEnabled   bool
 	AgentOpsEnabled         bool
 	AgentConfirmationSecret string
-	raw                     map[string]string
+	// AuthPasswordHash is an argon2id PHC string (FUND_AUTH_PASSWORD_HASH). When
+	// set it overrides the DB credential and disables password change (IaC mode).
+	AuthPasswordHash  string
+	AuthSessionTTL    time.Duration // FUND_AUTH_SESSION_TTL, sliding window (default 720h)
+	AuthSessionMaxAge time.Duration // FUND_AUTH_SESSION_MAX_AGE, absolute cap (default 2160h)
+	// AuthSecureCookie controls the Secure flag on the session cookie (default
+	// true; set FUND_AUTH_SECURE_COOKIE=false only for plain-HTTP LAN access).
+	AuthSecureCookie bool
+	// EdgeAuthEnabled keeps the legacy X-Fund-Edge-Key browser-write fallback
+	// (default true during migration; FUND_EDGE_AUTH_ENABLED=false disables).
+	EdgeAuthEnabled bool
+	// AllowedOrigins is the browser Origin allowlist for mutations
+	// (FUND_ALLOWED_ORIGINS, comma-separated; localhost any port always allowed).
+	AllowedOrigins []string
+	raw            map[string]string
 }
 
 func Parse(env map[string]string) (Config, error) {
 	cfg := Config{
-		Addr:            valueOrDefault(env["FUND_HTTP_ADDR"], defaultAddr),
-		DBDriver:        strings.ToLower(strings.TrimSpace(env["FUND_DB_DRIVER"])),
-		DBPath:          valueOrDefault(valueOrDefault(env["FUND_DB_PATH"], env["DB_PATH"]), defaultDBPath),
-		PGDSN:           strings.TrimSpace(env["FUND_PG_DSN"]),
-		StaticDir:       valueOrDefault(env["FUND_STATIC_DIR"], env["WEB_ROOT"]),
-		BackupDir:       valueOrDefault(env["FUND_BACKUP_DIR"], env["BACKUP_DIR"]),
-		ServiceName:     valueOrDefault(env["FUND_SERVICE_NAME"], defaultServiceName),
-		Version:         valueOrDefault(env["FUND_VERSION"], defaultVersion),
-		Environment:     valueOrDefault(env["FUND_ENV"], "development"),
-		AdminKey:        strings.TrimSpace(env["MCP_API_KEY"]),
-		PublicMCPKey:    strings.TrimSpace(env["PUBLIC_MCP_KEY"]),
-		EdgeKey:         strings.TrimSpace(env["FUND_EDGE_KEY"]),
-		AgentOpsEnabled: parseBool(env["FUND_AGENT_OPS_ENABLED"]),
-		raw:             copyMap(env),
+		Addr:              valueOrDefault(env["FUND_HTTP_ADDR"], defaultAddr),
+		DBDriver:          strings.ToLower(strings.TrimSpace(env["FUND_DB_DRIVER"])),
+		DBPath:            valueOrDefault(valueOrDefault(env["FUND_DB_PATH"], env["DB_PATH"]), defaultDBPath),
+		PGDSN:             strings.TrimSpace(env["FUND_PG_DSN"]),
+		StaticDir:         valueOrDefault(env["FUND_STATIC_DIR"], env["WEB_ROOT"]),
+		BackupDir:         valueOrDefault(env["FUND_BACKUP_DIR"], env["BACKUP_DIR"]),
+		ServiceName:       valueOrDefault(env["FUND_SERVICE_NAME"], defaultServiceName),
+		Version:           valueOrDefault(env["FUND_VERSION"], defaultVersion),
+		Environment:       valueOrDefault(env["FUND_ENV"], "development"),
+		AdminKey:          strings.TrimSpace(env["MCP_API_KEY"]),
+		PublicMCPKey:      strings.TrimSpace(env["PUBLIC_MCP_KEY"]),
+		EdgeKey:           strings.TrimSpace(env["FUND_EDGE_KEY"]),
+		AgentOpsEnabled:   parseBool(env["FUND_AGENT_OPS_ENABLED"]),
+		AuthPasswordHash:  strings.TrimSpace(env["FUND_AUTH_PASSWORD_HASH"]),
+		AuthSessionTTL:    parseDuration(env["FUND_AUTH_SESSION_TTL"], 720*time.Hour),
+		AuthSessionMaxAge: parseDuration(env["FUND_AUTH_SESSION_MAX_AGE"], 2160*time.Hour),
+		AuthSecureCookie:  parseBoolDefault(env["FUND_AUTH_SECURE_COOKIE"], true),
+		EdgeAuthEnabled:   parseBoolDefault(env["FUND_EDGE_AUTH_ENABLED"], true),
+		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
+		raw:               copyMap(env),
 	}
 
 	if parseBool(env["FUND_BACKUP_PRODUCER_ENABLED"]) {
@@ -87,8 +108,11 @@ func validateProductionSecrets(cfg Config) error {
 	if err := requireStrongSecret("MCP_API_KEY", cfg.AdminKey); err != nil {
 		return err
 	}
-	if err := requireStrongSecret("FUND_EDGE_KEY", cfg.EdgeKey); err != nil {
-		return err
+	// The edge key is only required while the legacy browser-write fallback is on.
+	if cfg.EdgeAuthEnabled {
+		if err := requireStrongSecret("FUND_EDGE_KEY", cfg.EdgeKey); err != nil {
+			return err
+		}
 	}
 	// PUBLIC_MCP_KEY is optional; when set it is internet-facing on /mcp (auth_request off).
 	if cfg.PublicMCPKey != "" {
@@ -161,6 +185,43 @@ func parseBool(value string) bool {
 	default:
 		return false
 	}
+}
+
+// parseBoolDefault parses a boolean env that defaults to true/false when unset.
+func parseBoolDefault(value string, fallback bool) bool {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return parseBool(value)
+}
+
+// parseDuration parses a Go duration env (e.g. "720h"); invalid → fallback.
+func parseDuration(value string, fallback time.Duration) time.Duration {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+// parseOrigins splits a comma-separated Origin allowlist. Default covers the
+// Vite dev server; localhost on any port is always accepted by the origin
+// check itself (see internal/httpapi/origin_check.go).
+func parseOrigins(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return []string{"http://localhost:5173", "http://127.0.0.1:5173"}
+	}
+	parts := strings.Split(value, ",")
+	origins := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	return origins
 }
 
 func boolString(value bool) string {

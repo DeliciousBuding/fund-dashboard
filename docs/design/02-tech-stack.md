@@ -73,8 +73,9 @@ fund-dashboard/
 │   ├── datasource  agenttools  agentops  audit  confirmations
 │   ├── repository/{db,sqlitedb,agentstate}  dialect  contracts  testutil
 │   ├── auth/                   # 新增：密码哈希 + session 管理 + 限流
-│   └── webui/                  # 新增：go:embed 接线（dist/ 由 web 构建产出）
-│       └── dist/index.html     # 占位文件进 git（未构建前端时二进制可编译）
+│   └── webui/                  # 新增：go:embed 接线（all:dist + all:placeholder）
+│       ├── placeholder/index.html  # 入库：未构建前端时的占位页
+│       └── dist/.gitkeep       # 入库：vite 真实产物落此处（gitignored），存在 index.html 即服务真实 SPA
 ├── web/                        # 新增：前端 workspace（pnpm）
 │   ├── src/
 │   │   ├── routes/             # TanStack Router（文件式路由）

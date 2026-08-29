@@ -1,28 +1,11 @@
 package contracts
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 )
 
-func TestContractSchemaFilesParseAsJSON(t *testing.T) {
-	for _, name := range []string{"agent-context-pack.schema.json", "tool-registry.schema.json"} {
-		payload, err := os.ReadFile(contractSchemaPath(t, name))
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		var parsed map[string]any
-		if err := json.Unmarshal(payload, &parsed); err != nil {
-			t.Fatalf("parse %s: %v", name, err)
-		}
-		if parsed["$schema"] == "" || parsed["title"] == "" {
-			t.Fatalf("%s missing $schema/title: %#v", name, parsed)
-		}
-	}
-}
+// The JSON-Schema files under docs/go-backend-rewrite/ were removed with the
+// rewrite docs (fbeafd9); the Go validators below are the live contract.
 
 func TestValidateAgentContextPackJSONRejectsMissingDisabledBackupBoundary(t *testing.T) {
 	payload := []byte(`{
@@ -86,13 +69,4 @@ func TestValidateAgentContextPackJSONRejectsTrailingJSON(t *testing.T) {
 	if err := ValidateAgentContextPackJSON(payload); err == nil {
 		t.Fatalf("ValidateAgentContextPackJSON returned nil, want trailing JSON error")
 	}
-}
-
-func contractSchemaPath(t *testing.T, name string) string {
-	t.Helper()
-	_, current, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("runtime caller failed")
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(current), "..", "..", "docs", "go-backend-rewrite", "contracts", name))
 }

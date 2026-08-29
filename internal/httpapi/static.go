@@ -17,12 +17,14 @@ const maxStaticFileBytes = 8 << 20 // 8 MiB
 
 func registerStaticRoutes(r interface{ NotFound(http.HandlerFunc) }, staticFS fs.FS) {
 	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-		if req.Method != http.MethodGet && req.Method != http.MethodHead {
-			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-			return
-		}
+		// Unknown API paths get the JSON 404 even for non-GET methods — an API
+		// client must never receive the SPA HTML shell or a bare 405.
 		if isAPIRoute(req.URL.Path) {
 			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		if req.Method != http.MethodGet && req.Method != http.MethodHead {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
 
@@ -57,6 +59,15 @@ func registerStaticRoutes(r interface{ NotFound(http.HandlerFunc) }, staticFS fs
 		}
 		if contentType := mime.TypeByExtension(path.Ext(name)); contentType != "" {
 			w.Header().Set("Content-Type", contentType)
+		}
+		// Vite fingerprinted assets are immutable; the HTML entry and SW/manifest
+		// must revalidate every load so deploys take effect immediately.
+		switch {
+		case strings.HasPrefix(name, "assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case name == "index.html" || name == "sw.js" || name == "registerSW.js" ||
+			name == "manifest.webmanifest" || strings.HasPrefix(name, "manifest"):
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		// Prefer streaming when the FS file is seekable (os.DirFS); otherwise bound ReadAll.
 		if seeker, ok := file.(io.ReadSeeker); ok {

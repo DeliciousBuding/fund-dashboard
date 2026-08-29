@@ -426,9 +426,24 @@ var pgSchemaStatements = []string{
 		PRIMARY KEY (seq)
 	)`,
 
+	// auth — single-tenant web login (see internal/auth; times are unix epoch).
+	`CREATE TABLE IF NOT EXISTS auth_credentials (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		password_hash TEXT NOT NULL,
+		created_at BIGINT NOT NULL,
+		updated_at BIGINT NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS auth_sessions (
+		id TEXT PRIMARY KEY,
+		created_at BIGINT NOT NULL,
+		expires_at BIGINT NOT NULL,
+		last_seen_at BIGINT NOT NULL,
+		ip TEXT,
+		user_agent TEXT
+	)`,
+
 	// indexes
-	`CREATE INDEX IF NOT EXISTS idx_transactions_fund_code ON transactions(fund_code)`,
-	`CREATE INDEX IF NOT EXISTS idx_transactions_trade_time ON transactions(trade_time)`,
+	`CREATE INDEX IF NOT EXISTS idx_transactions_fund_code ON transactions(fund_code)`, `CREATE INDEX IF NOT EXISTS idx_transactions_trade_time ON transactions(trade_time)`,
 	`CREATE INDEX IF NOT EXISTS idx_nav_history_fund ON nav_history(fund_code)`,
 	`CREATE INDEX IF NOT EXISTS idx_nav_history_date ON nav_history(date)`,
 	`CREATE INDEX IF NOT EXISTS idx_nav_history_fund_date ON nav_history(fund_code, date DESC)`,
@@ -439,4 +454,5 @@ var pgSchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_dca_plans_fund ON dca_plans(fund_code)`,
 	`CREATE INDEX IF NOT EXISTS idx_agent_confirmations_tool ON agent_confirmations(tool)`,
 	`CREATE INDEX IF NOT EXISTS idx_agent_audit_events_tool ON agent_audit_events(tool)`,
+	`CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at)`,
 }

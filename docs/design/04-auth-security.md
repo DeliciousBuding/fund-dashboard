@@ -12,20 +12,20 @@
 
 - 哈希：**argon2id**（`golang.org/x/crypto/argon2`），参数 m=64 MiB / t=3 / p=2，salt 16B，PHC 字符串编码存储。
 - 环境变量覆盖：`FUND_AUTH_PASSWORD_HASH`（PHC 串）若设置则优先生效（IaC 场景）；未设置且 DB 无凭据 → 进入**首次启动 setup 流**。
-- 新增表（SQLite/PG 双语义，挂入既有幂等建表体系；SQLite 侧由 Go 建——与 agentstate 两表同模式）：
+- 新增表（SQLite 由 `internal/auth` 启动建表，PG 入 `schema_pg.go`；**时间列一律 unix epoch BIGINT**——双方言零解析差异、SQL 可直接比较）：
 
 ```sql
 auth_credentials (                -- 单行（CHECK id=1）
   id            INTEGER PRIMARY KEY CHECK (id = 1),
   password_hash TEXT NOT NULL,    -- argon2id PHC
-  created_at    TEXT NOT NULL,    -- RFC3339Nano（PG: TIMESTAMPTZ）
-  updated_at    TEXT NOT NULL
+  created_at    BIGINT NOT NULL,  -- unix epoch 秒
+  updated_at    BIGINT NOT NULL
 );
 auth_sessions (
   id           TEXT PRIMARY KEY,  -- sha256 hex(session_token)，原值不落库
-  created_at   TEXT NOT NULL,
-  expires_at   TEXT NOT NULL,     -- 滑动过期：活跃即顺延
-  last_seen_at TEXT NOT NULL,
+  created_at   BIGINT NOT NULL,
+  expires_at   BIGINT NOT NULL,   -- 滑动过期：活跃即顺延
+  last_seen_at BIGINT NOT NULL,
   ip           TEXT,
   user_agent   TEXT
 );
@@ -65,8 +65,7 @@ Cookie：`fund_session=<base64url(32B random)>`；`HttpOnly; Secure; SameSite=La
 | 浏览器写路径（transactions 等） | **SessionAuth**；EdgeAuth 兼容 fallback（session 优先） | 退出条件：`FUND_EDGE_AUTH_ENABLED`（W1 默认兼容开启、新部署建议关闭），W7+ 评估拆除代码 |
 | `/mcp` | Bearer 双 key（**不变**） | agent 面零改动 |
 | `/api/admin/*` `/api/agent/*` | Bearer `MCP_API_KEY`（**不变**） | 运维/agent 面零改动；W6 起 `/api/agent/tools*` 只读面额外接受 SessionAuth（供设置页） |
-| SPA HTML 路由 | SessionAuth | 未登录一律回退登录壳 |
-| `/assets/*`、`/manifest.*`、`/sw.js`、favicon | **公开** | 静态资源无敏感数据（Vite 指纹产物）；敏感面全在 `/api/*`，由 API 401 兜底——否则登录页自身脚本无法加载 |
+| SPA（HTML + `/assets/*` + manifest/sw/favicon） | 公开 | 代码本身是开源的，静态资源无敏感数据；**数据面全部收在 `/api/*` 门后**——这是更简洁且不会白屏登录页的模型（实现时精炼） |
 
 实现：`internal/auth`（哈希/session/limiter）+ `internal/httpapi/auth.go`（handlers）+ `SessionAuth` 中间件。路由装配顺序插在全球链之后、业务组之前。
 
@@ -79,7 +78,7 @@ Cookie：`fund_session=<base64url(32B random)>`；`HttpOnly; Secure; SameSite=La
 
 ## 6. 限流与兜底（补测绘发现的缺口）
 
-- **登录限流器**（`internal/auth/limiter.go`，in-memory，不引库）：per-IP 5 次失败 → 15 分钟锁；全局滑动窗 20 次/小时；指数退避响应（第一次失败 200ms，逐次 ×2，cap 5s）；所有失败 `slog.Warn`（含 request_id、IP、UA，**不含密码**）。IP 来源：edge 反代后取 `X-Forwarded-For` 最右一跳（edge 覆盖写入场景）；无 XFF 时 per-IP 桶退化为全局桶——单租户下接受（最坏情况是自己被锁 15 分钟，不损数据安全）。
+- **登录限流器**（`internal/auth/limiter.go`，in-memory，不引库）：per-IP 5 次失败 → 15 分钟锁；全局滑动窗 20 次/小时；超限快速 429 + `Retry-After`（**不让请求睡眠**——tarpit 会堆积 goroutine）；所有失败 `slog.Warn`（含 request_id、IP、UA，**不含密码**）。IP 来源：edge 反代后取 `X-Forwarded-For` 最右一跳（edge 覆盖写入场景）；无 XFF 时 per-IP 桶退化为全局桶——单租户下接受（最坏情况是自己被锁 15 分钟，不损数据安全）。
 - **recover 中间件**：补 chi `middleware.Recoverer` 语义的手写版（复用现有 WriteJSON 错误形状），全局链第一位——handler panic 返回 500 `internal_error` 而不是断连。
 - 应用层通用限流仍交 edge（现状注释立场不变），应用内只对 auth 面设防。
 

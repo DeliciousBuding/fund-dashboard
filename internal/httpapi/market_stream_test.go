@@ -36,7 +36,7 @@ func TestMarketStreamMaxLifetimeClosesAndAdvertises(t *testing.T) {
 
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/market/stream", nil)
 	rec := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestMarketStreamSurvivesServerWriteTimeout(t *testing.T) {
 
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	srv := httptest.NewUnstartedServer(router)
 	srv.Config.WriteTimeout = 150 * time.Millisecond

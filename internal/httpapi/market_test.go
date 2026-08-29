@@ -17,7 +17,7 @@ func TestMarketAndStockRoutesExposeCachedFactsOnlyData(t *testing.T) {
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	// REST contract is MarketIndex[] for the SPA; MCP keeps the service envelope.
 	indices := doJSONArrayRequest(t, router, http.MethodGet, "/api/market/indices", http.StatusOK)
@@ -86,7 +86,7 @@ func TestExchangeRateRouteFetchesConfiguredFactsOnlySource(t *testing.T) {
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
 
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 	rate := doJSONRequest(t, router, http.MethodGet, "/api/market/exchange-rate", nil, http.StatusOK)
 	if rate["from"] != "USD" ||
 		rate["to"] != "CNY" ||
@@ -104,7 +104,7 @@ func TestIndexLiveAndHistoryRoutes(t *testing.T) {
 	// Stub Yahoo history via service package hooks is package-private; use live fixture indices for live quote.
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	// Live quote from indices cache (fresh fixture timestamps from #92).
 	live := doJSONRequest(t, router, http.MethodGet, "/api/market/index/GSPC", nil, http.StatusOK)
@@ -215,7 +215,7 @@ var marketHTTPFixtureStatements = []string{
 func TestMarketStreamEmitsIndicesEvent(t *testing.T) {
 	db := openMarketHTTPFixture(t)
 	defer db.Close()
-	router := NewRouter(config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, WithDB(db))
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

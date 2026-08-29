@@ -25,6 +25,14 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		if h.Get("Cross-Origin-Resource-Policy") == "" {
 			h.Set("Cross-Origin-Resource-Policy", "same-site")
 		}
+		// CSP for the embedded SPA (and harmless on JSON). No inline script
+		// (Vite output is clean); style-src stays 'self' unless a dependency
+		// proves to need inline <style> (see docs/design/04-auth-security.md §8).
+		if h.Get("Content-Security-Policy") == "" {
+			h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; "+
+				"img-src 'self' data:; font-src 'self'; connect-src 'self'; "+
+				"frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

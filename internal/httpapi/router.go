@@ -10,6 +10,7 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
+	"github.com/DeliciousBuding/fund-dashboard/internal/auth"
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
@@ -25,6 +26,7 @@ type RouterOption func(*routerDeps)
 type routerDeps struct {
 	portfolio    *portfoliosvc.Service
 	agentOps     *agentops.Service
+	auth         *auth.Service
 	staticFS     fs.FS
 	db           DB
 	dbDriver     string
@@ -56,6 +58,12 @@ func WithStaticFS(staticFS fs.FS) RouterOption {
 	return func(deps *routerDeps) { deps.staticFS = staticFS }
 }
 
+// WithAuth wires the single-tenant auth service: /api/auth/* routes plus
+// session gating on reads and browser writes.
+func WithAuth(svc *auth.Service) RouterOption {
+	return func(deps *routerDeps) { deps.auth = svc }
+}
+
 // WithCrawlHandler registers POST /api/admin/crawl-nav with the given handler.
 // The handler is expected to call the price-refresh job and return JSON.
 func WithCrawlHandler(fn http.HandlerFunc) RouterOption {
@@ -83,11 +91,18 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 
 	r := chi.NewRouter()
 	r.Use(RequestID)
+	r.Use(Recoverer)
 	r.Use(SecurityHeaders)
 	r.Use(AccessLog)
 
 	// Public.
 	r.Get("/api/health", healthHandler(cfg))
+
+	// Single-tenant auth: /api/auth/status|setup|login are public (rate-limited),
+	// logout/password/sessions require a session.
+	if deps.auth != nil {
+		registerAuthRoutes(r, deps.auth, cfg.AuthSecureCookie, cfg.AllowedOrigins)
+	}
 
 	// Agent tool registry / authorize simulation — operator Bearer only.
 	// Not an execution path, but must not be a public reconnaissance surface.
@@ -106,20 +121,21 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 		})
 	}
 
-	// Portfolio & market reads are public at the app layer. Public edge (reverse proxy)
-	// may still rate-limit / TLS-terminate; SPA mutations require EdgeKey (below).
-	// Client-side export (xlsx) needs no portfolio service — always register (#97).
-	registerExportRoutes(r)
+	// Portfolio & market reads require a session (single-tenant: everything sits
+	// behind the login). Browser writes accept session (preferred) or the legacy
+	// edge-injected EdgeKey while FUND_EDGE_AUTH_ENABLED stays on.
 	if deps.portfolio != nil {
-		registerPortfolioRoutes(r, deps.portfolio)
-		registerFundRoutes(r, deps.portfolio)
-		registerMarketRoutes(r, deps.portfolio)
-		registerAnalysisRoutes(r, deps.portfolio)
+		r.Group(func(authed chi.Router) {
+			authed.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
+			registerExportRoutes(authed)
+			registerPortfolioRoutes(authed, deps.portfolio)
+			registerFundRoutes(authed, deps.portfolio)
+			registerMarketRoutes(authed, deps.portfolio)
+			registerAnalysisRoutes(authed, deps.portfolio)
+		})
 		if deps.db != nil {
-			// SPA mutations + ops UI: EdgeAuth via nginx-injected X-Fund-Edge-Key
-			// (browser never holds the key). Not OIDC.
 			r.Group(func(browserWrites chi.Router) {
-				browserWrites.Use(EdgeAuth(cfg.EdgeKey))
+				browserWrites.Use(BrowserWriteAuth(deps.auth, cfg.EdgeKey, cfg.EdgeAuthEnabled, cfg.AllowedOrigins))
 				registerSPATransactionRoutes(browserWrites, adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver))
 				registerOpsDashboardRoutes(browserWrites, deps.db, deps.dbDriver, cfg.Version)
 				registerPortfolioWriteRoutes(browserWrites, deps.portfolio)
