@@ -124,8 +124,12 @@ func (s Service) tableColumns(ctx context.Context, table string) (map[string]str
 
 func (s Service) probeTableColumns(ctx context.Context, table string) (map[string]struct{}, error) {
 	out := map[string]struct{}{}
-	// SQLite first (local/CI fixtures).
-	if rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, quoteSQLiteIdent(table))); err == nil {
+	// SQLite first (local/CI fixtures). On SQLite, PRAGMA table_info on a
+	// missing table succeeds with 0 rows (no error) — that means "table
+	// absent", not "try PostgreSQL". Only a real PRAGMA error (i.e. a
+	// non-SQLite connection) falls through to the information_schema branch.
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, quoteSQLiteIdent(table)))
+	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var cid int
@@ -140,18 +144,15 @@ func (s Service) probeTableColumns(ctx context.Context, table string) (map[strin
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		if len(out) > 0 {
-			return out, nil
-		}
+		return out, nil
 	}
 	// PostgreSQL information_schema (production Azure PG).
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err = s.db.QueryContext(ctx, `
 		SELECT column_name
 		FROM information_schema.columns
 		WHERE table_schema = current_schema() AND table_name = ?
 	`, table)
 	if err != nil {
-		// SQLite path already returned empty; surface real PG/driver errors.
 		return out, fmt.Errorf("list columns %s: %w", table, err)
 	}
 	defer rows.Close()

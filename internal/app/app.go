@@ -46,6 +46,14 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 			_ = dbase.Close()
 			return nil, fmt.Errorf("ensure pg schema: %w", err)
 		}
+	} else {
+		// SQLite first install: a fresh self-hosted DB must boot into a usable
+		// empty state, not a wall of internal_error 500s (agent tables come from
+		// buildWithDB's EnsureSchema calls, same as before).
+		if err := db.EnsureSQLiteSchema(ctx, dbase); err != nil {
+			_ = dbase.Close()
+			return nil, fmt.Errorf("ensure sqlite schema: %w", err)
+		}
 	}
 
 	runtime, err := buildWithDB(ctx, cfg, dbase)

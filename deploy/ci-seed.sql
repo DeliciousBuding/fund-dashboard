@@ -1,5 +1,7 @@
 -- CI / local smoke seed for fund-dashboard Go backend.
 -- Minimal production-shaped schema + two holdings so read APIs and admin checks work.
+-- NOTE: real self-hosted first installs use internal/repository/db/schema_sqlite.go
+-- (EnsureSQLiteSchema) at boot; this file only seeds CI/local fixtures.
 
 PRAGMA foreign_keys=ON;
 

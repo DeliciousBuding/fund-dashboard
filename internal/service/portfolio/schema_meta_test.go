@@ -127,6 +127,26 @@ func TestSchemaMetaCache_SharedAcrossValueCopy(t *testing.T) {
 	}
 }
 
+func TestProbeTableColumnsMissingTableOnSQLiteReturnsEmpty(t *testing.T) {
+	// PRAGMA table_info on a missing SQLite table succeeds with 0 rows; the
+	// probe must return an empty set (table absent) instead of falling through
+	// to PostgreSQL's information_schema and 500-ing on SQLite.
+	db, err := sql.Open("sqlite", "file:probe-missing-cols?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	svc := NewService(db)
+	cols, err := svc.probeTableColumns(context.Background(), "no_such_table_xyz")
+	if err != nil {
+		t.Fatalf("probe missing table columns: %v (want empty set, no error)", err)
+	}
+	if len(cols) != 0 {
+		t.Fatalf("cols = %#v, want empty set", cols)
+	}
+}
+
 func TestPreparedKlineUpsert_ReuseAndWrite(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:schema-kline-prep?mode=memory&cache=shared")
 	if err != nil {
