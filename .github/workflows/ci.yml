@@ -52,7 +52,19 @@ jobs:
         run: pnpm exec biome check .
       - name: Unit tests (vitest)
         run: pnpm -C web test
-      - name: Build (tsc + vite → internal/webui/dist)
+
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck + build (tsc + vite → internal/webui/dist)
         run: pnpm -C web build
 
   # ── Container + API smoke (seeded DB) ──────────────────────────
