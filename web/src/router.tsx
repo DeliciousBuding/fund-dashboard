@@ -81,13 +81,13 @@ const holdingDetailRoute = createRoute({
 const transactionsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/transactions",
-  component: () => <WipPage title="交易" wave="W4" />,
+  component: lazyRouteComponent(() => import("./routes/transactions"), "TransactionsPage"),
 });
 
 const dcaRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/dca",
-  component: () => <WipPage title="定投" wave="W4" />,
+  component: lazyRouteComponent(() => import("./routes/dca"), "DcaPage"),
 });
 
 const analysisRoute = createRoute({

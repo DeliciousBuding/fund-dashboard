@@ -321,3 +321,84 @@ export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
     staleTime: 60 * 1000,
   });
 }
+
+// ── W4 台账 / DCA ────────────────────────────────────────────────────
+
+export interface TransactionListItem {
+  seq: number;
+  trade_time: string | null;
+  confirm_date: string | null;
+  direction: string | null;
+  trade_type: string | null;
+  fund_code: string;
+  fund_name: string | null;
+  amount: number | null;
+  shares: number | null;
+  fee: number | null;
+  order_id: string | null;
+  anomaly: string | null;
+  settlement_days: number | null;
+  portfolio_id: number | null;
+}
+
+export interface TransactionsPage {
+  transactions: TransactionListItem[];
+  total: number;
+}
+
+export interface TransactionsFilter {
+  fundCode?: string;
+  direction?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  portfolioId?: number;
+}
+
+export function useTransactions(filter: TransactionsFilter) {
+  const params = new URLSearchParams();
+  if (filter.fundCode) params.set("fund_code", filter.fundCode);
+  if (filter.direction) params.set("direction", filter.direction);
+  if (filter.search) params.set("search", filter.search);
+  params.set("limit", String(filter.limit ?? 200));
+  params.set("offset", String(filter.offset ?? 0));
+  if (filter.portfolioId && filter.portfolioId > 1)
+    params.set("portfolio_id", String(filter.portfolioId));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["transactions", qs],
+    queryFn: ({ signal }) => api<TransactionsPage>(`/api/transactions?${qs}`, { signal }),
+    staleTime: 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export interface DcaPlan {
+  id: number;
+  fund_code: string;
+  fund_name: string | null;
+  amount: number;
+  frequency: string;
+  weekday_mask: string;
+  trade_type: string;
+  portfolio_id: number;
+  start_date: string;
+  end_date: string | null;
+  active: number;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function useDcaPlans(activeOnly = false, portfolioId?: number) {
+  const params = new URLSearchParams();
+  if (activeOnly) params.set("active", "true");
+  if (portfolioId && portfolioId > 1) params.set("portfolio_id", String(portfolioId));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["dca-plans", qs],
+    queryFn: ({ signal }) =>
+      api<{ plans: DcaPlan[] }>(`/api/dca/plans${qs ? `?${qs}` : ""}`, { signal }),
+    staleTime: 60 * 1000,
+  });
+}
