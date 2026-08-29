@@ -36,6 +36,7 @@ RUN CGO_ENABLED=0 go build -o /out/${BIN} -ldflags="-s -w" ./cmd/${BIN}/
 FROM alpine:3.20 AS runtime
 
 ARG BIN=fund-dashboard
+ENV BIN=${BIN}
 RUN apk add --no-cache ca-certificates tzdata curl && \
     cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     echo "Asia/Shanghai" > /etc/timezone && \
@@ -55,4 +56,5 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8765/api/health || exit 1
 
-ENTRYPOINT ["/app/fund-dashboard"]
+# ARG 无法用于 JSON ENTRYPOINT；ENV BIN 由构建 ARG 注入（app 或 migrate 镜像共用本 Dockerfile）
+ENTRYPOINT ["/bin/sh", "-c", "exec /app/$BIN \"$@\"", "--"]
