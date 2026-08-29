@@ -10,7 +10,6 @@
     "test:cover": "bash scripts/test-cover.sh",
     "vet:go": "go vet ./...",
     "build:go": "go build -o bin/fund-dashboard ./cmd/fund-dashboard",
-    "seed:ci": "bash scripts/seed-ci-db.sh",
-    "release:package": "bash scripts/package-release.sh"
+    "seed:ci": "bash scripts/seed-ci-db.sh"
   }
 }

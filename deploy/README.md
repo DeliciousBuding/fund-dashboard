@@ -1,7 +1,7 @@
 # Deploy — build & run
 
 Single-container image: Go API + MCP backend (static binary), SQLite persistence.
-The web UI is a separate frontend repo — this image is API-only.
+The next-gen web UI returns as `web/` embedded via go:embed (see `docs/design/`, W0 adds the node build stage); until then the image is API-only.
 
 ## Build the image
 

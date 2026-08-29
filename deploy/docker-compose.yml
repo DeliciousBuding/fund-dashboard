@@ -7,7 +7,8 @@
 #
 # Secrets are read from .env, never committed. The image runs as the
 # unprivileged 'fund' user; ./data is volume-mounted and must be writable.
-# The frontend is a separate repo; API-only image — no static dir mounted.
+# The next-gen web UI ships embedded via go:embed (see docs/design/); until
+# then the image is API-only and no static dir is mounted.
 
 services:
   fund-dashboard:

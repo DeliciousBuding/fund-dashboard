@@ -2,7 +2,7 @@
 最后更新：2026-08-29
 
 > 本文件回答：测什么、默认跑什么、何时加宽、关键路径对应哪条检查。
-> 前端已独立仓库（2026-08-29）：本文件只覆盖 Go 后端 / API / MCP。
+> 前端 `packages/web` 已移出（2026-08-29）；新一代 `web/` 回归本仓前，本文件只覆盖 Go 后端 / API / MCP（前端测试体系 W0 起随 `web/` 建立，见 `docs/design/02`）。
 
 ## 1. Pyramid（分层）
 
@@ -50,7 +50,7 @@ go test ./... -count=1
 2. **`smoke-e2e`**（seed → image → compose → curl auth + MCP）
 3. `build-and-push` **依赖** smoke-e2e 绿
 
-**明确禁止**：把 Playwright 或真上游 crawl 设为默认 PR 门禁（前端已独立仓库）。
+**明确禁止**：把真上游 crawl 设为默认 PR 门禁；Playwright e2e（随 `web/` 回归，W0 起）走独立 job，不打断 Go 门禁链。
 
 ## 4. Critical-path map
 
@@ -91,4 +91,4 @@ go test ./... -count=1
 
 ## 7. 边界
 
-`go test` / `smoke-prod` 是本仓库唯一测试权威；前端测试权在前端仓库；Bun 时代测试已随旧代码移除。
+`go test` + 容器 smoke-e2e（CI）是本仓库测试权威；前端测试随 `web/` 回归（W0 起，见 `docs/design/02`）；Bun 时代测试已随旧代码移除。

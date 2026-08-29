@@ -7,14 +7,14 @@
 
 个人投资组合分析平台：基金 / 股票持仓管理、净值追踪、XIRR 年化、最大回撤、穿透分析、DCA 定投回测、蒙特卡洛模拟，以及面向 AI agent 的 MCP server。
 
-纯 **Go** 后端，SQLite 持久化（可选 PostgreSQL）。前端独立仓库维护（`packages/web` 已于 2026-08-29 移出，见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)）。
+纯 **Go** 后端，SQLite 持久化（可选 PostgreSQL）。`packages/web` 已于 2026-08-29 移出；下一代单租户 Web UI（登录密码鉴权 + go:embed 内嵌单二进制）已定档，设计见 [docs/design/](docs/design/README.md)。
 
 ## 功能
 
 - **持仓管理**：基金 + 股票（A 股 / 港股 / 美股）统一管理，交易 CRUD，自动快照重算
 - **量化分析**：XIRR 年化收益率、最大回撤、组合净值走势、盈亏分布、蒙特卡洛模拟、相关性热力图、基金对比雷达、DCA 定投回测
 - **穿透分析**：基金持仓穿透到底层股票，按行业聚合
-- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），Streamable HTTP 传输，Bearer key 认证
+- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），JSON-RPC over HTTP（单端点 `POST /mcp`），Bearer key 认证
 - **REST API**：`/api/*` 全量读写端点，zod 契约共享（`packages/contracts`）
 
 ## 技术栈
@@ -24,7 +24,8 @@
 | 后端 | Go（`cmd/fund-dashboard` + `internal/*`），`net/http` + `go-chi` |
 | 契约 | zod schemas（`packages/contracts`）——前后端共享的 API 契约 SSOT |
 | 存储 | SQLite（默认），可选 PostgreSQL 双驱动 |
-| 认证 | Bearer key（operator / analyst 双 scope）+ edge proxy 注入的写路径 key |
+| 认证 | Bearer key（operator / analyst 双 scope）+ edge proxy 注入的写路径 key；Web 登录 session（规划 W1，见 docs/design/04） |
+| 前端 | `web/`（规划：React 19 + Vite 7 + Tailwind v4 + shadcn/ui + ECharts，go:embed 内嵌，见 docs/design/02） |
 
 ## 快速开始
 
@@ -43,6 +44,7 @@ docker build -f deploy/Dockerfile -t fund-dashboard:local .
 
 | 文档 | 内容 |
 |------|------|
+| [`docs/design/`](docs/design/README.md) | **重设计定档**（产品方向 / 技术栈 / 设计系统 / 鉴权安全 / 路线图） |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 架构 |
 | [`docs/TESTING.md`](docs/TESTING.md) | 测试体系 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 变更日志 |

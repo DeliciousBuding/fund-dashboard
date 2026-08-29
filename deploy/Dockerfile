@@ -1,8 +1,8 @@
-# Go Backend Dockerfile — multi-stage, static binary on Alpine (backend only).
+# Go Backend Dockerfile — multi-stage, static binary on Alpine.
 #
-# The web UI lives in a separate frontend repo/deployment (packages/web was
-# removed 2026-08-29); FUND_STATIC_DIR can still point at a mounted static dir
-# for development, but production builds no longer embed the SPA.
+# packages/web was removed 2026-08-29; the next-gen web UI returns as web/
+# and ships embedded via go:embed (see docs/design/, W0 adds a node build
+# stage here). FUND_STATIC_DIR can still point at a mounted static dir for dev.
 #
 # Build:  docker build -f deploy/Dockerfile -t ghcr.io/deliciousbuding/fund-dashboard:<sha> .
 # Run:    docker compose -f deploy/docker-compose.yml up -d

@@ -19,6 +19,10 @@
 
 ## [Unreleased]
 
+- **文档** 新增 `docs/design/` 重设计定档（01 产品方向 / 02 技术栈 / 03 设计系统 / 04 鉴权安全 / 05 路线图 W0–W7）：下一代单租户 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌单二进制），MCP 保持 Bearer 双 key 不变。
+- **chore** 删除死脚本 `scripts/package-release.sh`（引用 4 个不存在的 deploy 文件，必然失败）与 `scripts/_count_mcp_tools.py`（依赖仓外脚本）；删除根 `package-lock.json`（CI 无 npm 调用，W0 切 pnpm）。
+- **文档** `docs/README.md` 指针化（消除与根 README 重复）；`docs/progress/MASTER.md` 消化 strip 交接并擦除主机代号；ARCHITECTURE 修正 sqlitecompat/Streamable HTTP/内嵌句/Go 版本表述。
+
 - **chore** 前端移出：删除 `packages/web`（React/Vite/Playwright/Vitest），仓库变为纯 Go 后端 + zod contracts；镜像改为 API-only（Dockerfile/CI/release 同步；`FUND_STATIC_DIR` 移除出 compose）。
 - **修复** scheduler price 窗口改为**每日 20:00 全量刷新持仓 NAV**（原工作日 20:00 stale-only），QDII T+2 净值不再滞后；DCA materialization 保持仅工作日。
 - **chore** 删除 LEGACY `packages/crawler`（Python AKShare 离线爬虫；生产已是 Go datasource/jobs）。
