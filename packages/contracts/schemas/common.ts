@@ -3,10 +3,10 @@
 import { z } from "zod";
 
 /** Market identifier for securities */
-export type Market = 'sh' | 'sz' | 'hk' | 'us';
+export type Market = "sh" | "sz" | "hk" | "us";
 
 /** Type discriminator between funds and individual stocks */
-export type SecurityType = 'fund' | 'stock';
+export type SecurityType = "fund" | "stock";
 
 /**
  * Unified API error shape (fixes G8).

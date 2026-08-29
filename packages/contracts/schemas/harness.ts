@@ -28,7 +28,7 @@ export type InvestmentHarnessHoldingSignal = z.infer<typeof InvestmentHarnessHol
 
 export const InvestmentHarnessSnapshotSchema = z.object({
   generated_at: z.string(),
-  decision_boundary: z.literal('facts_only'),
+  decision_boundary: z.literal("facts_only"),
   total_value: z.number(),
   holdings_count: z.number(),
   allocation: PortfolioAllocationSchema,
@@ -41,42 +41,46 @@ export const InvestmentHarnessSnapshotSchema = z.object({
   }),
   available_agent_tools: z.array(z.string()),
   agent_permissions: z.object({
-    decision_boundary: z.literal('facts_only'),
+    decision_boundary: z.literal("facts_only"),
     read_scope: z.array(z.string()),
     write_scope: z.array(z.string()),
     requires_confirmation: z.array(z.string()),
     disabled_operations: z.array(z.string()),
   }),
-  agent_capabilities: z.array(z.object({
-    tool: z.string(),
-    scope: z.enum(['read', 'write', 'maintenance', 'external_context']),
-    permission: z.enum(['allowed', 'requires_confirmation', 'disabled']),
-    risk_level: z.enum(['low', 'medium', 'high']),
-    use_for: z.string(),
-  })),
-  recommended_agent_actions: z.array(z.object({
-    priority: z.enum(['high', 'medium', 'low']),
-    tool: z.string(),
-    reason: z.string(),
-    input: z.record(z.string(), z.unknown()).optional(),
-  })),
+  agent_capabilities: z.array(
+    z.object({
+      tool: z.string(),
+      scope: z.enum(["read", "write", "maintenance", "external_context"]),
+      permission: z.enum(["allowed", "requires_confirmation", "disabled"]),
+      risk_level: z.enum(["low", "medium", "high"]),
+      use_for: z.string(),
+    }),
+  ),
+  recommended_agent_actions: z.array(
+    z.object({
+      priority: z.enum(["high", "medium", "low"]),
+      tool: z.string(),
+      reason: z.string(),
+      input: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
   agent_brief: z.string(),
 });
 export type InvestmentHarnessSnapshot = z.infer<typeof InvestmentHarnessSnapshotSchema>;
 
 export const InvestmentSourceQuerySchema = z.object({
   id: z.string(),
-  scope: z.enum(['portfolio', 'holding', 'underlying']),
+  scope: z.enum(["portfolio", "holding", "underlying"]),
   entity_code: z.string().nullable(),
   entity_name: z.string(),
   query: z.string(),
   reason: z.string(),
-  freshness: z.enum(['intraday', 'daily', 'weekly']),
+  freshness: z.enum(["intraday", "daily", "weekly"]),
 });
 export type InvestmentSourceQuery = z.infer<typeof InvestmentSourceQuerySchema>;
 
 export const InvestmentSourceTargetSchema = z.object({
-  kind: z.enum(['web_search', 'market_data', 'official_disclosure', 'local_mcp']),
+  kind: z.enum(["web_search", "market_data", "official_disclosure", "local_mcp"]),
   name: z.string(),
   url_template: z.string().nullable(),
   use_for: z.string(),
@@ -85,7 +89,7 @@ export type InvestmentSourceTarget = z.infer<typeof InvestmentSourceTargetSchema
 
 export const InvestmentSourceBriefSchema = z.object({
   generated_at: z.string(),
-  decision_boundary: z.literal('source_queries_only'),
+  decision_boundary: z.literal("source_queries_only"),
   queries: z.array(InvestmentSourceQuerySchema),
   source_targets: z.array(InvestmentSourceTargetSchema),
   coverage: z.object({
@@ -99,20 +103,22 @@ export type InvestmentSourceBrief = z.infer<typeof InvestmentSourceBriefSchema>;
 
 // ═══════ Source Events (V4) ═══════
 
-export const SourceEventSchema = z.object({
-  id: z.number(),
-  title: z.string(),
-  url: z.string().nullable(),
-  source: z.string(),
-  snippet: z.string().nullable(),
-  query: z.string().nullable(),
-  related_security_code: z.string().nullable(),
-  related_security_name: z.string().nullable(),
-  is_read: z.boolean(),
-  is_useful: z.boolean(),
-  fetched_at: z.string(),
-  created_at: z.string(), // G3 fix (query was already present)
-}).passthrough();
+export const SourceEventSchema = z
+  .object({
+    id: z.number(),
+    title: z.string(),
+    url: z.string().nullable(),
+    source: z.string(),
+    snippet: z.string().nullable(),
+    query: z.string().nullable(),
+    related_security_code: z.string().nullable(),
+    related_security_name: z.string().nullable(),
+    is_read: z.boolean(),
+    is_useful: z.boolean(),
+    fetched_at: z.string(),
+    created_at: z.string(), // G3 fix (query was already present)
+  })
+  .passthrough();
 export type SourceEvent = z.infer<typeof SourceEventSchema>;
 
 /**
@@ -121,7 +127,7 @@ export type SourceEvent = z.infer<typeof SourceEventSchema>;
  */
 export const SourceEventsResponseSchema = z.object({
   count: z.number(),
-  decision_boundary: z.literal('facts_only'),
+  decision_boundary: z.literal("facts_only"),
   events: z.array(SourceEventSchema),
 });
 export type SourceEventsResponse = z.infer<typeof SourceEventsResponseSchema>;

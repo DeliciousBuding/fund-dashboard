@@ -18,48 +18,52 @@ export const FundInfoSchema = z.object({
 });
 export type FundInfo = z.infer<typeof FundInfoSchema>;
 
-export const TransactionSchema = z.object({
-  seq: z.number().nullable(),
-  trade_time: z.string(),
-  confirm_date: z.string().nullable().optional(),
-  trade_type: z.string(),
-  direction: z.string(),
-  amount: z.number(),
-  shares: z.number(),
-  fee: z.number(),
-  nav: z.number().nullable(),
-  inferred_nav: z.number().nullable(),
-  nav_verified: z.union([z.boolean(), z.number()]).nullable().optional(),
-  trade_day_type: z.string().nullable().optional(),
-  settlement_days: z.number().nullable().optional(),
-  effective_nav_date: z.string().nullable().optional(),
-  order_id: z.string().nullable().optional(),
-  anomaly: z.string().nullable(),
-}).passthrough();
+export const TransactionSchema = z
+  .object({
+    seq: z.number().nullable(),
+    trade_time: z.string(),
+    confirm_date: z.string().nullable().optional(),
+    trade_type: z.string(),
+    direction: z.string(),
+    amount: z.number(),
+    shares: z.number(),
+    fee: z.number(),
+    nav: z.number().nullable(),
+    inferred_nav: z.number().nullable(),
+    nav_verified: z.union([z.boolean(), z.number()]).nullable().optional(),
+    trade_day_type: z.string().nullable().optional(),
+    settlement_days: z.number().nullable().optional(),
+    effective_nav_date: z.string().nullable().optional(),
+    order_id: z.string().nullable().optional(),
+    anomaly: z.string().nullable(),
+  })
+  .passthrough();
 export type Transaction = z.infer<typeof TransactionSchema>;
 
-export const FundDetailSchema = z.object({
-  code: z.string(),
-  name: z.string(),
-  security_type: z.string().optional(),
-  market: z.string().optional(),
-  held_shares: z.number(),
-  total_cost: z.number(),
-  latest_nav: z.number().nullable(),
-  current_value: z.number().nullable(),
-  unrealized_pnl: z.number().nullable(),
-  pnl_pct: z.number().nullable(),
-  auto_buy_count: z.number(),
-  manual_buy_count: z.number(),
-  auto_buy_amount: z.number(),
-  manual_buy_amount: z.number(),
-  auto_tx: z.number(),
-  manual_tx: z.number(),
-  buy_count: z.number(),
-  sell_count: z.number(),
-  median_settlement: z.number(),
-  transactions: z.array(TransactionSchema),
-}).passthrough();
+export const FundDetailSchema = z
+  .object({
+    code: z.string(),
+    name: z.string(),
+    security_type: z.string().optional(),
+    market: z.string().optional(),
+    held_shares: z.number(),
+    total_cost: z.number(),
+    latest_nav: z.number().nullable(),
+    current_value: z.number().nullable(),
+    unrealized_pnl: z.number().nullable(),
+    pnl_pct: z.number().nullable(),
+    auto_buy_count: z.number(),
+    manual_buy_count: z.number(),
+    auto_buy_amount: z.number(),
+    manual_buy_amount: z.number(),
+    auto_tx: z.number(),
+    manual_tx: z.number(),
+    buy_count: z.number(),
+    sell_count: z.number(),
+    median_settlement: z.number(),
+    transactions: z.array(TransactionSchema),
+  })
+  .passthrough();
 export type FundDetail = z.infer<typeof FundDetailSchema>;
 
 export const NavPointSchema = z.object({
@@ -72,6 +76,6 @@ export type NavPoint = z.infer<typeof NavPointSchema>;
 /** Extended fund info that also covers individual stocks. */
 export const SecurityInfoSchema = FundInfoSchema.extend({
   market: z.string(),
-  security_type: z.enum(['fund', 'stock']),
+  security_type: z.enum(["fund", "stock"]),
 });
 export type SecurityInfo = z.infer<typeof SecurityInfoSchema>;

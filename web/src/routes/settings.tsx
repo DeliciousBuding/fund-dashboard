@@ -238,8 +238,11 @@ function AuthEventsCard() {
           <p className="text-sm text-fg-3">暂无记录</p>
         ) : (
           <ul className="space-y-1.5">
-            {(events.data?.events ?? []).map((e, i) => (
-              <li key={`${e.ts}-${i}`} className="flex items-baseline gap-3 text-xs">
+            {(events.data?.events ?? []).map((e) => (
+              <li
+                key={`${e.ts}-${e.event}-${e.ip}-${e.detail}`}
+                className="flex items-baseline gap-3 text-xs"
+              >
                 <span className="shrink-0 tabular-nums text-fg-3">{fmtTs(e.ts)}</span>
                 <Badge
                   tone={

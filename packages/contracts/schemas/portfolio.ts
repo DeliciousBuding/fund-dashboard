@@ -76,7 +76,7 @@ export type HoldingContributor = z.infer<typeof HoldingContributorSchema>;
 
 export const DcaPlanSchema = z.object({
   fund_code: z.string().optional(),
-  mode: z.enum(['nav_deviation', 'change_pct']),
+  mode: z.enum(["nav_deviation", "change_pct"]),
   base_amount: z.number(),
   latest_nav: z.number(),
   cost_per_share: z.number().nullable(),

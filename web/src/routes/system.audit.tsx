@@ -66,8 +66,11 @@ export function SystemAuditPage() {
           />
         ) : (
           <ul className="divide-y divide-border">
-            {rows.map((e, i) => (
-              <li key={`${e.ts}-${i}`} className="flex items-baseline gap-3 py-2 text-sm">
+            {rows.map((e) => (
+              <li
+                key={`${e.ts}-${e.kind}-${e.event}-${e.summary}`}
+                className="flex items-baseline gap-3 py-2 text-sm"
+              >
                 <span className="shrink-0 text-xs tabular-nums text-fg-3">
                   {new Date(e.ts * 1000).toLocaleString("zh-CN", { hour12: false })}
                 </span>
