@@ -98,6 +98,11 @@ func handleUpsertDCAPlan(service *portfoliosvc.Service) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "fund_code and positive amount required")
 			return
 		}
+		source := body.Source
+		if source == "" {
+			// service 层默认 "mcp"（历史唯一调用方）；浏览器创建应如实归因 web。
+			source = "web"
+		}
 		result, err := service.UpsertDCAPlan(r.Context(), portfoliosvc.UpsertDCAPlanInput{
 			ID:          body.ID,
 			FundCode:    body.FundCode,
@@ -110,7 +115,7 @@ func handleUpsertDCAPlan(service *portfoliosvc.Service) http.HandlerFunc {
 			StartDate:   body.StartDate,
 			EndDate:     body.EndDate,
 			Active:      body.Active,
-			Source:      body.Source,
+			Source:      source,
 		})
 		writeServiceResult(w, r, result, err)
 	}

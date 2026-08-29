@@ -111,6 +111,9 @@ func TestSPAWriteExtensionsDCAPlanLifecycle(t *testing.T) {
 	if planID == 0 {
 		t.Fatalf("created plan id = 0: %s", toJSONString(t, created))
 	}
+	if plan["source"] != "web" {
+		t.Fatalf("browser-created plan source = %v, want web（不沿用 service 的 mcp 默认）", plan["source"])
+	}
 
 	// handler 层校验：缺 fund_code → 400
 	bad := doJSONRequest(t, router, http.MethodPost, "/api/dca/plans", map[string]any{
