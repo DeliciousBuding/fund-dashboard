@@ -92,6 +92,16 @@ type ToolCallParams struct {
 	Args      map[string]any `json:"args"`
 }
 
+// IsNotification reports whether the message is a JSON-RPC notification: a
+// JSON-RPC 2.0 message without an "id" member. Per spec (JSON-RPC 2.0 §2.2;
+// MCP Streamable HTTP 202 semantics), notifications must not produce a
+// response, so the HTTP layer swallows them before Handle runs.
+// Note: an explicitly present "id": null is a valid request id — it is NOT a
+// notification (a field omission is what defines one).
+func IsNotification(request Request) bool {
+	return request.ID == nil
+}
+
 func NewServer(deps ServerDeps) (*Server, error) {
 	registry := deps.Registry
 	if registry == nil {

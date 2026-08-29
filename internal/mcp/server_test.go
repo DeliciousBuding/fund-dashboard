@@ -1761,3 +1761,29 @@ var mcpFixtureStatements = []string{
 		(2, 'AAPL', 'Apple Inc.', 50, 'weekday', '2,4', '定投买入', 1, '2026-06-03', NULL, 0, 'manual', '2026-06-03 09:00:00', '2026-06-04 09:00:00'),
 		(3, 'OTHER', 'Other Portfolio', 10, 'weekday', '1,2,3,4,5', '定投买入', 2, '2026-06-05', NULL, 1, 'manual', '2026-06-05 09:00:00', '2026-06-06 09:00:00')`,
 }
+
+func TestIsNotificationDistinguishesMissingID(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"notification without id", `{"jsonrpc":"2.0","method":"notifications/initialized"}`, true},
+		{"cancelled notification", `{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`, true},
+		{"progress notification", `{"jsonrpc":"2.0","method":"notifications/progress"}`, true},
+		{"numeric id request", `{"jsonrpc":"2.0","id":1,"method":"initialize"}`, false},
+		{"string id request", `{"jsonrpc":"2.0","id":"abc","method":"tools/list"}`, false},
+		// "id": null is a valid request id (JSON-RPC 2.0 §4.2), NOT a notification.
+		{"null id is still a request", `{"jsonrpc":"2.0","id":null,"method":"initialize"}`, false},
+		{"no jsonrpc but id present", `{"method":"initialize","id":5}`, false},
+	}
+	for _, tc := range cases {
+		var request Request
+		if err := json.Unmarshal([]byte(tc.body), &request); err != nil {
+			t.Fatalf("%s: unmarshal %v", tc.name, err)
+		}
+		if got := IsNotification(request); got != tc.want {
+			t.Errorf("%s: IsNotification = %v, want %v (id=%s)", tc.name, got, tc.want, request.ID)
+		}
+	}
+}

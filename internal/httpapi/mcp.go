@@ -61,6 +61,16 @@ func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.
 			})
 			return
 		}
+		// JSON-RPC notifications (no "id" member, e.g. notifications/initialized,
+		// notifications/cancelled, notifications/progress) must not produce a
+		// response: swallow with 202 Accepted + empty body (JSON-RPC 2.0 §2.2;
+		// MCP spec: "if the message is a notification, the server should return
+		// 202 Accepted with no message body"). Requests with an id still get a
+		// JSON-RPC envelope, error responses included.
+		if mcp.IsNotification(request) {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
 		WriteJSON(w, http.StatusOK, server.Handle(req.Context(), request))
 	})
 }
