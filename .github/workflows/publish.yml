@@ -37,7 +37,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/fund-migrate:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/fund-migrate:latest
+            ghcr.io/deliciousbuding/fund-migrate:${{ github.sha }}
+            ghcr.io/deliciousbuding/fund-migrate:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
