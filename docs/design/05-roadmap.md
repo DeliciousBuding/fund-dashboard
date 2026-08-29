@@ -9,12 +9,12 @@
 |------|------|--------|------|
 | W0 | 仓库地基 | pnpm workspace、web/ 脚手架、CI web 链、三阶段 Dockerfile、死代码清理 | CI 全绿；`docker build` 产出含占位 SPA 的镜像 |
 | W1 | 鉴权与安全 | `internal/auth`、session 全套端点、CSRF/限流/recover/CSP、会话清扫 | 见 §W1 验收矩阵 |
-| W1.6 | 公网暴露加固 | 递增锁定、密码策略、auth_events 审计、全 API 限流、可信代理、HSTS、工作台系统 API | 见 06 文档 §4 验收矩阵 |
-| W2 | 设计系统 | tokens.css、组件库、图表主题、`/_design` 目录页、布局壳 | `/_design` 全组件四态目视通过 |
-| W3 | 核心读面 | 总览 + 持仓列表 + 标的详情（走势 tab） | 数据正确性 vs 旧 API 抽查一致 |
-| W4 | 交易与定投 | 台账 CRUD、导入导出、DCA 计划管理 | 旧 e2e 基线改写通过 |
-| W5 | 分析套件 | compare / backtest / advanced（MC+相关性）/ penetration / market | 纯函数移植测试全绿 |
-| W6 | 洞察·设置·工作台 | insights / reports / settings 四 tab / 系统工作台 / 审计时间线 | 改密码/会话管理/任务触发全流程手工验收 |
+| W1.6 ✅ | 公网暴露加固 | 递增锁定、密码策略、auth_events 审计、全 API 限流、可信代理、HSTS、工作台系统 API | 见 06 文档 §4 验收矩阵 |
+| W2 ✅ | 设计系统 | tokens.css、组件库、图表主题、`/_design` 目录页、布局壳 | `/_design` 全组件四态目视通过 |
+| W3 ✅ | 核心读面 | 总览 + 持仓列表 + 标的详情（走势 tab） | 数据正确性 vs 旧 API 抽查一致 |
+| W4 ✅ | 交易与定投 | 台账 CRUD、导入导出、DCA 计划管理 | 旧 e2e 基线改写通过 |
+| W5 ✅ | 分析套件 | compare / backtest / advanced（MC+相关性）/ penetration / market | 纯函数移植测试全绿 |
+| W6 ✅ | 洞察·设置·工作台 | insights / reports / settings 四 tab / 系统工作台 / 审计时间线 | 改密码/会话管理/任务触发全流程手工验收 |
 | W7 | 打磨与 MCP | 动效/a11y/性能/PWA、MCP spec 修复、文档收口 | Lighthouse 关键指标 + 44 工具回归 |
 
 ## W0 — 仓库地基（✅ 已完成 2026-08-29）
@@ -34,14 +34,14 @@
 - 03:00 调度追加三清（过期 session / 过期 confirmation / 90 天外 audit）。
 - **验收矩阵**（全部通过）：未登录访问 `/api/portfolio` → 401 ✅；未登录 `GET /` 得到 SPA 壳（实施精炼为「静态全公开 + 数据全收门」，登录页永不白屏）✅；错密码 5 次 → 429 锁定 ✅；session 无 `X-Fund-Request` 写 → 403 ✅；EdgeKey 兼容可用 ✅；MCP 44 工具双 key 回归不变 ✅；`go test -race` 全绿 ✅；种子库端到端（setup→登录→读→写→MCP）人工验证通过 ✅。
 
-## W1.6 — 公网暴露加固（设计见 06 文档）
+## W1.6 — 公网暴露加固（✅ 已完成 2026-08-30；设计见 06 文档）
 
 部署形态升级为**公网直接暴露**后的安全加固包：递增锁定 + 密码策略收紧 + auth_events
 登录审计 + 全 API per-IP 限流 + MCP per-key 限流 + 可信代理解析 + HSTS/COOP +
 session 化 `/api/system/*` 工作台 API（状态/任务/审计/爬虫触发）。
 验收矩阵见 `06-security-hardening.md` §4。后端实现委托 sonnet subagent，前端页面随 W6 落地。
 
-## W2 — 设计系统
+## W2 — 设计系统（✅ 已完成 2026-08-29）
 
 - `tokens.css`（暗/亮/密度三轴）+ Tailwind `@theme` 映射；Inter 自托管；字阶与数字规范落地。
 - shadcn/ui 按需引入并定制：button/input/dialog/sheet/drawer/tabs/table/tooltip/dropdown/skeleton/toast/badge/card。

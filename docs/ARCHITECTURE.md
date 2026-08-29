@@ -1,27 +1,29 @@
 # Fund Dashboard — Architecture
 
 > 基金 + 股票投资数据可视化与分析平台  
-> 最后更新：2026-08-29  
-> 版本：v3 — pure Go backend + SQLite
-> 演进方向已定档：新一代 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌），见 [`docs/design/`](design/README.md)（W0 起实施）。
+> 最后更新：2026-08-30  
+> 版本：v4 — monorepo（`web/` 内嵌 SPA）+ session 鉴权 + 公网暴露加固
+> 设计与波次定档见 [`docs/design/`](design/README.md)。
 
 ## 1. 总览
 
-单容器部署：Go 静态二进制（REST + MCP），SQLite 持久化。React / Vite SPA 于 2026-08-29 移出本仓库（`packages/web` 已删除）；新一代 SPA 以 `web/` workspace 回归并 go:embed 内嵌（见 [`docs/design/`](design/README.md)，W0 起）。
+单容器部署：Go 静态二进制内嵌 React SPA（go:embed），REST + MCP + 静态面同端口。SQLite 默认，PostgreSQL 可选。公网暴露形态：TLS 由边缘终止，应用层按互联网面标准加固（06 文档）。
 
 ```
-Browser / AI Agent
-      │  HTTPS
-      ▼
-edge proxy ── TLS + path-scoped EdgeKey + rate limits + CSP
+Browser ── session cookie（argon2id 登录）──┐
+      │  HTTPS                              │
+      ▼                                     │
+edge proxy ── TLS 终止 + HSTS + 限流（边缘）  │
+      │                                     │
+      ▼                                     │
+:8765  fund-dashboard（单二进制）             │
+      ├── SPA 静态面（go:embed，公开）        │
+      ├── REST /api/*（SessionAuth 收门）◄────┘
+      ├── /api/system/* 工作台面（session + CSRF）
+      └── MCP /mcp（Bearer key 双 scope，per-key 限流）
       │
       ▼
-:8765  fund-dashboard (Go binary, single container)
-      ├── REST /api/*
-      └── MCP /mcp (Bearer key)
-      │
-      ▼
-SQLite (FUND_DB_PATH, e.g. /app/data/fund.db)
+SQLite（FUND_DB_PATH）或 PostgreSQL（FUND_DB_DRIVER=pg）
 ```
 
 | 层 | 技术 |
@@ -30,9 +32,9 @@ SQLite (FUND_DB_PATH, e.g. /app/data/fund.db)
 | 契约 | zod schemas 前后端共享 · `packages/contracts` |
 | 存储 | SQLite（默认）；可选 PostgreSQL 双驱动（`FUND_DB_DRIVER=pg`） |
 | MCP | JSON-RPC over HTTP（单端点 `POST /mcp`）；operator / analyst 双 scope |
-| 前端 | `web/`（W0 起；React SPA，go:embed 内嵌）——见 `docs/design/02` |
+| 前端 | `web/`：React 19 + Vite 7 + Tailwind v4 + Radix + ECharts + TanStack（go:embed 内嵌）——见 `docs/design/02/03` |
 
-> 历史前端：`packages/web`（React + Vite + echarts）已从本仓库移除（2026-08-29）。当前生产镜像为 API-only；`FUND_STATIC_DIR` 仍可作为可选静态目录挂载点（注意：指向不存在的目录会**启动失败**，app 装配硬校验）。注：`docs/design/` D7 已定档恢复 go:embed 内嵌 SPA（W0 起实施），届时生产镜像重新默认内嵌前端。
+> 历史：`packages/web` 旧前端 2026-08-29 移出，现由 `web/` + go:embed 取代（dist 缺失时回退占位页，`FUND_STATIC_DIR` 为 dev 覆盖口）。
 
 ## 2. 后端分层
 
@@ -41,7 +43,8 @@ cmd/fund-dashboard       入口：装配 config → repository → services → 
 internal/
 ├── app                  应用装配、生命周期
 ├── config               配置解析与校验（fail-closed）
-├── httpapi              REST 薄封装（路由、鉴权、JSON 写回）
+├── httpapi              REST 薄封装（路由、SessionAuth/Bearer 鉴权、限流、JSON 写回）
+├── auth                 argon2id 密码、session 签发/滑动/吊销、登录递增锁定、auth_events 审计
 ├── mcp                  MCP 工具薄封装（委托 services）
 ├── service              业务逻辑（portfolio / admin / …）
 ├── jobs                 定时任务（NAV 刷新、持仓抓取、快照重算）
@@ -74,11 +77,17 @@ internal/httpapi / internal/mcp ── 对外暴露
 
 | 面 | 鉴权 |
 |----|------|
+| SPA 静态面（`/`、assets） | 公开（代码即开源）；数据全收 `/api` 门 |
+| `/api/auth/status|setup|login` | 匿名 + 登录限流（递增锁定至 24h） |
+| 其余 `/api/*` 读 | session cookie（滑动续约 30d / 封顶 90d）+ 全 API per-IP 限流 |
+| 浏览器写路径 | session + `X-Fund-Request` CSRF 头 + Origin 白名单；EdgeKey 为可选兼容层 |
+| `/api/system/*` 工作台 | 读走 SessionAuth，写走 session + CSRF（二次确认在 UI 层） |
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY`（空 key fail-closed） |
-| `/mcp` | `MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst） |
+| `/mcp` | `MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst），per-key 限流 |
 | MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`） |
-| 前端写路径 | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） |
 | `/api/health` | 匿名 |
+
+审计：`auth_events`（登录/锁定/改密/会话，180d 清扫）与 `agent_audit_events`（工具调用，90d 清扫）双流，工作台 `/system/audit` 合并时间线。公网加固细节见 `docs/design/06`。
 
 ## 5. 数据模型
 

@@ -5,17 +5,19 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 
-个人投资组合分析平台：基金 / 股票持仓管理、净值追踪、XIRR 年化、最大回撤、穿透分析、DCA 定投回测、蒙特卡洛模拟，以及面向 AI agent 的 MCP server。
+个人投资组合工作台：单租户 Web UI（登录密码鉴权）+ REST API + 面向 AI agent 的 MCP server，公网暴露形态设计。基金 / 股票持仓管理、净值追踪、XIRR 年化、最大回撤、穿透分析、DCA 定投与回测、蒙特卡洛模拟、相关性分析、系统工作台（任务/审计/告警）。
 
-纯 **Go** 后端，SQLite 持久化（可选 PostgreSQL）。`packages/web` 已于 2026-08-29 移出；下一代单租户 Web UI（登录密码鉴权 + go:embed 内嵌单二进制）已定档，设计见 [docs/design/](docs/design/README.md)。
+纯 **Go** 后端 + **React 19 / Vite 7 / Tailwind v4** 前端（`web/`，go:embed 内嵌 → 单二进制交付），SQLite 默认持久化（可选 PostgreSQL 双驱动）。设计与实施波次见 [docs/design/](docs/design/README.md)。
 
 ## 功能
 
 - **持仓管理**：基金 + 股票（A 股 / 港股 / 美股）统一管理，交易 CRUD，自动快照重算
 - **量化分析**：XIRR 年化收益率、最大回撤、组合净值走势、盈亏分布、蒙特卡洛模拟、相关性热力图、基金对比雷达、DCA 定投回测
 - **穿透分析**：基金持仓穿透到底层股票，按行业聚合
-- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），JSON-RPC over HTTP（单端点 `POST /mcp`），Bearer key 认证
+- **Web UI**：总览 / 持仓 / 交易台账 / 定投 / 分析套件（对比·回测·相关性·蒙特卡洛·穿透）/ 市场 / 信号 / 报告 / 系统工作台 / 设置，桌面 + 移动端自适应，⌘K 命令面板，PWA 离线兜底
+- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），JSON-RPC over HTTP（单端点 `POST /mcp`），Bearer key 双 scope 认证
 - **REST API**：`/api/*` 全量读写端点，zod 契约共享（`packages/contracts`）
+- **安全**：argon2id 密码 + 服务端 session（滑动续约）、登录递增锁定、全 API 限流、CSRF 三重防护、CSP/HSTS、认证与 Agent 双审计时间线（docs/design/06）
 
 ## 技术栈
 
@@ -24,8 +26,8 @@
 | 后端 | Go（`cmd/fund-dashboard` + `internal/*`），`net/http` + `go-chi` |
 | 契约 | zod schemas（`packages/contracts`）——前后端共享的 API 契约 SSOT |
 | 存储 | SQLite（默认），可选 PostgreSQL 双驱动 |
-| 认证 | Bearer key（operator / analyst 双 scope）+ edge proxy 注入的写路径 key；Web 登录 session（规划 W1，见 docs/design/04） |
-| 前端 | `web/`（规划：React 19 + Vite 7 + Tailwind v4 + shadcn/ui + ECharts，go:embed 内嵌，见 docs/design/02） |
+| 认证 | Web 登录 session（argon2id + cookie，docs/design/04）+ MCP/Admin Bearer key 双轨 |
+| 前端 | `web/`：React 19 + Vite 7 + Tailwind v4 + Radix + ECharts + TanStack 全家桶（go:embed 内嵌，docs/design/02/03） |
 
 ## 快速开始
 

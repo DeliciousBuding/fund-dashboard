@@ -1,11 +1,11 @@
 # AGENTS.md — Fund Dashboard
 
-最后更新：2026-08-29
+最后更新：2026-08-30
 
 > 所有 AI agent（Claude Code / Codex / Cursor）在本文档仓库遵守的共享约束。
 > 开源公开仓库。**禁止提交任何主机名、公网 IP、真实密钥、个人邮箱或本地路径。**
-> 产品：个人投资组合仪表盘 —— 基金 / 股票持仓、净值追踪、XIRR、穿透分析、回测、MCP server。
-> 前端已于 2026-08-29 移出本仓库；新一代 Web UI 以 `web/` workspace 回归本仓（设计定档 [`docs/design/`](docs/design/README.md)，W0 起实施）。本仓库 = Go 后端 + zod 契约 + web/。
+> 产品：个人投资组合工作台（公网暴露形态）—— Web UI（session 登录）+ REST API + MCP server。基金 / 股票持仓、净值追踪、XIRR、穿透分析、回测、定投、系统工作台。
+> 本仓库 = Go 后端 + `web/` 前端（go:embed 内嵌单二进制）+ zod 契约。设计定档 [`docs/design/`](docs/design/README.md)（W0–W7 已实施）。
 
 ## S.U.P.E.R 设计原则
 
@@ -22,9 +22,9 @@
 - 入口：`cmd/fund-dashboard`
 - 业务：`internal/{app,httpapi,mcp,service,jobs,datasource,agenttools,agentops,repository}`
 - 契约：`packages/contracts`（zod，前后端共享的 API 契约 SSOT）
-- 部署：`deploy/Dockerfile`（Go 静态二进制 API-only）· `deploy/docker-compose.ci.yml`（CI smoke）
+- 部署：`deploy/Dockerfile`（三阶段：web 构建 → Go 静态二进制含内嵌 SPA）· `deploy/docker-compose.ci.yml`（CI smoke）
 - 文档：`docs/{ARCHITECTURE,TESTING}.md` · `CHANGELOG.md` · `CONTRIBUTING.md`
-- 前端：`web/`（规划中→W0 起实施；Vite + React SPA，go:embed 内嵌单二进制；设计定档 `docs/design/`）
+- 前端：`web/`（React 19 + Vite 7 + Tailwind v4 + TanStack + ECharts；路由懒加载 + echarts 分包；设计定档 `docs/design/`）
 
 ## 鉴权边界
 
@@ -33,8 +33,9 @@
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY` | 空 key fail-closed |
 | `/mcp` | `MCP_API_KEY` → Operator；`PUBLIC_MCP_KEY` → Analyst | 双空 fail-closed |
 | MCP 写工具 | `confirmation_id` + `confirmation_token` | **拒绝** bare `confirmed=true` |
-| 前端写路径 | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） | 浏览器 JS 不持 key |
-| `/api/*`（浏览器读+写） | session cookie（密码登录，argon2id） | **规划 W1**，设计见 `docs/design/04-auth-security.md` |
+| 浏览器读/写 | session cookie（argon2id 登录，滑动续约）；写加 `X-Fund-Request` 头 + Origin 白名单 | 设计见 `docs/design/04` |
+| 前端写路径（兼容层） | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） | 浏览器 JS 不持 key |
+| 全 `/api/*` | per-IP 限流（`FUND_API_RPM`）；`/mcp` per-key（`FUND_MCP_RPM`） | 公网加固见 `docs/design/06` |
 | `/api/health` | 匿名 | 生产省略 version |
 
 ## 禁止事项
