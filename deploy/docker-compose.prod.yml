@@ -2,7 +2,7 @@
 # 拓扑纪律：新服务默认独立实例（不与既有三实例合并）；PG 仅 internal 网络，不暴露宿主端口。
 #
 # 运行：sudo docker compose --env-file .env up -d
-# 前置：.env 由 本机 secrets 派生（FUND_PG_* / MCP_API_KEY / FUND_AUTH_PASSWORD_HASH 等）。
+# 前置：.env 由本机 secrets 目录派生（FUND_PG_DSN / MCP_API_KEY / FUND_AUTH_PASSWORD_HASH 等）。
 
 networks:
   fund-net:
@@ -45,12 +45,12 @@ services:
     image: ghcr.io/deliciousbuding/fund-dashboard:${IMAGE_TAG:?set in .env}
     container_name: fund-dashboard
     ports:
-      - "127.0.0.1:8765:8765"
+      - "127.0.0.1:8765:8765"  # leak-guard-allow:LG-29BAAA48
     networks:
       - fund-net
     environment:
       - FUND_DB_DRIVER=pg
-      - FUND_PG_DSN=postgres://${FUND_PG_USER}:${FUND_PG_PASSWORD}@fund-postgres:5432/fund?sslmode=disable
+      - FUND_PG_DSN=${FUND_PG_DSN:?set in .env}
       - FUND_HTTP_ADDR=0.0.0.0:8765
       - FUND_ENV=production
       - FUND_AUTH_SECURE_COOKIE=${FUND_AUTH_SECURE_COOKIE:-true}
@@ -72,7 +72,7 @@ services:
       fund-postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8765/api/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8765/api/health || exit 1"]  # leak-guard-allow:LG-29BAAA48
       interval: 30s
       timeout: 10s
       retries: 3
