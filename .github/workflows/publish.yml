@@ -1,8 +1,7 @@
 name: publish
 
-# 镜像发布链：push main（或 tag）→ buildx 多架构（linux/amd64,linux/arm64）→ GHCR。
-# 产物：ghcr.io/deliciousbuding/fund-dashboard:<full-sha> + :latest（语义化 tag 走 :vX.Y.Z）。
-# 两个二进制（fund-dashboard / fund-migrate）经 Dockerfile 多产物 COP 分镜像推送。
+# fund-migrate 一次性迁移镜像（主应用镜像由 ci.yml 的 build-and-push/merge-manifest 既有链发布）。
+# 触发：push main / v* tag / 手动。产物：ghcr.io/deliciousbuding/fund-migrate:<full-sha>
 
 on:
   push:
@@ -15,7 +14,7 @@ permissions:
   packages: write
 
 jobs:
-  build-push:
+  migrate-image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,42 +28,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute tags
-        id: tags
-        run: |
-          SHA="${{ github.sha }}"
-          VERSION="${GITHUB_REF_NAME#v}"
-          TAGS=("ghcr.io/${{ github.repository_owner }}/fund-dashboard:${SHA}")
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            TAGS+=("ghcr.io/${{ github.repository_owner }}/fund-dashboard:v${VERSION}")
-          else
-            TAGS+=("ghcr.io/${{ github.repository_owner }}/fund-dashboard:latest")
-          fi
-          printf '%s\n' "${TAGS[@]}" > /tmp/tags.txt
-          cat /tmp/tags.txt
-
-      - name: Build and push app image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: runtime
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags-file: /tmp/tags.txt
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Build and push migrate image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/Dockerfile
-          target: runtime
-          build-args: |
-            BIN=fund-migrate
+          build-args: BIN=fund-migrate
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/fund-migrate:${{ github.sha }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/fund-migrate:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/fund-migrate:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
