@@ -2,7 +2,7 @@
 //
 // 用法（在服务器上一次性运行；目标库由本工具先建 schema 再导入）：
 //
-//	fund-migrate --sqlite /path/fund.db --dsn 'postgres://fund:pass@host:5432/fund?sslmode=disable'
+//	fund-migrate --sqlite /path/fund.db --dsn "$FUND_PG_DSN"
 //
 // 语义：
 //   - 目标库必须为空（全新部署）；幂等（重复运行不炸，INSERT 冲突按 DO NOTHING）。
