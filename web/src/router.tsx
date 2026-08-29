@@ -93,13 +93,13 @@ const dcaRoute = createRoute({
 const analysisRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/analysis",
-  component: () => <WipPage title="分析" wave="W5" />,
+  component: lazyRouteComponent(() => import("./routes/analysis"), "AnalysisPage"),
 });
 
 const marketRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/market",
-  component: () => <WipPage title="市场" wave="W5" />,
+  component: lazyRouteComponent(() => import("./routes/market"), "MarketPage"),
 });
 
 const insightsRoute = createRoute({
