@@ -10,7 +10,7 @@ import (
 )
 
 // migrateTable 是核心路径；SQLite 作目标验证交集/序/幂等逻辑
-// （真正目标为 PG，见 jp1 部署 POSTCHECK；此处 pin 行为不变）。
+// （真正目标为 PG，见生产部署 POSTCHECK；此处 pin 行为不变）。
 func openTestDBs(t *testing.T) (src *sql.DB, dst *sql.DB) {
 	t.Helper()
 	ctx := context.Background()

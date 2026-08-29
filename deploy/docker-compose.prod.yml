@@ -1,4 +1,4 @@
-# fund-dashboard 生产栈（jp1 形态）—— 独立 PG 实例 + 应用 + 内部网络。
+# fund-dashboard 生产栈（Internet 形态）—— 独立 PG 实例 + 应用 + 内部网络。
 # 拓扑纪律：新服务默认独立实例（不与既有三实例合并）；PG 仅 internal 网络，不暴露宿主端口。
 #
 # 运行：sudo docker compose --env-file .env up -d
