@@ -1,6 +1,7 @@
 # docs/design — 重设计定档（2026-08-29）
 
-> 本目录是 fund-dashboard 下一代形态的设计 SSOT：**单租户 + 登录密码鉴权的 Web UI + MCP 数据面**。
+> 本目录是 fund-dashboard 下一代形态的设计 SSOT：**单租户 + 登录密码鉴权的 Web UI + MCP 数据面**，
+> 部署形态为**公网直接暴露**（TLS 由边缘终止），安全基线按互联网面标准（见 06）。
 > 所有文档基于 2026-08-29 六路代码测绘（httpapi / service / data / mcp / ops / history）的事实写成。
 > 原则：决策已定档、依据写明、不讨论已被否决的选项之外的可能性。
 
@@ -13,6 +14,7 @@
 | [03-design-system.md](03-design-system.md) | 设计语言「静水流深」：tokens、字体、颜色语义、图表主题、动效、状态设计、a11y |
 | [04-auth-security.md](04-auth-security.md) | 登录鉴权与安全：session 设计、表结构、CSRF、限流、CSP、MCP 共存矩阵 |
 | [05-roadmap.md](05-roadmap.md) | 实施波次 W0–W7、验收标准、仓库整理清单、技术债登记 |
+| [06-security-hardening.md](06-security-hardening.md) | 公网暴露加固（W1.6）：威胁模型、递增锁定、auth 审计、全 API 限流、可信代理、工作台系统 API |
 
 ## 决策速览
 
@@ -28,6 +30,7 @@
 | D8 | 设计语言 **「静水流深 Quiet Capital」**：暗色优先、金色点缀、涨红跌绿（可切西式）、全等宽数字 | 金融产品的正确情绪：高密度但不吵，精确、克制、有质感 |
 | D9 | **MCP 保持手写 JSON-RPC**（44 工具生产在跑），修 spec 兼容；官方 Go SDK 迁移进 backlog | 不为正确性之外的动机重写已验证面 |
 | D10 | 范围纪律：**不做**多用户/注册/SaaS 化/券商下单/PG 新增投入 | 单租户边界写死在产品层，防 scope creep |
+| D11 | **公网直接暴露**为正式部署形态：安全按互联网面标准（W1.6），TLS 由边缘终止 | 用户明确要求；加固包与系统审计随之上马 |
 
 ## 关键测绘事实（设计依据摘要）
 

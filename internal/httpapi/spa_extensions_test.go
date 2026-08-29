@@ -84,6 +84,11 @@ func TestSPAReadExtensionsServeLedgerPlansAndAlerts(t *testing.T) {
 	if alerts["ok"] != true {
 		t.Fatalf("alerts response = %s, want ok", toJSONString(t, alerts))
 	}
+
+	freshness := doJSONRequest(t, router, http.MethodGet, "/api/freshness", nil, http.StatusOK)
+	if freshness["health"] == nil || freshness["decision_boundary"] == nil {
+		t.Fatalf("freshness response = %s, want health + decision_boundary", toJSONString(t, freshness))
+	}
 }
 
 func TestSPAWriteExtensionsDCAPlanLifecycle(t *testing.T) {
@@ -215,6 +220,7 @@ func TestSPAExtensionsRequireSession(t *testing.T) {
 		{http.MethodGet, "/api/transactions"},
 		{http.MethodGet, "/api/dca/plans"},
 		{http.MethodGet, "/api/alerts"},
+		{http.MethodGet, "/api/freshness"},
 		{http.MethodPost, "/api/dca/plans"},
 		{http.MethodPost, "/api/dca/plans/1/disable"},
 		{http.MethodPost, "/api/dca/run"},

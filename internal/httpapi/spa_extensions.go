@@ -16,6 +16,7 @@ func registerSPAReadExtensions(r chi.Router, portfolio *portfoliosvc.Service, ad
 	r.Get("/api/transactions", handleListTransactions(portfolio))
 	r.Get("/api/dca/plans", handleListDCAPlans(portfolio))
 	r.Get("/api/alerts", handleCheckAlerts(admin))
+	r.Get("/api/freshness", handleFreshness(admin))
 }
 
 // registerSPAWriteExtensions — 浏览器写扩展（session 或 EdgeKey 兼容），挂载在
@@ -285,6 +286,19 @@ func handleCheckAlerts(service adminsvc.Service) http.HandlerFunc {
 			return
 		}
 		WriteJSON(w, http.StatusOK, result)
+	}
+}
+
+// handleFreshness 把 admin freshness 报告以 session 门暴露给 SPA 顶栏新鲜度徽章
+// （facts-only 读，无管理面泄露）。
+func handleFreshness(service adminsvc.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		report, err := service.GetFreshness(r.Context())
+		if err != nil {
+			writeSafeError(w, r, http.StatusInternalServerError, err)
+			return
+		}
+		WriteJSON(w, http.StatusOK, report)
 	}
 }
 
