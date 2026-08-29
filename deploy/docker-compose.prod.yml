@@ -1,0 +1,90 @@
+# fund-dashboard 生产栈（jp1 形态）—— 独立 PG 实例 + 应用 + 内部网络。
+# 拓扑纪律：新服务默认独立实例（不与既有三实例合并）；PG 仅 internal 网络，不暴露宿主端口。
+#
+# 运行：sudo docker compose --env-file .env up -d
+# 前置：.env 由 server-secrets 派生（FUND_PG_* / MCP_API_KEY / FUND_AUTH_PASSWORD_HASH 等）。
+
+networks:
+  fund-net:
+    name: fund-net
+    driver: bridge
+    internal: true
+
+services:
+  fund-postgres:
+    image: postgres:18-bookworm
+    container_name: fund-postgres
+    networks:
+      - fund-net
+    environment:
+      - POSTGRES_USER=${FUND_PG_USER:?set in .env}
+      - POSTGRES_PASSWORD=${FUND_PG_PASSWORD:?set in .env}
+      - POSTGRES_DB=fund
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - /mnt/data/fund/pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FUND_PG_USER} -d fund"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "1.0"
+          pids: 256
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fund-dashboard:
+    image: ghcr.io/deliciousbuding/fund-dashboard:${IMAGE_TAG:?set in .env}
+    container_name: fund-dashboard
+    ports:
+      - "127.0.0.1:8765:8765"
+    networks:
+      - fund-net
+    environment:
+      - FUND_DB_DRIVER=pg
+      - FUND_PG_DSN=postgres://${FUND_PG_USER}:${FUND_PG_PASSWORD}@fund-postgres:5432/fund?sslmode=disable
+      - FUND_HTTP_ADDR=0.0.0.0:8765
+      - FUND_ENV=production
+      - FUND_AUTH_SECURE_COOKIE=${FUND_AUTH_SECURE_COOKIE:-true}
+      - FUND_AUTH_PASSWORD_HASH=${FUND_AUTH_PASSWORD_HASH:?set in .env}
+      - FUND_ALLOWED_ORIGINS=${FUND_ALLOWED_ORIGINS:?set in .env}
+      - FUND_TRUSTED_PROXIES=${FUND_TRUSTED_PROXIES:?set in .env}
+      - FUND_EDGE_AUTH_ENABLED=${FUND_EDGE_AUTH_ENABLED:-false}
+      - MCP_API_KEY=${MCP_API_KEY:?set in .env}
+      - PUBLIC_MCP_KEY=${PUBLIC_MCP_KEY:-}
+      - FUND_BACKUP_PRODUCER_ENABLED=${FUND_BACKUP_PRODUCER_ENABLED:-false}
+      - FUND_API_RPM=${FUND_API_RPM:-600}
+      - FUND_MCP_RPM=${FUND_MCP_RPM:-120}
+      - TZ=Asia/Shanghai
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - /mnt/data/fund/backups:/app/backups
+    restart: unless-stopped
+    depends_on:
+      fund-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8765/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "0.5"
+          pids: 256
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "4"
