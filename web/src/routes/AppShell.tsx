@@ -1,55 +1,62 @@
-import { useMutation } from "@tanstack/react-query";
-import { Outlet, useRouter } from "@tanstack/react-router";
-import { logout } from "../lib/auth";
-import { queryClient } from "../lib/queryClient";
+// AppShell：受保护区布局壳 —— 侧栏 + 顶栏 + 移动底栏 + 命令面板 + 页面过渡动效。
+// 设计规格：03 §4（240px 侧栏/max-w-1440/卡片 padding）、§5（页面进入 160ms fade+y）、§9（移动断点）。
+import { Outlet, useRouterState } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "motion/react";
+import { BottomNav } from "../components/shell/BottomNav";
+import { CommandPalette } from "../components/shell/CommandPalette";
+import { Sidebar } from "../components/shell/Sidebar";
+import { TopBar } from "../components/shell/TopBar";
+import { ErrorBoundary } from "../components/ui/error-boundary";
+import { useGlobalHotkeys } from "../hooks/useGlobalHotkeys";
 
-// AppShell：受保护区域的布局壳（侧栏导航 + 顶栏）。W2 设计系统落地时升级为完整
-// 侧栏（市场分组/搜索/组合切换），当前先保证可用与顺眼。
+const TITLE_BY_PATH: Record<string, string> = {
+  "/": "总览",
+  "/holdings": "持仓",
+  "/transactions": "交易",
+  "/dca": "定投",
+  "/analysis": "分析",
+  "/market": "市场",
+  "/insights": "信号",
+  "/reports": "报告",
+  "/system": "工作台",
+  "/system/audit": "审计",
+  "/settings": "设置",
+};
+
+function pageTitle(pathname: string): string {
+  if (pathname in TITLE_BY_PATH) return TITLE_BY_PATH[pathname];
+  if (pathname.startsWith("/holdings/")) return "标的详情";
+  return "";
+}
+
 export function AppShell() {
-  const router = useRouter();
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
-      await router.navigate({ to: "/login" });
-    },
-  });
+  useGlobalHotkeys();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-60 flex-col border-r border-border bg-surface-1 md:flex">
-        <div className="flex items-center gap-2 px-5 py-5">
-          <span className="grid size-7 place-items-center rounded-lg bg-surface-2 text-sm text-accent">
-            ◈
-          </span>
-          <span className="font-medium text-fg">持仓中枢</span>
-        </div>
-        <nav className="flex-1 space-y-1 px-3 py-2 text-sm">
-          <span className="block rounded-lg bg-surface-3 px-3 py-2 font-medium text-fg">总览</span>
-          {["持仓", "交易", "分析", "定投", "市场", "信号", "报告", "设置"].map((label) => (
-            <span
-              key={label}
-              className="block cursor-not-allowed rounded-lg px-3 py-2 text-fg-3"
-              title="即将到来（见 docs/design/05 路线图）"
+    <div className="flex min-h-screen bg-bg text-fg">
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar title={pageTitle(pathname)} />
+        <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-20 pt-4 md:px-6 md:pb-8">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
             >
-              {label}
-              <span className="float-right text-xs">W3+</span>
-            </span>
-          ))}
-        </nav>
-        <div className="border-t border-border p-3">
-          <button
-            type="button"
-            onClick={() => logoutMutation.mutate()}
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-2 hover:bg-surface-3 hover:text-fg"
-          >
-            退出登录
-          </button>
-        </div>
-      </aside>
-      <div className="min-w-0 flex-1">
-        <Outlet />
+              {/* 面板级错误边界：崩一页不崩全壳（03 §7） */}
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <BottomNav />
       </div>
+      <CommandPalette />
     </div>
   );
 }

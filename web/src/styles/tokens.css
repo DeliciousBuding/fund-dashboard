@@ -2,6 +2,27 @@
 
 /* 设计 tokens —— docs/design/03-design-system.md 「静水流深 Quiet Capital」
    暗色为默认；亮色通过 data-theme="light" 覆盖。 */
+/* 涨跌色约定：western = 涨绿跌红（交换语义色，全站即时生效） */
+[data-convention='western']:root,
+[data-convention='western'] {
+  --up: oklch(0.7 0.15 160);
+  --down: oklch(0.66 0.19 25);
+}
+[data-convention='western'][data-theme='light'] {
+  --up: oklch(0.55 0.14 160);
+  --down: oklch(0.55 0.18 25);
+}
+
+/* 密度轴：表格行高 / 卡片 padding */
+:root {
+  --row-h: 44px;
+  --card-pad: 20px;
+}
+[data-density='compact'] {
+  --row-h: 32px;
+  --card-pad: 12px;
+}
+
 @theme inline {
   --font-sans: "Inter Variable", "Inter", "PingFang SC", "HarmonyOS Sans SC",
     "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;

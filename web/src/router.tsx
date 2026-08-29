@@ -7,6 +7,8 @@ import {
 } from "@tanstack/react-router";
 import { type AuthStatus, fetchAuthStatus } from "./lib/auth";
 import { queryClient } from "./lib/queryClient";
+import { DesignPage } from "./routes/_design";
+import { WipPage } from "./routes/_wip";
 import { AppShell } from "./routes/AppShell";
 import { OverviewPage } from "./routes/index";
 import { LoginPage } from "./routes/login";
@@ -64,10 +66,98 @@ const indexRoute = createRoute({
   component: OverviewPage,
 });
 
+// 完整路由表一次到位：未落地页面挂 WipPage 占位（数据 API 已就绪，页面随波次替换）。
+const holdingsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/holdings",
+  component: () => <WipPage title="持仓" wave="W3" />,
+});
+
+const holdingDetailRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/holdings/$code",
+  component: () => <WipPage title="标的详情" wave="W3" />,
+});
+
+const transactionsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/transactions",
+  component: () => <WipPage title="交易" wave="W4" />,
+});
+
+const dcaRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/dca",
+  component: () => <WipPage title="定投" wave="W4" />,
+});
+
+const analysisRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/analysis",
+  component: () => <WipPage title="分析" wave="W5" />,
+});
+
+const marketRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/market",
+  component: () => <WipPage title="市场" wave="W5" />,
+});
+
+const insightsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/insights",
+  component: () => <WipPage title="信号" wave="W6" />,
+});
+
+const reportsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/reports",
+  component: () => <WipPage title="报告" wave="W6" />,
+});
+
+const systemRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/system",
+  component: () => <WipPage title="工作台" wave="W6" />,
+});
+
+const systemAuditRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/system/audit",
+  component: () => <WipPage title="审计" wave="W6" />,
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/settings",
+  component: () => <WipPage title="设置" wave="W6" />,
+});
+
+// 设计系统目录页（03 §10 目视基线）。壳外全宽，便于查密度/断点行为。
+const designRoute = createRoute({
+  getParentRoute: () => protectedRoute,
+  path: "/_design",
+  component: DesignPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   setupRoute,
-  protectedRoute.addChildren([indexRoute]),
+  protectedRoute.addChildren([
+    indexRoute,
+    holdingsRoute,
+    holdingDetailRoute,
+    transactionsRoute,
+    dcaRoute,
+    analysisRoute,
+    marketRoute,
+    insightsRoute,
+    reportsRoute,
+    systemRoute,
+    systemAuditRoute,
+    settingsRoute,
+    designRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

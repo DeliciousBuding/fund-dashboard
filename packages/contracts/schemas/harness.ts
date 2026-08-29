@@ -58,7 +58,7 @@ export const InvestmentHarnessSnapshotSchema = z.object({
     priority: z.enum(['high', 'medium', 'low']),
     tool: z.string(),
     reason: z.string(),
-    input: z.record(z.unknown()).optional(),
+    input: z.record(z.string(), z.unknown()).optional(),
   })),
   agent_brief: z.string(),
 });
