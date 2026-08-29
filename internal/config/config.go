@@ -6,6 +6,9 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -50,6 +53,15 @@ type Config struct {
 	// AllowedOrigins is the browser Origin allowlist for mutations
 	// (FUND_ALLOWED_ORIGINS, comma-separated; localhost any port always allowed).
 	AllowedOrigins []string
+	// APIRPM caps per-IP API requests per minute (FUND_API_RPM, default 600,
+	// burst 60) — docs/design/06-security-hardening.md §2.3.
+	APIRPM int
+	// MCPRPM caps per-key MCP requests per minute (FUND_MCP_RPM, default 120).
+	MCPRPM int
+	// TrustedProxies is the Fund-Trusted-Proxies CIDR allowlist. When non-empty,
+	// X-Forwarded-For is only trusted from direct peers inside these networks
+	// (design 06 §2.4). Nil = legacy right-most-XFF behavior.
+	TrustedProxies []*net.IPNet
 	raw            map[string]string
 }
 
@@ -74,6 +86,9 @@ func Parse(env map[string]string) (Config, error) {
 		AuthSecureCookie:  parseBoolDefault(env["FUND_AUTH_SECURE_COOKIE"], true),
 		EdgeAuthEnabled:   parseBoolDefault(env["FUND_EDGE_AUTH_ENABLED"], true),
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
+		APIRPM:            parseRPM(env["FUND_API_RPM"], 600),
+		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], 120),
+		TrustedProxies:    parseTrustedProxies(env["FUND_TRUSTED_PROXIES"]),
 		raw:               copyMap(env),
 	}
 
@@ -210,6 +225,58 @@ func parseDuration(value string, fallback time.Duration) time.Duration {
 // parseOrigins splits a comma-separated Origin allowlist. Default covers the
 // Vite dev server; localhost on any port is always accepted by the origin
 // check itself (see internal/httpapi/origin_check.go).
+// parseRPM parses a non-negative per-minute rate env; invalid/empty → fallback.
+func parseRPM(value string, fallback int) int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(trimmed)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+// parseTrustedProxies parses a comma-separated CIDR/IP allowlist
+// (FUND_TRUSTED_PROXIES). Invalid segments are dropped with a WARN — a segment
+// that fails to parse is treated as untrusted (fail-closed), so the resulting
+// list only ever shrinks the trusted surface. An empty list means "legacy
+// right-most XFF" (no proxy allowlist configured).
+func parseTrustedProxies(value string) []*net.IPNet {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	var out []*net.IPNet
+	for _, part := range strings.Split(value, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if _, ipnet, err := net.ParseCIDR(trimmed); err == nil {
+			out = append(out, ipnet)
+			continue
+		}
+		// Bare IP? Normalize to /32 (or /128 for IPv6) so it participates in the allowlist.
+		if ip := net.ParseIP(trimmed); ip != nil {
+			if ip4 := ip.To4(); ip4 != nil {
+				_, ipnet, _ := net.ParseCIDR(ip.String() + "/32")
+				if ipnet != nil {
+					out = append(out, ipnet)
+					continue
+				}
+			}
+			_, ipnet, _ := net.ParseCIDR(ip.String() + "/128")
+			if ipnet != nil {
+				out = append(out, ipnet)
+				continue
+			}
+		}
+		slog.Warn("FUND_TRUSTED_PROXIES segment ignored (invalid CIDR/IP)", "value", trimmed)
+	}
+	return out
+}
+
 func parseOrigins(value string) []string {
 	if strings.TrimSpace(value) == "" {
 		return []string{"http://localhost:5173", "http://127.0.0.1:5173"}

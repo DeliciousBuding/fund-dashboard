@@ -138,6 +138,71 @@ func (r AuditEventRepository) Get(ctx context.Context, id int64) (*audit.Event, 
 	return &event, nil
 }
 
+// List returns the newest limit agent audit events, newest first (design 06
+// §2.6 audit timeline). limit is clamped to 500; created_at is UTC RFC3339Nano
+// so string ordering matches chronological ordering.
+func (r AuditEventRepository) List(ctx context.Context, limit int) ([]audit.Event, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT
+			request_id,
+			caller,
+			tool,
+			event_type,
+			status,
+			scope,
+			permission,
+			risk_level,
+			redacted_args_json,
+			result_summary_json,
+			created_at
+		FROM agent_audit_events
+		ORDER BY created_at DESC, id DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list agent audit events: %w", err)
+	}
+	defer rows.Close()
+	var out []audit.Event
+	for rows.Next() {
+		var event audit.Event
+		var status string
+		var redactedArgsJSON, resultSummaryJSON string
+		if err := rows.Scan(
+			&event.RequestID,
+			&event.Caller,
+			&event.Tool,
+			&event.EventType,
+			&status,
+			&event.Scope,
+			&event.Permission,
+			&event.RiskLevel,
+			&redactedArgsJSON,
+			&resultSummaryJSON,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan agent audit event: %w", err)
+		}
+		event.RedactedArgs, err = decodeAuditMap(redactedArgsJSON)
+		if err != nil {
+			return nil, fmt.Errorf("decode audit redacted args: %w", err)
+		}
+		event.ResultSummary, err = decodeAuditMap(resultSummaryJSON)
+		if err != nil {
+			return nil, fmt.Errorf("decode audit result summary: %w", err)
+		}
+		event.Status = audit.Status(status)
+		out = append(out, event)
+	}
+	return out, rows.Err()
+}
+
 func encodeAuditMap(value map[string]any) (string, error) {
 	if value == nil {
 		value = map[string]any{}

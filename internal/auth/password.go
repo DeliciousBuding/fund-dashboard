@@ -27,9 +27,11 @@ const (
 	saltLen      = 16
 )
 
-// MinPasswordLen / MaxPasswordLen bound acceptable passwords.
+// MinPasswordLen / MaxPasswordLen bound acceptable passwords. MinPasswordLen
+// follows docs/design/06-security-hardening.md §2.2 (10 → 12 for public-exposed
+// deployments); the policy additionally requires an ASCII letter and digit.
 const (
-	MinPasswordLen = 10
+	MinPasswordLen = 12
 	MaxPasswordLen = 256
 )
 

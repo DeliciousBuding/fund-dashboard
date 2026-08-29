@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -15,11 +17,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.Service, db *sql.DB, agentOps *agentops.Service, driver string, nav mcp.NavCrawler, snapshots mcp.SnapshotRecalculator, holdings mcp.HoldingsCrawler) {
+func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.Service, db *sql.DB, agentOps *agentops.Service, driver string, nav mcp.NavCrawler, snapshots mcp.SnapshotRecalculator, holdings mcp.HoldingsCrawler, mcpLimiter *RateLimiter) {
 	admin := adminsvc.NewServiceWithDriver(db, driver)
 
 	// Fail-closed bearer auth: MCP_API_KEY (operator) and/or PUBLIC_MCP_KEY (analyst).
-	r.With(MCPAuth(cfg.AdminKey, cfg.PublicMCPKey)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
+	// Per-key limiter is mounted AFTER auth (chi middleware order) so failed
+	// auth (401) requests never burn the key's bucket (design 06 §2.3).
+	r.With(MCPAuth(cfg.AdminKey, cfg.PublicMCPKey), RateLimit(mcpLimiter, mcpRateLimitKeyFn)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
 		role := agenttools.RoleAnalyst
 		if scope, ok := mcpAuthFromContext(req.Context()); ok {
 			role = scope.Role
@@ -59,4 +63,12 @@ func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.
 		}
 		WriteJSON(w, http.StatusOK, server.Handle(req.Context(), request))
 	})
+}
+
+// mcpRateLimitKeyFn derives the per-key bucket key from the Bearer token:
+// sha256 前 16 hex — no raw key retained in memory beyond the request (design
+// 06 §2.3 per-key 限流)。空 token（必然 401）也不会到达这里(限流在 auth 后)。
+func mcpRateLimitKeyFn(r *http.Request) string {
+	sum := sha256.Sum256([]byte(bearerToken(r.Header.Get("Authorization"))))
+	return "mcp:" + hex.EncodeToString(sum[:])[:16]
 }

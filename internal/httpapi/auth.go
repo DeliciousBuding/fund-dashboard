@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -29,16 +30,17 @@ const (
 const maxAuthBodyBytes = 4 << 10 // 4 KiB — credentials only
 
 // registerAuthRoutes mounts /api/auth/*. Status/setup/login are public
-// (rate-limited); logout/password/sessions require a valid session.
-func registerAuthRoutes(r chi.Router, svc *auth.Service, secureCookie bool, origins []string) {
+// (rate-limited); logout/password/sessions/events require a valid session.
+func registerAuthRoutes(r chi.Router, svc *auth.Service, secureCookie bool, origins []string, trusted []*net.IPNet) {
 	r.Route("/api/auth", func(a chi.Router) {
 		a.Get("/status", handleAuthStatus(svc))
-		a.Post("/setup", handleAuthSetup(svc, secureCookie))
-		a.Post("/login", handleAuthLogin(svc, secureCookie))
-		a.With(SessionAuth(svc, origins)).Post("/logout", handleAuthLogout(svc))
-		a.With(SessionAuth(svc, origins)).Post("/password", handleAuthPassword(svc))
+		a.Post("/setup", handleAuthSetup(svc, secureCookie, trusted))
+		a.Post("/login", handleAuthLogin(svc, secureCookie, trusted))
+		a.With(SessionAuth(svc, origins)).Post("/logout", handleAuthLogout(svc, trusted))
+		a.With(SessionAuth(svc, origins)).Post("/password", handleAuthPassword(svc, trusted))
 		a.With(SessionAuth(svc, origins)).Get("/sessions", handleAuthSessions(svc))
-		a.With(SessionAuth(svc, origins)).Post("/sessions/{id}/revoke", handleAuthSessionRevoke(svc))
+		a.With(SessionAuth(svc, origins)).Post("/sessions/{id}/revoke", handleAuthSessionRevoke(svc, trusted))
+		a.With(SessionAuth(svc, origins)).Get("/events", handleAuthEvents(svc))
 	})
 }
 
@@ -66,9 +68,9 @@ func handleAuthStatus(svc *auth.Service) http.HandlerFunc {
 	}
 }
 
-func handleAuthSetup(svc *auth.Service, secureCookie bool) http.HandlerFunc {
+func handleAuthSetup(svc *auth.Service, secureCookie bool, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := clientIP(r, trusted)
 		if retryAfter, ok := svc.Limiter.Allow("setup:" + ip); !ok {
 			rateLimited(w, retryAfter)
 			return
@@ -94,15 +96,19 @@ func handleAuthSetup(svc *auth.Service, secureCookie bool) http.HandlerFunc {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		svc.RecordAuthEvent(r.Context(), "setup", ip, truncatedUserAgent(r), "")
 		setSessionCookie(w, token, svc.SessionTTL(), secureCookie)
 		WriteJSON(w, http.StatusCreated, map[string]any{"ok": true})
 	}
 }
 
-func handleAuthLogin(svc *auth.Service, secureCookie bool) http.HandlerFunc {
+func handleAuthLogin(svc *auth.Service, secureCookie bool, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := clientIP(r, trusted)
 		if retryAfter, ok := svc.Limiter.Allow("login:" + ip); !ok {
+			// Escalating lockout tripped: record it (design 06 §2.2 audit matrix).
+			svc.RecordAuthEvent(r.Context(), "lockout", ip, truncatedUserAgent(r),
+				fmt.Sprintf("retry_after=%ds", int(retryAfter.Seconds())+1))
 			rateLimited(w, retryAfter)
 			return
 		}
@@ -115,10 +121,12 @@ func handleAuthLogin(svc *auth.Service, secureCookie bool) http.HandlerFunc {
 		case errors.Is(err, auth.ErrNotInitialized):
 			// Same response as bad credentials: no extra oracle beyond /status.
 			svc.Limiter.Failure("login:" + ip)
+			svc.RecordAuthEvent(r.Context(), "login_fail", ip, truncatedUserAgent(r), "not_initialized")
 			writeError(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			svc.Limiter.Failure("login:" + ip)
+			svc.RecordAuthEvent(r.Context(), "login_fail", ip, truncatedUserAgent(r), "invalid_credentials")
 			writeError(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		case err != nil:
@@ -126,15 +134,17 @@ func handleAuthLogin(svc *auth.Service, secureCookie bool) http.HandlerFunc {
 			return
 		}
 		svc.Limiter.Success("login:" + ip)
+		svc.RecordAuthEvent(r.Context(), "login_ok", ip, truncatedUserAgent(r), "")
 		revokeRequestSession(r, svc)
 		setSessionCookie(w, token, svc.SessionTTL(), secureCookie)
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 
-func handleAuthLogout(svc *auth.Service) http.HandlerFunc {
+func handleAuthLogout(svc *auth.Service, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		revokeRequestSession(r, svc)
+		svc.RecordAuthEvent(r.Context(), "logout", clientIP(r, trusted), truncatedUserAgent(r), "")
 		clearSessionCookie(w)
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
@@ -145,9 +155,9 @@ type authPasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
-func handleAuthPassword(svc *auth.Service) http.HandlerFunc {
+func handleAuthPassword(svc *auth.Service, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ip := clientIP(r)
+		ip := clientIP(r, trusted)
 		if retryAfter, ok := svc.Limiter.Allow("password:" + ip); !ok {
 			rateLimited(w, retryAfter)
 			return
@@ -179,6 +189,7 @@ func handleAuthPassword(svc *auth.Service) http.HandlerFunc {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		svc.RecordAuthEvent(r.Context(), "password_change", ip, truncatedUserAgent(r), "")
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "other_sessions_revoked": true})
 	}
 }
@@ -201,9 +212,10 @@ func handleAuthSessions(svc *auth.Service) http.HandlerFunc {
 	}
 }
 
-func handleAuthSessionRevoke(svc *auth.Service) http.HandlerFunc {
+func handleAuthSessionRevoke(svc *auth.Service, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		err := svc.RevokeByIDPrefix(r.Context(), chi.URLParam(r, "id"))
+		prefix := chi.URLParam(r, "id")
+		err := svc.RevokeByIDPrefix(r.Context(), prefix)
 		switch {
 		case errors.Is(err, auth.ErrSessionNotFound):
 			writeError(w, http.StatusNotFound, "not_found")
@@ -212,7 +224,32 @@ func handleAuthSessionRevoke(svc *auth.Service) http.HandlerFunc {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		// detail carries only the redacted session ID prefix — never the token.
+		svc.RecordAuthEvent(r.Context(), "session_revoke", clientIP(r, trusted), truncatedUserAgent(r), prefix)
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
+// handleAuthEvents exposes the auth audit timeline (design 06 §2.2): newest
+// first, newest auth/events up to 500; default limit 100.
+func handleAuthEvents(svc *auth.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if limit <= 0 {
+			limit = 100
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		events, err := svc.ListAuthEvents(r.Context(), limit)
+		if err != nil {
+			writeSafeError(w, r, http.StatusInternalServerError, err)
+			return
+		}
+		if events == nil {
+			events = []auth.AuthEvent{}
+		}
+		WriteJSON(w, http.StatusOK, map[string]any{"events": events})
 	}
 }
 
@@ -289,24 +326,76 @@ func revokeRequestSession(r *http.Request, svc *auth.Service) {
 	}
 }
 
-// clientIP trusts the right-most X-Forwarded-For entry (appended by the
-// trusted edge) and falls back to RemoteAddr. Without a proxy, per-IP buckets
-// degrade toward a single bucket — acceptable for single-tenant (worst case the
-// owner locks themselves out for 15 minutes; data is never at risk).
-func clientIP(r *http.Request) string {
+// clientIP resolves the effective client IP for the rate-limit/audit keys.
+//
+// With a trusted-proxy allowlist (cfg.TrustedProxies from FUND_TRUSTED_PROXIES),
+// X-Forwarded-For is honored only when the direct peer (RemoteAddr) is inside
+// the allowlist; the chain is then walked right-to-left skipping trusted hops,
+// and the first untrusted IP is the client. An untrusted direct peer ignores
+// XFF entirely (fail-closed — the advertised client IP cannot be spoofed).
+//
+// With an empty allowlist the behavior stays legacy: trust the right-most XFF
+// entry (assumes a single-hopping reverse proxy that overwrites XFF per hop).
+// Without a proxy, per-IP buckets degrade toward a single bucket — acceptable
+// for single-tenant (worst case the owner locks themselves out for 15 minutes;
+// data is never at risk).
+func clientIP(r *http.Request, trusted []*net.IPNet) string {
+	remote := remoteHost(r.RemoteAddr)
+	if len(trusted) == 0 {
+		if ip := rightmostXFF(r); ip != "" {
+			return ip
+		}
+		return remote
+	}
+	if !ipInNetworks(remote, trusted) {
+		return remote // untrusted direct peer → XFF is attacker-controlled, ignore it.
+	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 		for i := len(parts) - 1; i >= 0; i-- {
-			if ip := strings.TrimSpace(parts[i]); ip != "" {
+			ip := strings.TrimSpace(parts[i])
+			if ip == "" {
+				continue
+			}
+			if !ipInNetworks(ip, trusted) {
 				return ip
 			}
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return remote
+}
+
+// remoteHost strips the port from a RemoteAddr (falling back to the raw value).
+func remoteHost(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		return remoteAddr
 	}
 	return host
+}
+
+// rightmostXFF returns the right-most non-empty X-Forwarded-For entry.
+func rightmostXFF(r *http.Request) string {
+	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if ip := strings.TrimSpace(parts[i]); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func ipInNetworks(ip string, networks []*net.IPNet) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, network := range networks {
+		if network.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 func truncatedUserAgent(r *http.Request) string {

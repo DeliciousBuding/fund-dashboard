@@ -47,7 +47,7 @@ func TestSetupLoginAuthenticateFlow(t *testing.T) {
 		t.Fatalf("initial status = %#v, %v", status, err)
 	}
 
-	token, err := svc.Setup(ctx, "long-enough-password", "10.0.0.1", "agent/1")
+	token, err := svc.Setup(ctx, "long-enough-password1", "10.0.0.1", "agent/1")
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestSetupLoginAuthenticateFlow(t *testing.T) {
 	if _, err := svc.Login(ctx, "wrong-password-x", "", ""); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("wrong login = %v, want ErrInvalidCredentials", err)
 	}
-	if _, err := svc.Login(ctx, "long-enough-password", "", ""); err != nil {
+	if _, err := svc.Login(ctx, "long-enough-password1", "", ""); err != nil {
 		t.Fatalf("good login: %v", err)
 	}
 }
@@ -91,7 +91,7 @@ func TestEnvManagedMode(t *testing.T) {
 	if err != nil || !status.Initialized || !status.EnvManaged {
 		t.Fatalf("env status = %#v, %v", status, err)
 	}
-	if _, err := svc.Setup(ctx, "long-enough-password", "", ""); !errors.Is(err, ErrEnvManaged) {
+	if _, err := svc.Setup(ctx, "long-enough-password1", "", ""); !errors.Is(err, ErrEnvManaged) {
 		t.Fatalf("setup in env mode = %v, want ErrEnvManaged", err)
 	}
 	token, err := svc.Login(ctx, "env-managed-password", "", "")
@@ -141,7 +141,7 @@ func TestSlidingRenewalAndAbsoluteCap(t *testing.T) {
 		Now:    func() time.Time { return now },
 	})
 	ctx := context.Background()
-	token, err := svc.Setup(ctx, "sliding-window-pw", "", "")
+	token, err := svc.Setup(ctx, "sliding-window-pw1", "", "")
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestSweepExpired(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	svc := newTestService(t, Options{TTL: time.Hour, Now: func() time.Time { return now }})
 	ctx := context.Background()
-	token, err := svc.Setup(ctx, "sweep-me-password", "", "")
+	token, err := svc.Setup(ctx, "sweep-me-password1", "", "")
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestSweepExpired(t *testing.T) {
 func TestRevokeByIDPrefix(t *testing.T) {
 	svc := newTestService(t, Options{})
 	ctx := context.Background()
-	token, err := svc.Setup(ctx, "prefix-revoke-pw", "", "")
+	token, err := svc.Setup(ctx, "prefix-revoke-pw1", "", "")
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}

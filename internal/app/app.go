@@ -91,13 +91,10 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 		jobs.WithSource(datasource.TypeStock, stockSource),
 	)
 
-	// ── scheduler ────────────────────────────────────────────────────
-	scheduler := jobs.NewScheduler(refresher, db)
-	scheduler.Start()
-
 	// ── single-tenant auth (web login) ─────────────────────────────────
 	// On PG the auth tables are created by EnsurePGSchema; on SQLite we create
-	// them here (same pattern as agentstate).
+	// them here (same pattern as agentstate). The store also backs the daily
+	// auth_events sweep wired into the scheduler below.
 	authStore := authpkg.NewStore(db)
 	if cfg.DBDriver != "pg" {
 		if err := authStore.EnsureSchema(ctx); err != nil {
@@ -109,6 +106,11 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 		TTL:     cfg.AuthSessionTTL,
 		MaxAge:  cfg.AuthSessionMaxAge,
 	})
+
+	// ── scheduler ────────────────────────────────────────────────────
+	scheduler := jobs.NewScheduler(refresher, db)
+	scheduler.WithAuthEventSweeper(authStore)
+	scheduler.Start()
 
 	// ── HTTP router ──────────────────────────────────────────────────
 	options := []httpapi.RouterOption{
@@ -143,6 +145,8 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	options = append(options, httpapi.WithNavCrawler(refresher))
 	options = append(options, httpapi.WithSnapshotRecalculator(jobs.NewSnapshotService(db)))
 	options = append(options, httpapi.WithHoldingsCrawler(jobs.NewHoldingsRefresher(db)))
+	// Workspace system API: scheduler runtime snapshot for /api/system/jobs.
+	options = append(options, httpapi.WithJobStatus(scheduler.StatusSnapshot))
 
 	return &Runtime{
 		DB:        db,

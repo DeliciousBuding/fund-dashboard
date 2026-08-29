@@ -315,3 +315,60 @@ func TestRedactedHidesSecretsAndShowsSafeRuntimeFields(t *testing.T) {
 		t.Fatalf("FUND_AGENT_CONFIRMATION_SECRET = %q, want [redacted]", redacted["FUND_AGENT_CONFIRMATION_SECRET"])
 	}
 }
+
+func TestParseRateLimitEnvs(t *testing.T) {
+	cfg, err := Parse(map[string]string{
+		"FUND_API_RPM": "900",
+		"FUND_MCP_RPM": "30",
+	})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.APIRPM != 900 || cfg.MCPRPM != 30 {
+		t.Fatalf("APIRPM=%d MCPRPM=%d, want 900/30", cfg.APIRPM, cfg.MCPRPM)
+	}
+	// 非法值回退默认。
+	cfg, err = Parse(map[string]string{"FUND_API_RPM": "-5", "FUND_MCP_RPM": "abc"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.APIRPM != 600 || cfg.MCPRPM != 120 {
+		t.Fatalf("fallback APIRPM=%d MCPRPM=%d, want 600/120", cfg.APIRPM, cfg.MCPRPM)
+	}
+	// 未设置默认。
+	cfg, err = Parse(map[string]string{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.APIRPM != 600 || cfg.MCPRPM != 120 {
+		t.Fatalf("defaults APIRPM=%d MCPRPM=%d", cfg.APIRPM, cfg.MCPRPM)
+	}
+}
+
+func TestParseTrustedProxies(t *testing.T) {
+	cfg, err := Parse(map[string]string{
+		"FUND_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.5, 2001:db8::/32, not-an-ip, ,",
+	})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(cfg.TrustedProxies) != 3 {
+		t.Fatalf("trusted = %d entries, want 3 (invalid segment + empty dropped)", len(cfg.TrustedProxies))
+	}
+	if cfg.TrustedProxies[0].String() != "10.0.0.0/8" {
+		t.Fatalf("first = %v", cfg.TrustedProxies[0])
+	}
+	// 裸 IP 归一化 /32。
+	if cfg.TrustedProxies[1].String() != "192.168.1.5/32" {
+		t.Fatalf("bare IP = %v", cfg.TrustedProxies[1])
+	}
+
+	// 未设置 → nil(维持最右一跳行为)。
+	cfg, err = Parse(map[string]string{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.TrustedProxies != nil {
+		t.Fatalf("unset trusted = %v, want nil", cfg.TrustedProxies)
+	}
+}

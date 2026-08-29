@@ -12,6 +12,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
 	"github.com/DeliciousBuding/fund-dashboard/internal/auth"
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
+	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
@@ -34,6 +35,7 @@ type routerDeps struct {
 	navCrawler   mcp.NavCrawler   // optional, for MCP crawl_nav
 	snapshots    mcp.SnapshotRecalculator
 	holdings     mcp.HoldingsCrawler
+	jobStatus    func() []jobs.JobStatus // optional, scheduler runtime snapshot
 }
 
 func WithDB(db DB) RouterOption {
@@ -83,6 +85,12 @@ func WithHoldingsCrawler(h mcp.HoldingsCrawler) RouterOption {
 	return func(deps *routerDeps) { deps.holdings = h }
 }
 
+// WithJobStatus wires the scheduler runtime snapshot for GET /api/system/jobs.
+// nil-safe: routes without it return an empty job list.
+func WithJobStatus(fn func() []jobs.JobStatus) RouterOption {
+	return func(deps *routerDeps) { deps.jobStatus = fn }
+}
+
 func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 	deps := &routerDeps{}
 	for _, opt := range opts {
@@ -92,101 +100,123 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 	r := chi.NewRouter()
 	r.Use(RequestID)
 	r.Use(Recoverer)
-	r.Use(SecurityHeaders)
+	r.Use(SecurityHeaders(cfg.AuthSecureCookie))
 	r.Use(AccessLog)
 
-	// Public.
-	r.Get("/api/health", healthHandler(cfg))
+	// 通用 API 限流（design 06 §2.3）：/api/* 组最外层 per-IP 600/min（burst 60，
+	// FUND_API_RPM 可调）；昂贵端点额外 60/min 桶。MCP 按 key 在 registerMCPRoutes
+	// 内干（认证失败 401 不计费）。
+	apiLimiter := NewRateLimiter(float64(cfg.APIRPM), 60)
+	expensiveLimiter := NewRateLimiter(60, 60)
+	apiKeyFn := func(req *http.Request) string { return "ip:" + clientIP(req, cfg.TrustedProxies) }
 
-	// Single-tenant auth: /api/auth/status|setup|login are public (rate-limited),
-	// logout/password/sessions require a session.
-	if deps.auth != nil {
-		registerAuthRoutes(r, deps.auth, cfg.AuthSecureCookie, cfg.AllowedOrigins)
-	}
+	// Everything under /api/* lives inside this group so the limiters run before
+	// auth middleware — unauthenticated scans burn tokens too.
+	r.Group(func(api chi.Router) {
+		api.Use(RateLimit(apiLimiter, apiKeyFn))
+		api.Use(rateLimitExpensive(expensiveLimiter, expensiveAPIPaths, apiKeyFn))
 
-	// Agent tool registry / authorize simulation — operator Bearer only.
-	// Not an execution path, but must not be a public reconnaissance surface.
-	r.Group(func(agentTools chi.Router) {
-		agentTools.Use(AdminAuth(cfg.AdminKey))
-		agentTools.Get("/api/agent/tools", handleAgentTools())
-		agentTools.Get("/api/agent/tools/summary", handleAgentToolsSummary())
-		agentTools.Get("/api/agent/tools/{tool}/authorize", handleAgentToolAuthorize())
+		// Public.
+		api.Get("/api/health", healthHandler(cfg))
+
+		// Single-tenant auth: /api/auth/status|setup|login are public (rate-limited),
+		// logout/password/sessions/events require a session.
+		if deps.auth != nil {
+			registerAuthRoutes(api, deps.auth, cfg.AuthSecureCookie, cfg.AllowedOrigins, cfg.TrustedProxies)
+		}
+
+		// Agent tool registry / authorize simulation — operator Bearer only.
+		// Not an execution path, but must not be a public reconnaissance surface.
+		api.Group(func(agentTools chi.Router) {
+			agentTools.Use(AdminAuth(cfg.AdminKey))
+			agentTools.Get("/api/agent/tools", handleAgentTools())
+			agentTools.Get("/api/agent/tools/summary", handleAgentToolsSummary())
+			agentTools.Get("/api/agent/tools/{tool}/authorize", handleAgentToolAuthorize())
+		})
+
+		// Optional: agent ops (requires explicit config enable).
+		if deps.agentOps != nil {
+			api.Group(func(agent chi.Router) {
+				agent.Use(AdminAuth(cfg.AdminKey))
+				registerAgentConfirmationRoutes(agent, deps.agentOps)
+			})
+		}
+
+		// Portfolio & market reads require a session (single-tenant: everything sits
+		// behind the login). Browser writes accept session (preferred) or the legacy
+		// edge-injected EdgeKey while FUND_EDGE_AUTH_ENABLED stays on.
+		if deps.portfolio != nil {
+			api.Group(func(authed chi.Router) {
+				authed.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
+				registerExportRoutes(authed)
+				registerPortfolioRoutes(authed, deps.portfolio)
+				registerFundRoutes(authed, deps.portfolio)
+				registerMarketRoutes(authed, deps.portfolio)
+				registerAnalysisRoutes(authed, deps.portfolio)
+			})
+			if deps.db != nil {
+				adminForSPA := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
+				api.Group(func(authedExt chi.Router) {
+					authedExt.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
+					registerSPAReadExtensions(authedExt, deps.portfolio, adminForSPA)
+					registerSystemReadRoutes(authedExt, cfg, deps, adminForSPA)
+				})
+				api.Group(func(browserWrites chi.Router) {
+					browserWrites.Use(BrowserWriteAuth(deps.auth, cfg.EdgeKey, cfg.EdgeAuthEnabled, cfg.AllowedOrigins))
+					registerSPATransactionRoutes(browserWrites, adminForSPA)
+					registerOpsDashboardRoutes(browserWrites, deps.db, deps.dbDriver, cfg.Version)
+					registerPortfolioWriteRoutes(browserWrites, deps.portfolio)
+					registerSPAWriteExtensions(browserWrites, deps.portfolio)
+					registerSystemWriteRoutes(browserWrites, cfg, deps, adminForSPA)
+				})
+			}
+		}
+
+		// Admin — protected by Bearer token auth (ops / agent tools).
+		api.Route("/api/admin", func(admin chi.Router) {
+			admin.Use(AdminAuth(cfg.AdminKey))
+
+			// Always available — no DB required.
+			registerBackupStatusRoutes(admin, cfg)
+
+			if deps.db != nil {
+				adminService := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
+				registerAdminDashboardRoutes(admin, deps.db, deps.dbDriver, cfg.Version)
+				registerAdminFreshnessRoutes(admin, deps.db, deps.dbDriver)
+				registerAdminHoldingsCoverageRoutes(admin, deps.db, deps.dbDriver)
+				registerAdminStatusRoutes(admin, deps.db, deps.dbDriver)
+				registerAdminTransactionRoutes(admin, adminService)
+				registerAdminVerifyRoutes(admin, deps.db, deps.dbDriver)
+				registerAdminIntegrityRoutes(admin, deps.db, deps.dbDriver)
+
+			}
+			// Maintenance crawlers only need the job adapters (DB owned by jobs).
+			var adminForCrawl *adminsvc.Service
+			if deps.db != nil {
+				svc := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
+				adminForCrawl = &svc
+			}
+			if deps.navCrawler != nil {
+				admin.Post("/crawl-nav", navCrawlHandler(deps.navCrawler, adminForCrawl))
+			} else if deps.crawlHandler != nil {
+				// legacy all-held-only adapter
+				admin.Post("/crawl-nav", deps.crawlHandler)
+			}
+			if deps.holdings != nil {
+				admin.Post("/crawl-holdings", holdingsCrawlHandler(deps.holdings))
+			}
+			if deps.snapshots != nil {
+				admin.Post("/recalculate-snapshot", recalculateSnapshotHandler(deps.snapshots))
+			}
+		})
 	})
 
-	// Optional: agent ops (requires explicit config enable).
-	if deps.agentOps != nil {
-		r.Group(func(agent chi.Router) {
-			agent.Use(AdminAuth(cfg.AdminKey))
-			registerAgentConfirmationRoutes(agent, deps.agentOps)
-		})
+	// MCP stays outside the per-IP group: it has its own per-key limiter
+	// (see registerMCPRoutes), mounted after Bearer auth so 401s don't burn tokens.
+	if deps.portfolio != nil && deps.db != nil {
+		mcpLimiter := NewRateLimiter(float64(cfg.MCPRPM), 60)
+		registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings, mcpLimiter)
 	}
-
-	// Portfolio & market reads require a session (single-tenant: everything sits
-	// behind the login). Browser writes accept session (preferred) or the legacy
-	// edge-injected EdgeKey while FUND_EDGE_AUTH_ENABLED stays on.
-	if deps.portfolio != nil {
-		r.Group(func(authed chi.Router) {
-			authed.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
-			registerExportRoutes(authed)
-			registerPortfolioRoutes(authed, deps.portfolio)
-			registerFundRoutes(authed, deps.portfolio)
-			registerMarketRoutes(authed, deps.portfolio)
-			registerAnalysisRoutes(authed, deps.portfolio)
-		})
-		if deps.db != nil {
-			adminForSPA := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
-			r.Group(func(authedExt chi.Router) {
-				authedExt.Use(SessionAuth(deps.auth, cfg.AllowedOrigins))
-				registerSPAReadExtensions(authedExt, deps.portfolio, adminForSPA)
-			})
-			r.Group(func(browserWrites chi.Router) {
-				browserWrites.Use(BrowserWriteAuth(deps.auth, cfg.EdgeKey, cfg.EdgeAuthEnabled, cfg.AllowedOrigins))
-				registerSPATransactionRoutes(browserWrites, adminForSPA)
-				registerOpsDashboardRoutes(browserWrites, deps.db, deps.dbDriver, cfg.Version)
-				registerPortfolioWriteRoutes(browserWrites, deps.portfolio)
-				registerSPAWriteExtensions(browserWrites, deps.portfolio)
-			})
-			registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings)
-		}
-	}
-
-	// Admin — protected by Bearer token auth (ops / agent tools).
-	r.Route("/api/admin", func(admin chi.Router) {
-		admin.Use(AdminAuth(cfg.AdminKey))
-
-		// Always available — no DB required.
-		registerBackupStatusRoutes(admin, cfg)
-
-		if deps.db != nil {
-			adminService := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
-			registerAdminDashboardRoutes(admin, deps.db, deps.dbDriver, cfg.Version)
-			registerAdminFreshnessRoutes(admin, deps.db, deps.dbDriver)
-			registerAdminHoldingsCoverageRoutes(admin, deps.db, deps.dbDriver)
-			registerAdminStatusRoutes(admin, deps.db, deps.dbDriver)
-			registerAdminTransactionRoutes(admin, adminService)
-			registerAdminVerifyRoutes(admin, deps.db, deps.dbDriver)
-			registerAdminIntegrityRoutes(admin, deps.db, deps.dbDriver)
-
-		}
-		// Maintenance crawlers only need the job adapters (DB owned by jobs).
-		var adminForCrawl *adminsvc.Service
-		if deps.db != nil {
-			svc := adminsvc.NewServiceWithDriver(deps.db, deps.dbDriver)
-			adminForCrawl = &svc
-		}
-		if deps.navCrawler != nil {
-			admin.Post("/crawl-nav", navCrawlHandler(deps.navCrawler, adminForCrawl))
-		} else if deps.crawlHandler != nil {
-			// legacy all-held-only adapter
-			admin.Post("/crawl-nav", deps.crawlHandler)
-		}
-		if deps.holdings != nil {
-			admin.Post("/crawl-holdings", holdingsCrawlHandler(deps.holdings))
-		}
-		if deps.snapshots != nil {
-			admin.Post("/recalculate-snapshot", recalculateSnapshotHandler(deps.snapshots))
-		}
-	})
 
 	// SPA fallback — must be last.
 	if deps.staticFS != nil {

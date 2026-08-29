@@ -49,6 +49,15 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 			user_agent TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at)`,
+		`CREATE TABLE IF NOT EXISTS auth_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts BIGINT NOT NULL,
+			event TEXT NOT NULL,
+			ip TEXT,
+			user_agent TEXT,
+			detail TEXT
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_auth_events_ts ON auth_events(ts)`,
 	}
 	for _, stmt := range statements {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
@@ -176,6 +185,66 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64
 	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_sessions WHERE expires_at < ?`, now.Unix())
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// AuthEvent is one auth audit row. ts is unix epoch seconds; detail never
+// carries passwords/tokens (design 06 §2.2).
+type AuthEvent struct {
+	TS        int64  `json:"ts"`
+	Event     string `json:"event"`
+	IP        string `json:"ip,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+}
+
+// InsertAuthEvent appends an auth audit event. ts comes from the caller so the
+// service can use its injected clock (Now) — same pattern as CreateSession.
+func (s *Store) InsertAuthEvent(ctx context.Context, event, ip, userAgent, detail string, ts int64) error {
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO auth_events (ts, event, ip, user_agent, detail)
+		VALUES (?, ?, ?, ?, ?)
+	`, ts, event, ip, userAgent, detail); err != nil {
+		return fmt.Errorf("insert auth event: %w", err)
+	}
+	return nil
+}
+
+// ListAuthEvents returns the newest limit events, newest first. limit is
+// clamped to 500 (design §2.2).
+func (s *Store) ListAuthEvents(ctx context.Context, limit int) ([]AuthEvent, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT ts, event, COALESCE(ip, ''), COALESCE(user_agent, ''), COALESCE(detail, '')
+		FROM auth_events ORDER BY ts DESC, id DESC LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list auth events: %w", err)
+	}
+	defer rows.Close()
+	var out []AuthEvent
+	for rows.Next() {
+		var ev AuthEvent
+		if err := rows.Scan(&ev.TS, &ev.Event, &ev.IP, &ev.UserAgent, &ev.Detail); err != nil {
+			return nil, fmt.Errorf("scan auth event: %w", err)
+		}
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}
+
+// SweepAuthEvents deletes audit rows older than cutoffEpoch (unix seconds);
+// returns rows deleted. Called daily from the scheduler.
+func (s *Store) SweepAuthEvents(ctx context.Context, cutoffEpoch int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_events WHERE ts < ?`, cutoffEpoch)
+	if err != nil {
+		return 0, fmt.Errorf("sweep auth events: %w", err)
 	}
 	return res.RowsAffected()
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -273,6 +274,32 @@ func (s *Service) SweepExpired(ctx context.Context) (int64, error) {
 	return s.store.DeleteExpiredSessions(ctx, s.now())
 }
 
+// RecordAuthEvent appends an auth audit row (setup|login_ok|login_fail|lockout|
+// logout|password_change|session_revoke). Best-effort: an audit write failure
+// is logged and swallowed — auditing must never break the auth flow.
+// detail never carries passwords or tokens (design 06 §2.2).
+func (s *Service) RecordAuthEvent(ctx context.Context, event, ip, userAgent, detail string) {
+	if err := s.store.InsertAuthEvent(ctx, event, ip, userAgent, detail, s.now().Unix()); err != nil {
+		slog.Warn("auth event record failed",
+			"event", event,
+			"ip", ip,
+			"error", err.Error(),
+		)
+	}
+}
+
+// ListAuthEvents exposes the recent auth audit timeline (newest first,
+// limit ≤ 500) for the settings/system audit UI.
+func (s *Service) ListAuthEvents(ctx context.Context, limit int) ([]AuthEvent, error) {
+	return s.store.ListAuthEvents(ctx, limit)
+}
+
+// SweepAuthEvents deletes audit rows older than cutoff (default 180d from the
+// scheduler's 03:00 window). Implements jobs.AuthEventSweeper.
+func (s *Service) SweepAuthEvents(ctx context.Context, cutoffEpoch int64) (int64, error) {
+	return s.store.SweepAuthEvents(ctx, cutoffEpoch)
+}
+
 func (s *Service) activeHash(ctx context.Context) (string, error) {
 	if s.envHash != "" {
 		return s.envHash, nil
@@ -321,5 +348,27 @@ func validatePassword(password string) error {
 	if len(password) > MaxPasswordLen {
 		return fmt.Errorf("%w: max %d characters", ErrWeakPassword, MaxPasswordLen)
 	}
+	if !passwordHasLetterAndDigit(password) {
+		// Design 06 §2.2: require at least one ASCII letter + one ASCII digit so
+		// dictionary-line passwords ("correct horse battery") stay rejected.
+		return fmt.Errorf("%w: must contain at least one ASCII letter and one ASCII digit", ErrWeakPassword)
+	}
 	return nil
+}
+
+func passwordHasLetterAndDigit(password string) bool {
+	hasLetter, hasDigit := false, false
+	for i := 0; i < len(password); i++ {
+		c := password[i]
+		switch {
+		case c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
+			hasLetter = true
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		}
+		if hasLetter && hasDigit {
+			return true
+		}
+	}
+	return false
 }

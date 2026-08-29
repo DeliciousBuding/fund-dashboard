@@ -20,6 +20,31 @@ type DCARunner interface {
 	RunDCAAutoInvest(ctx context.Context, in portfoliosvc.RunDCAAutoInvestInput) (portfoliosvc.RunDCAAutoInvestResult, error)
 }
 
+// AuthEventSweeper deletes expired auth audit rows (implemented by
+// auth.Service.SweepAuthEvents — 180d retention, design 06 §2.2 清扫).
+type AuthEventSweeper interface {
+	SweepAuthEvents(ctx context.Context, cutoffEpoch int64) (int64, error)
+}
+
+// JobStatus is the runtime snapshot of one scheduler job, exposed via
+// StatusSnapshot to the system workspace API (design 06 §2.6). Times are unix
+// epoch seconds.
+type JobStatus struct {
+	Name      string `json:"name"`
+	Schedule  string `json:"schedule"`
+	LastRun   int64  `json:"last_run,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+	NextRun   int64  `json:"next_run"`
+}
+
+// jobRuntime tracks one job's execution record under jobsMu.
+type jobRuntime struct {
+	name     string
+	schedule string
+	lastRun  int64
+	lastErr  string
+}
+
 // Scheduler runs background jobs on a schedule. It uses the PriceRefresher
 // for price updates, optional DCARunner for auto-invest materialization,
 // HoldingsRefresher for Saturday holdings crawl, and the database handle for WAL maintenance.
@@ -31,8 +56,11 @@ type Scheduler struct {
 	holdings  *HoldingsRefresher
 	dca       DCARunner
 	db        *sql.DB
+	authSweep AuthEventSweeper
 
 	mu           sync.Mutex
+	jobsMu       sync.RWMutex
+	jobs         map[string]*jobRuntime
 	stopCh       chan struct{}
 	ticker       ticker
 	lastRun      map[string]string // job -> window id (usually YYYY-MM-DD CST)
@@ -40,6 +68,51 @@ type Scheduler struct {
 	rootCancel   context.CancelFunc
 	startupTimer *time.Timer
 	stopped      bool
+}
+
+// jobDefinitions lists the tracked jobs (name + schedule description) so
+// StatusSnapshot always reports the full calendar surface. nextRunEpoch
+// computes the next window for each.
+func jobDefinitions(now time.Time) []jobRuntime {
+	now = now.In(cst)
+	return []jobRuntime{
+		{name: "startup_refresh", schedule: "startup catch-up stale_only (once per CST day)"},
+		{name: "price_dca", schedule: "daily 20:00 CST all_held + DCA weekdays"},
+		{name: "holdings", schedule: "Saturday 10:00 CST holdings once/day"},
+		{name: "wal", schedule: "daily 03:00 CST WAL + expired-state sweep"},
+	}
+}
+
+// nextRunEpoch picks the next scheduled window (unix seconds) for the given
+// job, or 0 when the job has no recurring window (startup_refresh runs only
+// once per process start).
+func nextRunEpoch(job string, now time.Time) int64 {
+	now = now.In(cst)
+	target := func(hour int, day time.Weekday) time.Time {
+		t := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, cst)
+		if day >= 0 { // weekly constraint (holdings: Saturday)
+			delta := (int(day) - int(t.Weekday()) + 7) % 7
+			t = t.AddDate(0, 0, delta)
+		}
+		if !t.After(now) {
+			if day >= 0 {
+				t = t.AddDate(0, 0, 7) // next same weekday
+			} else {
+				t = t.AddDate(0, 0, 1) // next day
+			}
+		}
+		return t
+	}
+	switch job {
+	case "holdings":
+		return target(10, time.Saturday).Unix()
+	case "price_dca":
+		return target(20, -1).Unix()
+	case "wal":
+		return target(3, -1).Unix()
+	default:
+		return 0 // startup_refresh — no recurring next run
+	}
 }
 
 // ticker abstracts time.Ticker for testability.
@@ -62,6 +135,7 @@ func NewScheduler(refresher *PriceRefresher, db *sql.DB) *Scheduler {
 		dca:       portfoliosvc.NewService(db),
 		db:        db,
 		lastRun:   map[string]string{},
+		jobs:      map[string]*jobRuntime{},
 	}
 }
 
@@ -69,6 +143,55 @@ func NewScheduler(refresher *PriceRefresher, db *sql.DB) *Scheduler {
 func (s *Scheduler) WithDCARunner(r DCARunner) *Scheduler {
 	s.dca = r
 	return s
+}
+
+// WithAuthEventSweeper wires the auth audit retention sweep (auth.Service —
+// deletes auth_events rows older than 180d in the 03:00 window).
+func (s *Scheduler) WithAuthEventSweeper(sweeper AuthEventSweeper) *Scheduler {
+	s.authSweep = sweeper
+	return s
+}
+
+// recordJob updates the runtime record after a job attempt. now is the window
+// time (the injectable tick time in tests); a nil error clears last_error.
+func (s *Scheduler) recordJob(job string, now time.Time, err error) {
+	s.jobsMu.Lock()
+	defer s.jobsMu.Unlock()
+	if s.jobs == nil {
+		s.jobs = map[string]*jobRuntime{}
+	}
+	rt, ok := s.jobs[job]
+	if !ok {
+		rt = &jobRuntime{name: job}
+		s.jobs[job] = rt
+	}
+	rt.lastRun = now.Unix()
+	if err != nil {
+		rt.lastErr = err.Error()
+	} else {
+		rt.lastErr = ""
+	}
+}
+
+// StatusSnapshot returns the tracked jobs with last run / error and the next
+// scheduled window (design 06 §2.6). Safe for concurrent use; job times are
+// unix epoch seconds.
+func (s *Scheduler) StatusSnapshot() []JobStatus {
+	now := time.Now()
+	s.jobsMu.RLock()
+	// Defs are rebuilt per call so the schedule text stays current while the
+	// stored runtime records are looked up by name.
+	out := make([]JobStatus, 0, 4)
+	for _, def := range jobDefinitions(now) {
+		snap := JobStatus{Name: def.name, Schedule: def.schedule, NextRun: nextRunEpoch(def.name, now)}
+		if rt := s.jobs[def.name]; rt != nil {
+			snap.LastRun = rt.lastRun
+			snap.LastError = rt.lastErr
+		}
+		out = append(out, snap)
+	}
+	s.jobsMu.RUnlock()
+	return out
 }
 
 // Start begins periodic execution. Safe to call multiple times.
@@ -145,9 +268,11 @@ func (s *Scheduler) runStartupCatchUp(now time.Time) {
 		return
 	}
 	// Scheduled paths only touch missing/stale held NAV; full crawl stays on admin/MCP.
-	if _, _, err := s.refresher.RefreshStaleHeld(ctx); err != nil {
+	_, _, err := s.refresher.RefreshStaleHeld(ctx)
+	if err != nil {
 		slog.Error("startup price refresh failed", "error", err)
 	}
+	s.recordJob("startup_refresh", now, err)
 }
 
 func (s *Scheduler) isStopped() bool {
@@ -184,20 +309,28 @@ func (s *Scheduler) tick(now time.Time) {
 		slog.Info("price refresh window", "window", "20:00 CST daily", "mode", "all_held", "as_of", windowDay)
 		ctx, cancel := s.jobContext(45 * time.Minute)
 		defer cancel()
+		var jobErr error
 		if _, _, err := s.refresher.RefreshAllHeld(ctx); err != nil {
 			slog.Error("price refresh failed", "error", err)
+			jobErr = err
 		}
 		// MarketTicker indices cache (#92) — best-effort Yahoo refresh.
 		idxCtx, idxCancel := s.jobContext(2 * time.Minute)
 		if _, err := portfoliosvc.NewService(s.db).RefreshMarketIndices(idxCtx); err != nil {
 			slog.Error("market indices refresh failed", "error", err)
+			if jobErr == nil {
+				jobErr = err
+			}
 		}
 		idxCancel()
 		// DCA materialization stays weekday-only (a financial decision — never on
 		// Saturday/Sunday; price refresh above is pure data sync).
 		if day >= time.Monday && day <= time.Friday {
-			s.runDCAMaterialization(ctx, now)
+			if err := s.runDCAMaterialization(ctx, now); err != nil && jobErr == nil {
+				jobErr = err
+			}
 		}
+		s.recordJob("price_dca", now, jobErr)
 
 	// Saturday 10:00 hour — fund holdings refresh, once per day.
 	case hour == 10 && day == time.Saturday:
@@ -211,6 +344,7 @@ func (s *Scheduler) tick(now time.Time) {
 		ctx, cancel := s.jobContext(45 * time.Minute)
 		defer cancel()
 		funds, added, err := s.holdings.CrawlAllHeld(ctx)
+		s.recordJob("holdings", now, err)
 		if err != nil {
 			slog.Error("holdings refresh failed", "error", err, "funds", funds, "added", added)
 			return
@@ -224,25 +358,32 @@ func (s *Scheduler) tick(now time.Time) {
 		}
 		ctx, cancel := s.jobContext(30 * time.Second)
 		defer cancel()
+		var jobErr error
 		// Probe SQLite before PRAGMA so PG never sees invalid syntax in server logs.
 		var probe int
 		if err := s.db.QueryRowContext(ctx, `SELECT 1 FROM sqlite_master LIMIT 1`).Scan(&probe); err != nil {
 			slog.Debug("WAL checkpoint skipped (non-SQLite driver)")
 		} else if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 			slog.Warn("WAL checkpoint failed", "error", err)
+			jobErr = err
 		} else {
 			slog.Info("WAL checkpoint complete")
 		}
-		s.sweepExpiredState(ctx)
+		if err := s.sweepExpiredState(ctx); err != nil && jobErr == nil {
+			jobErr = err
+		}
+		s.recordJob("wal", now, jobErr)
 	}
 }
 
 // sweepExpiredState piggybacks the daily 03:00 window: expired web sessions,
-// agent confirmations expired >7d, and audit events older than 90d (all three
-// tables previously grew unbounded). Best-effort; legacy databases may lack
-// the tables.
-func (s *Scheduler) sweepExpiredState(ctx context.Context) {
+// agent confirmations expired >7d, audit events older than 90d, and auth
+// events older than 180d (design 06 §2.2 — auth_events retention is owned by
+// auth.Service via the AuthEventSweeper interface). Best-effort; legacy
+// databases may lack the tables. Returns the first non-nil error encountered.
+func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 	now := time.Now()
+	var firstErr error
 	sweeps := []struct {
 		table string
 		query string
@@ -260,12 +401,28 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) {
 				continue
 			}
 			slog.Warn("daily sweep failed", "table", sweep.table, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		if deleted, err := res.RowsAffected(); err == nil && deleted > 0 {
 			slog.Info("daily sweep", "table", sweep.table, "deleted", deleted)
 		}
 	}
+	// auth_events retention (180d) via the injected auth service — the table is
+	// dialect-agnostic but owned by internal/auth, which keeps its DDL together.
+	if s.authSweep != nil {
+		if deleted, err := s.authSweep.SweepAuthEvents(ctx, now.Add(-180*24*time.Hour).Unix()); err != nil {
+			slog.Warn("daily sweep failed", "table", "auth_events", "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else if deleted > 0 {
+			slog.Info("daily sweep", "table", "auth_events", "deleted", deleted)
+		}
+	}
+	return firstErr
 }
 
 // claimWindow records a job attempt for the given window id.
@@ -367,9 +524,9 @@ func schedulerClaimCode(job string) string {
 	}
 }
 
-func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) {
+func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) error {
 	if s.dca == nil {
-		return
+		return nil
 	}
 	asOf := now.Format("2006-01-02")
 	// Single-user deployment: default portfolio only. Multi-portfolio ledger is deferred
@@ -382,7 +539,7 @@ func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) {
 	})
 	if err != nil {
 		slog.Error("dca materialization failed", "as_of", asOf, "portfolio_id", portfolioID, "error", err)
-		return
+		return err
 	}
 	slog.Info("dca materialization complete",
 		"as_of", asOf,
@@ -392,4 +549,5 @@ func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) {
 		"previewed", res.Previewed,
 		"items", len(res.Items),
 	)
+	return nil
 }
