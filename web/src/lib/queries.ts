@@ -316,8 +316,11 @@ export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
   params.set("limit", "100");
   return useQuery({
     queryKey: ["source-events", opts?.unreadOnly ?? false],
+    // 契约 SourceEventsResponseSchema：{count, decision_boundary, events}（G6 修复后的包装形状）
     queryFn: ({ signal }) =>
-      api<SourceEvent[]>(`/api/portfolio/source-events?${params}`, { signal }),
+      api<{ count: number; events: SourceEvent[] }>(`/api/portfolio/source-events?${params}`, {
+        signal,
+      }),
     staleTime: 60 * 1000,
   });
 }
@@ -400,5 +403,27 @@ export function useDcaPlans(activeOnly = false, portfolioId?: number) {
     queryFn: ({ signal }) =>
       api<{ plans: DcaPlan[] }>(`/api/dca/plans${qs ? `?${qs}` : ""}`, { signal }),
     staleTime: 60 * 1000,
+  });
+}
+
+// ── W6 告警 ──────────────────────────────────────────────────────────
+
+export interface AlertItem {
+  kind: string;
+  code: string;
+  name?: string;
+  severity: string;
+  message: string;
+  value?: number;
+  threshold?: number;
+  as_of?: string;
+}
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["alerts"],
+    queryFn: ({ signal }) =>
+      api<{ ok: boolean; count: number; alerts: AlertItem[] }>("/api/alerts", { signal }),
+    staleTime: 5 * 60 * 1000,
   });
 }

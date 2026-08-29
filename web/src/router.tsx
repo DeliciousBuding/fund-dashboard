@@ -8,7 +8,6 @@ import {
 } from "@tanstack/react-router";
 import { type AuthStatus, fetchAuthStatus } from "./lib/auth";
 import { queryClient } from "./lib/queryClient";
-import { WipPage } from "./routes/_wip";
 import { AppShell } from "./routes/AppShell";
 import { LoginPage } from "./routes/login";
 import { SetupPage } from "./routes/setup";
@@ -65,7 +64,7 @@ const indexRoute = createRoute({
   component: lazyRouteComponent(() => import("./routes/index"), "OverviewPage"),
 });
 
-// 完整路由表一次到位：未落地页面挂 WipPage 占位（数据 API 已就绪，页面随波次替换）。
+// 全部页面已落地（W3–W6）；图表/表格重的路由一律懒加载。
 const holdingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/holdings",
@@ -105,31 +104,31 @@ const marketRoute = createRoute({
 const insightsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/insights",
-  component: () => <WipPage title="信号" wave="W6" />,
+  component: lazyRouteComponent(() => import("./routes/insights"), "InsightsPage"),
 });
 
 const reportsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/reports",
-  component: () => <WipPage title="报告" wave="W6" />,
+  component: lazyRouteComponent(() => import("./routes/reports"), "ReportsPage"),
 });
 
 const systemRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/system",
-  component: () => <WipPage title="工作台" wave="W6" />,
+  component: lazyRouteComponent(() => import("./routes/system"), "SystemPage"),
 });
 
 const systemAuditRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/system/audit",
-  component: () => <WipPage title="审计" wave="W6" />,
+  component: lazyRouteComponent(() => import("./routes/system.audit"), "SystemAuditPage"),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => protectedRoute,
   path: "/settings",
-  component: () => <WipPage title="设置" wave="W6" />,
+  component: lazyRouteComponent(() => import("./routes/settings"), "SettingsPage"),
 });
 
 // 设计系统目录页（03 §10 目视基线）。壳外全宽，便于查密度/断点行为。
