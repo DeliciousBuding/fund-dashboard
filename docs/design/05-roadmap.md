@@ -15,7 +15,7 @@
 | W4 ✅ | 交易与定投 | 台账 CRUD、导入导出、DCA 计划管理 | 旧 e2e 基线改写通过 |
 | W5 ✅ | 分析套件 | compare / backtest / advanced（MC+相关性）/ penetration / market | 纯函数移植测试全绿 |
 | W6 ✅ | 洞察·设置·工作台 | insights / reports / settings 四 tab / 系统工作台 / 审计时间线 | 改密码/会话管理/任务触发全流程手工验收 |
-| W7 | 打磨与 MCP | 动效/a11y/性能/PWA、MCP spec 修复、文档收口 | Lighthouse 关键指标 + 44 工具回归 |
+| W7 ✅ | 打磨与 MCP | 动效/a11y/性能/PWA、MCP spec 修复、文档收口 | Lighthouse 关键指标 + 44 工具回归 |
 
 ## W0 — 仓库地基（✅ 已完成 2026-08-29）
 
@@ -64,7 +64,7 @@ session 化 `/api/system/*` 工作台 API（状态/任务/审计/爬虫触发）
 - W4 验收追加：CSV 导出表头/方向标签随 i18n、带 BOM（继承旧 transactionsToCsv 语义）
 - W6 验收追加：insights 页含组合级 harness 支架卡（字段对齐 MCP `get_investment_harness_snapshot`）
 
-## W7 — 打磨与 MCP 收口
+## W7 — 打磨与 MCP 收口（✅ 已完成 2026-08-30）
 
 - 性能：首屏预算 < 400KB gzip（不含图表懒加载）；图表按路由 lazy；虚拟滚动台账。
 - PWA：manifest/SW/离线横幅/chunk 失败自愈（旧方案继承）。
