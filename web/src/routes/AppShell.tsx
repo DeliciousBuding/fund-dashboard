@@ -1,7 +1,7 @@
 // AppShell：受保护区布局壳 —— 侧栏 + 顶栏 + 移动底栏 + 命令面板 + 页面过渡动效。
 // 设计规格：03 §4（240px 侧栏/max-w-1440/卡片 padding）、§5（页面进入 160ms fade+y）、§9（移动断点）。
 import { Outlet, useRouterState } from "@tanstack/react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { BottomNav } from "../components/shell/BottomNav";
 import { CommandPalette } from "../components/shell/CommandPalette";
 import { OfflineBanner } from "../components/shell/OfflineBanner";
@@ -41,20 +41,19 @@ export function AppShell() {
         <OfflineBanner />
         <TopBar title={pageTitle(pathname)} />
         <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-20 pt-4 md:px-6 md:pb-8">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
-            >
-              {/* 面板级错误边界：崩一页不崩全壳（03 §7） */}
-              <ErrorBoundary>
-                <Outlet />
-              </ErrorBoundary>
-            </motion.div>
-          </AnimatePresence>
+          {/* 只保留入场过渡：AnimatePresence mode="wait" 的退出-再入场依赖 rAF，后台标签页
+              rAF 冻结时会死锁在 opacity:0（路由切走再回来页面空白）。无 exit 即无此依赖。 */}
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
+          >
+            {/* 面板级错误边界：崩一页不崩全壳（03 §7） */}
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+          </motion.div>
         </main>
         <BottomNav />
       </div>
