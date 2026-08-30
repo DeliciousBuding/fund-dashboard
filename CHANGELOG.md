@@ -19,6 +19,8 @@
 
 ## [Unreleased]
 
+- **修复** 登录、首次初始化、退出登录统一在导航前主动读取最新 `/api/auth/status` 并原子更新 TanStack Query 缓存，避免 60 秒 fresh cache 让路由守卫把成功的会话切换重定向回旧页面。
+- **测试** 新增 auth cache transition 回归测试，覆盖成功替换 fresh cache 与刷新失败时保留旧状态。
 - **文档** 新增 `docs/design/` 重设计定档（01 产品方向 / 02 技术栈 / 03 设计系统 / 04 鉴权安全 / 05 路线图 W0–W7）：下一代单租户 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌单二进制），MCP 保持 Bearer 双 key 不变。
 - **新功能** `web/` 前端回归（W0+W1.5）：Vite 7 + React 19 + TS strict + Tailwind v4 + TanStack Router/Query + Biome + pnpm workspace；登录/首次初始化页 + 受保护总览壳（真实组合 KPI）；构建直出 `internal/webui/dist` 经 go:embed 内嵌（未构建时服务占位页，二进制恒可编译）。
 - **新功能** 部署链：Dockerfile 三阶段（node 构建 web → go 构建嵌入 → alpine 运行）；补建 `deploy/.env.example`；compose 透传 `FUND_AUTH_*`/`FUND_ALLOWED_ORIGINS`/`FUND_EDGE_AUTH_ENABLED`；CI 新增 `test-web` 门禁（biome/vitest/tsc/build），smoke-e2e 改走 setup→cookie 会话流并断言 SPA 嵌入。

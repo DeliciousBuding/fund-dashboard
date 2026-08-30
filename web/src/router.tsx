@@ -6,19 +6,13 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
-import { type AuthStatus, fetchAuthStatus } from "./lib/auth";
+import { authStatusQuery } from "./lib/authQuery";
 import { queryClient } from "./lib/queryClient";
 import { AppShell } from "./routes/AppShell";
 import { LoginPage } from "./routes/login";
 import { SetupPage } from "./routes/setup";
 
-const authStatusQuery = {
-  queryKey: ["auth-status"],
-  queryFn: ({ signal }: { signal?: AbortSignal }) => fetchAuthStatus(signal),
-  staleTime: 60 * 1000,
-} as const;
-
-function getAuthStatus(): Promise<AuthStatus> {
+function getAuthStatus() {
   return queryClient.ensureQueryData(authStatusQuery);
 }
 

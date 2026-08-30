@@ -6,6 +6,7 @@ import { CircleDot, LogOut, Moon, Search, Sun, SunMoon } from "lucide-react";
 import { useMarketStream } from "../../hooks/useMarketStream";
 import { api } from "../../lib/api";
 import { logout } from "../../lib/auth";
+import { refreshAuthStatus } from "../../lib/authQuery";
 import { queryClient } from "../../lib/queryClient";
 import { cn } from "../../lib/utils";
 import { type ThemeMode, useSettings } from "../../stores/settings";
@@ -125,7 +126,7 @@ export function TopBar({ title }: { title?: string }) {
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+      await refreshAuthStatus(queryClient);
       await router.navigate({ to: "/login" });
     },
   });

@@ -3,6 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import type { ApiError } from "../lib/api";
 import { setup } from "../lib/auth";
+import { refreshAuthStatus } from "../lib/authQuery";
 import { queryClient } from "../lib/queryClient";
 
 const errorText: Record<string, string> = {
@@ -20,7 +21,7 @@ export function SetupPage() {
   const mutation = useMutation({
     mutationFn: setup,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["auth-status"] });
+      await refreshAuthStatus(queryClient);
       await router.navigate({ to: "/" });
     },
   });

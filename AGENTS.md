@@ -1,6 +1,6 @@
 # AGENTS.md — Fund Dashboard
 
-最后更新：2026-08-30
+最后更新：2026-08-30 23:53
 
 > 所有 AI agent（Claude Code / Codex / Cursor）在本文档仓库遵守的共享约束。
 > 开源公开仓库。**禁止提交任何主机名、公网 IP、真实密钥、个人邮箱或本地路径。**
@@ -9,13 +9,13 @@
 
 ## S.U.P.E.R 设计原则
 
-| 原则 | 含义 | 检查标准 |
-|------|------|---------|
-| **S**ingle Responsibility | 每个模块只做一件事 | 文件精简，函数短小，单一数据源 |
-| **U**nified Interface | 跨层统一接口 | DataSource 接口统一所有外部数据，REST/MCP 薄封装 |
-| **P**redictable Behavior | 无意外、无静默失败 | 所有错误返回 JSON；写路径可审计、可回放 |
-| **E**xtensible Design | 易于添加新市场/数据源 | 注册新 DataSource 只需实现接口，不改路由 |
-| **R**eliable Operation | 容错、持久化、可监控 | health 真实验证 DB；默认 SQLite，PG 驱动可选未接 |
+| 原则 | 仓库内检查标准 |
+|------|---------------|
+| **S**ingle Purpose | 路由只做协议适配；业务进 `internal/service`；数据访问进 `internal/repository` |
+| **U**nidirectional | datasource/repository → service → REST/MCP/UI，禁止反向依赖和跨层旁路 |
+| **P**orts over Implementation | REST 与 MCP 共用 service；SQLite/PG 经统一 repository/dialect 契约 |
+| **E**nvironment-Agnostic | 主机、域名、密钥和部署拓扑只从环境/私有运维面注入，公开仓不固化 live 值 |
+| **R**eplaceable | 前端、数据源、数据库驱动、边缘代理均通过明确边界可替换，不改核心业务语义 |
 
 ## 项目骨架
 
