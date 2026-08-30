@@ -28,8 +28,12 @@ function cssVar(name: string): string {
 // ECharts visualMap 等需要程序化插值的场景只认 rgb/hsl/hex；oklch token 直接传入会渲染成黑色。
 // canvas 的 fillStyle getter 会把 oklch 原样序列化回 "oklch(...)"（仅把百分比转小数），并不会转成 rgb，
 // 所以不能靠读 fillStyle 序列化来转换。正确做法是 1×1 canvas 上填色后读回 getImageData 的真实 RGB。
-let colorCtx = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
-if (colorCtx) { colorCtx.canvas.width = 1; colorCtx.canvas.height = 1; }
+const colorCtx =
+  typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+if (colorCtx) {
+  colorCtx.canvas.width = 1;
+  colorCtx.canvas.height = 1;
+}
 
 function resolveCssColor(color: string): string {
   if (!color || !colorCtx) return color;
