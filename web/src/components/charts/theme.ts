@@ -26,17 +26,22 @@ function cssVar(name: string): string {
 }
 
 // ECharts visualMap 等需要程序化插值的场景只认 rgb/hsl/hex；oklch token 直接传入会渲染成黑色。
-// canvas fillStyle 赋值即触发浏览器 CSS Color 4 解析，读回为标准化 rgb/hex。
-let colorCtx: CanvasRenderingContext2D | null | undefined;
+// canvas 的 fillStyle getter 会把 oklch 原样序列化回 "oklch(...)"（仅把百分比转小数），并不会转成 rgb，
+// 所以不能靠读 fillStyle 序列化来转换。正确做法是 1×1 canvas 上填色后读回 getImageData 的真实 RGB。
+const colorCtx =
+  typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+if (colorCtx) {
+  colorCtx.canvas.width = 1;
+  colorCtx.canvas.height = 1;
+}
 
 function resolveCssColor(color: string): string {
-  if (!color || typeof document === "undefined") return color;
+  if (!color || !colorCtx) return color;
   if (!color.startsWith("oklch") && !color.startsWith("oklab")) return color;
-  if (colorCtx === undefined) colorCtx = document.createElement("canvas").getContext("2d");
-  if (!colorCtx) return color; // jsdom 等无 canvas 实现的环境回退原值
-  colorCtx.fillStyle = "#010203"; // 哨兵：fillStyle 赋无效值时保持原值不变
   colorCtx.fillStyle = color;
-  return colorCtx.fillStyle === "#010203" ? color : colorCtx.fillStyle;
+  colorCtx.fillRect(0, 0, 1, 1);
+  const d = colorCtx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${d[0]},${d[1]},${d[2]})`;
 }
 
 export function currentThemeMode(): "dark" | "light" {
