@@ -71,7 +71,7 @@ go build -o bin/fund-dashboard ./cmd/fund-dashboard
 ./scripts/test-cover.sh
 ```
 
-CI 硬门禁：`test-go` / `build-go` / `test-web` / `smoke-e2e`（容器 + API/MCP + Chromium 浏览器关键路径）。
+CI 硬门禁：`test-go` / `build-go` / `test-web` / `build-web` / `smoke-e2e`（容器 + API/MCP + Chromium 浏览器关键路径）。
 
 ## 文档地图
 

@@ -19,6 +19,10 @@
 
 ## [Unreleased]
 
+<!-- 当前无未发布变更；新条目在此追加扁平 `- [类型] 描述`。 -->
+
+## [2.0.0] - 2026-09-01
+
 - **修复** 工作台「数据新鲜度」徽章崩溃：前端映射键（ok/warn/critical）与后端 `freshnessHealth` 实际枚举（fresh/stale/degraded）不匹配且缺 `neutral` 兜底，`/system` 状态卡渲染即抛错；现按后端枚举对齐并补兜底。
 - **修复** toast 样式在严格 CSP 下失效：sonner 运行时注入 `<style>` 被 `style-src 'self'` 拦截；改为静态样式表（`sonner/dist/styles.css`，`patches/sonner@2.0.8.patch` 移除注入调用），Docker web 构建阶段同步复制 `patches/`。
 - **改进** oklch→rgb 主题取色画布加 `willReadFrequently`，消除 Chromium canvas readback 警告。
@@ -91,8 +95,6 @@
 - **修复** portfolioId 作用域：XIRR 终端市值优先 snapshot；compare/MCP/FE detail/DCA/harness 软过滤 source_events。
 - **chore** 工程洁癖：删除死代码 AppDataContext；XIRR/Compare 显式 portfolioID；api encodeURIComponent + fetchPortfolioTimeline。
 
-> **Status note (2026-07-18):** open non-gated P0/P1 **none**; **#5** AgentOps closed (prod enabled); residual closed through **#277**.  
-> Older bullets below may still say “开放集仍仅 #5” in past residual waves — those phrases are **historical** (then-open set), not current.
 
 - **#254** 改进：harness 推荐 crawl_nav 时 Input 改为 `{stale_only:true}`，不再引导全量 held 刷新。
 
@@ -275,7 +277,6 @@
 - **#101** 修复：MarketTicker A股分组仍用 `sh000001` 匹配不到 Yahoo `000001.SS`。增加 indexCodeMatch 别名，短名覆盖 Yahoo/Eastmoney 双代码。
 - **#100** 修复：MarketTicker CN/HK 指数从未填充（仅 US Yahoo）。扩展 DefaultIndexSymbols 到 8（新增 ^HSI、000001.SS、399001.SZ、399006.SZ），SPA 代码映射（sh000001→000001.SS 等），市场区域自动检测（US/CN/HK），Deploy/Dockerfile 修复 docker chmod 权限问题。
 
-### Security
 - **#65** Role-aware harness/agent-context discovery: public HTTP remains least-privilege (26 tools); MCP operator restores full harness write/maintenance surface; public `agent-context` no longer leaks write tool names.
 - **#66** `scripts/smoke-prod.sh` asserts public harness/agent-context discovery filters and operator MCP harness full surface.
 - **#67** `docs/ARCHITECTURE.md` accuracy: fail-closed MCP auth, PUBLIC 26, role-aware harness, adjust_position MCP vs admin HTTP.

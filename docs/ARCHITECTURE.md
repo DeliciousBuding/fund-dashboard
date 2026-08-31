@@ -93,4 +93,4 @@ internal/httpapi / internal/mcp ── 对外暴露
 
 核心表：`fund_details`（基金）、`transactions`（交易）、`nav_history`（净值历史）、`portfolio_snapshot`（组合快照）、`fund_holdings`（持仓穿透）、`source_events`（数据源事件）、`dca_plans`（定投计划）。
 
-Schema 现状：权威基线为 `internal/repository/db/schema_pg.go`（PG 侧启动幂等 `CREATE IF NOT EXISTS`）；SQLite 业务库由外部预置，Go 侧仅建 agent 两表，启动无 schema 校验（旧 `internal/repository/sqlitecompat` 包已删除）。
+Schema 现状：权威基线为 `internal/repository/db/schema_pg.go`（`EnsurePGSchema`）与 `schema_sqlite.go`（`EnsureSQLiteSchema`，空库首装自举）；两驱动均在启动时幂等建表/建索引。列级演进走 `schema_meta` probing，不改既有表。

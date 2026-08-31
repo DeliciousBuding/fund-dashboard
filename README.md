@@ -62,7 +62,7 @@ docker build -f deploy/Dockerfile -t fund-dashboard:local .
 ./scripts/release.sh 2.0.0   # 归并 CHANGELOG + 打 tag v2.0.0 + 推送
 ```
 
-tag 推送后 GitHub Actions 自动构建多架构镜像（GHCR）并创建 [Release](https://github.com/DeliciousBuding/fund-dashboard/releases)，release notes 取自 `CHANGELOG.md`。镜像拉取：
+main push / workflow_dispatch 触发 `ci.yml` 构建多架构镜像推送到 GHCR；tag push 触发 `release.yml` 创建 [Release](https://github.com/DeliciousBuding/fund-dashboard/releases)，release notes 取自 `CHANGELOG.md`。镜像拉取：
 
 ```bash
 docker pull ghcr.io/deliciousbuding/fund-dashboard:latest
