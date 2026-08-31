@@ -94,6 +94,9 @@ func (s Service) getPGIntegrity(ctx context.Context, report IntegrityReport) (In
 		}
 	} else {
 		defer fkRows.Close()
+		// NOTE: `violations` here counts unvalidated FK constraints, not actual
+		// violating rows (SQLite PRAGMA foreign_key_check reports real rows). The
+		// JSON field name is shared with the SQLite branch for API compatibility.
 		violations := 0
 		for fkRows.Next() {
 			violations++

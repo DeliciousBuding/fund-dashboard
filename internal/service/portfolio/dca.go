@@ -288,20 +288,10 @@ func (s Service) DisableDCAPlan(ctx context.Context, id int) (DisableDCAPlanResu
 }
 
 func (s Service) getDCAPlanByID(ctx context.Context, id int) (DCAPlan, error) {
-	plans, err := s.ListDCAPlans(ctx, ListDCAPlansOptions{})
-	if err != nil {
-		return DCAPlan{}, err
-	}
-	for _, p := range plans {
-		if p.ID == id {
-			return p, nil
-		}
-	}
-	// direct query fallback
 	var plan DCAPlan
 	var fundName sql.NullString
 	var endDate sql.NullString
-	err = s.db.QueryRowContext(ctx, `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source, created_at, updated_at
 		FROM dca_plans WHERE id = ?
 	`, id).Scan(&plan.ID, &plan.FundCode, &fundName, &plan.Amount, &plan.Frequency, &plan.WeekdayMask, &plan.TradeType, &plan.PortfolioID, &plan.StartDate, &endDate, &plan.Active, &plan.Source, &plan.CreatedAt, &plan.UpdatedAt)

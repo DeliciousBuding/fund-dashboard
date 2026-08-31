@@ -143,7 +143,11 @@ func (s Service) ImportTransactions(ctx context.Context, transactions []ImportTr
 		if err != nil {
 			return ImportTransactionsResult{}, fmt.Errorf("insert transaction %d: %w", i, err)
 		}
-		if rows, _ := result.RowsAffected(); rows > 0 {
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return ImportTransactionsResult{}, fmt.Errorf("rows affected transaction %d: %w", i, err)
+		}
+		if rows > 0 {
 			imported++
 			affected[normalized.FundCode] = true
 		}

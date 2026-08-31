@@ -322,7 +322,10 @@ func upsertNavHistory(ctx context.Context, db *sql.DB, code, secType string, poi
 		if err != nil {
 			return 0, fmt.Errorf("insert nav_history(%s, %s): %w", code, p.Date, err)
 		}
-		n, _ := res.RowsAffected()
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("rows affected nav_history(%s, %s): %w", code, p.Date, err)
+		}
 		added += int(n)
 	}
 	if err := tx.Commit(); err != nil {
