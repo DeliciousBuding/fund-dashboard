@@ -19,6 +19,7 @@
 
 ## [Unreleased]
 
+- **改进** 路由切换预加载：`createRouter` 开启 `defaultPreload: "intent"`（20ms 意图延迟），悬停/聚焦导航即预取目标路由的懒加载 chunk；点击提交通常直接命中缓存，消除切换导航时页面延迟出现/停在原地的感知。保持 viewport/render 级全量预载关闭，避免图表页连带拉入大体积 echarts chunk 破坏首屏预算。
 - **修复** 登录、首次初始化、退出登录统一在导航前主动读取最新 `/api/auth/status` 并原子更新 TanStack Query 缓存，避免 60 秒 fresh cache 让路由守卫把成功的会话切换重定向回旧页面。
 - **测试** 新增 auth cache transition 回归测试，覆盖成功替换 fresh cache 与刷新失败时保留旧状态。
 - **文档** 新增 `docs/design/` 重设计定档（01 产品方向 / 02 技术栈 / 03 设计系统 / 04 鉴权安全 / 05 路线图 W0–W7）：下一代单租户 Web UI 以 `web/` workspace 回归本仓（登录 session 鉴权 + go:embed 内嵌单二进制），MCP 保持 Bearer 双 key 不变。
