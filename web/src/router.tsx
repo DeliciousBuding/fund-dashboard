@@ -152,7 +152,15 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-export const router = createRouter({ routeTree });
+// defaultPreload="intent"：悬停/聚焦即预取目标路由的懒加载 chunk（含其 loader），
+// 点击提交时通常已命中缓存，消除「点了导航页还停在原地等 chunk」的感知延迟。
+// 不做 viewport/render 级全量预载：analysis 等页面会连带拉入 254KB gzip 的 echarts
+// chunk，会破坏 05 文档的首屏预算纪律。
+export const router = createRouter({
+  routeTree,
+  defaultPreload: "intent",
+  defaultPreloadDelay: 20,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
