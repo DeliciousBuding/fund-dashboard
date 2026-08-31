@@ -4,6 +4,7 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { BottomNav } from "../components/shell/BottomNav";
 import { CommandPalette } from "../components/shell/CommandPalette";
+import { NavigationProgress } from "../components/shell/NavigationProgress";
 import { OfflineBanner } from "../components/shell/OfflineBanner";
 import { Sidebar } from "../components/shell/Sidebar";
 import { TopBar } from "../components/shell/TopBar";
@@ -36,6 +37,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-bg text-fg">
+      <NavigationProgress />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <OfflineBanner />
@@ -45,6 +47,7 @@ export function AppShell() {
               rAF 冻结时会死锁在 opacity:0（路由切走再回来页面空白）。无 exit 即无此依赖。 */}
           <motion.div
             key={pathname}
+            data-testid="route-content"
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}

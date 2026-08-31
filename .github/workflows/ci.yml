@@ -76,6 +76,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install browser test dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
 
       - name: Seed CI database
         run: |
@@ -134,6 +144,21 @@ jobs:
             -H 'Authorization: Bearer ci-test-key' \
             -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q 'get_portfolio_summary'
+
+      - name: Browser E2E (Chromium)
+        run: pnpm test:e2e
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8080
+          E2E_PASSWORD: ci-smoke-password-1
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Show docker logs on failure
         if: failure()

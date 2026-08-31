@@ -29,7 +29,9 @@ function cssVar(name: string): string {
 // canvas 的 fillStyle getter 会把 oklch 原样序列化回 "oklch(...)"（仅把百分比转小数），并不会转成 rgb，
 // 所以不能靠读 fillStyle 序列化来转换。正确做法是 1×1 canvas 上填色后读回 getImageData 的真实 RGB。
 const colorCtx =
-  typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+  typeof document === "undefined"
+    ? null
+    : document.createElement("canvas").getContext("2d", { willReadFrequently: true });
 if (colorCtx) {
   colorCtx.canvas.width = 1;
   colorCtx.canvas.height = 1;

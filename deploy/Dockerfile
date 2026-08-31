@@ -10,6 +10,8 @@ FROM node:24-alpine AS web-build
 WORKDIR /src
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# pnpm-workspace.yaml 的 patchedDependencies 需要补丁文件在场（sonner CSP 修复）。
+COPY patches/ patches/
 COPY web/package.json web/
 COPY packages/contracts/package.json packages/contracts/
 RUN pnpm install --frozen-lockfile

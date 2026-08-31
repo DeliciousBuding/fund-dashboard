@@ -16,3 +16,6 @@ scripts/*.sh text eol=lf
 *.mjs text eol=lf
 *.go text eol=lf
 *.example text eol=lf
+
+# Windows autocrlf 会把工作副本转 CRLF；biome 对该文件按 LF 校验，强制 LF 保持本地/CI 一致。
+web/public/manifest.webmanifest text eol=lf
