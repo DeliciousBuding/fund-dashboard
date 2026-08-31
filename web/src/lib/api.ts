@@ -14,6 +14,8 @@ interface ApiOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
+  /** "blob" returns raw bytes (e.g. XLSX export) instead of parsing JSON. */
+  responseType?: "json" | "blob";
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
@@ -47,6 +49,9 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       // non-JSON error body — keep the synthesized code
     }
     throw new ApiError(res.status, code);
+  }
+  if (opts.responseType === "blob") {
+    return (await res.blob()) as T;
   }
   return (await res.json()) as T;
 }

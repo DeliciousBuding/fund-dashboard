@@ -1,22 +1,6 @@
 // ═══════ Market time helpers ═══════
 // Extracted from utils.ts — date, timezone, market-hours, and Yahoo API helpers.
 
-// ── Yahoo Finance API range mapping ─────────────────────────────────
-
-/** Map UI range keys to Yahoo Finance API range values.
- *  "tx"/"all" → "max"; everything else passes through (1m, 3m, 6m, 1y). */
-export function mapRangeToYahoo(key: string): string {
-  if (key === "tx" || key === "all") return "max";
-  return key;
-}
-
-/** Intraday interval for short ranges — gives ~7 data points per trading day.
- *  1m/3m → 60m intraday; longer ranges → undefined (defaults to 1d). */
-export function getIntervalForRange(key: string): string | undefined {
-  if (key === "1m" || key === "3m") return "60m";
-  return undefined;
-}
-
 // ── DST detection ──────────────────────────────────────────────────
 
 /** Detect whether a date falls within US Eastern Daylight Time (DST).

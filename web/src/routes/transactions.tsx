@@ -386,15 +386,17 @@ export function TransactionsPage() {
 
   const exportXlsx = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/export/transactions-xlsx", { credentials: "same-origin" });
-      if (!res.ok) throw new Error(`http_${res.status}`);
-      const blob = await res.blob();
+      const blob = await api<Blob>("/api/export/transactions-xlsx", { responseType: "blob" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `transactions-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      // Deferred revoke: immediate revoke races the click and cancels the
+      // download in Safari/Firefox.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
     onSuccess: () => toast.success("XLSX 已导出"),
     onError: () => toast.error("XLSX 导出失败"),

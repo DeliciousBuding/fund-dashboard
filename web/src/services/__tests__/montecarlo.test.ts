@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalRandom, runMonteCarlo, simulatePath } from "../montecarlo";
+import { normalRandom, simulatePath } from "../montecarlo";
 
 describe("normalRandom", () => {
   it("returns a finite number", () => {
@@ -60,84 +60,5 @@ describe("simulatePath", () => {
   it("path values are all positive (no negative prices)", () => {
     const path = simulatePath(100, 0.0002, 0.01, 252);
     expect(path.every((v) => v > 0)).toBe(true);
-  });
-});
-
-describe("runMonteCarlo", () => {
-  // Synthetic daily returns with realistic mean/std for a mixed portfolio
-  const returns = Array.from({ length: 100 }, () => (Math.random() - 0.48) * 0.02);
-
-  it("returns correct structure with specified number of paths", () => {
-    const result = runMonteCarlo(returns, 500, 100);
-    expect(result.paths).toHaveLength(500);
-    expect(result.paths[0]).toHaveLength(1); // terminal value only
-    expect(result.histogram).toHaveLength(40); // BINS
-    expect(result.percentiles).toHaveProperty("p5");
-    expect(result.percentiles).toHaveProperty("p10");
-    expect(result.percentiles).toHaveProperty("p25");
-    expect(result.percentiles).toHaveProperty("p50");
-    expect(result.percentiles).toHaveProperty("p75");
-    expect(result.percentiles).toHaveProperty("p90");
-    expect(result.percentiles).toHaveProperty("p95");
-    expect(result.stats).toHaveProperty("mean");
-    expect(result.stats).toHaveProperty("std");
-    expect(result.stats).toHaveProperty("min");
-    expect(result.stats).toHaveProperty("max");
-  });
-
-  it("returns sorted paths (terminal values are ascending)", () => {
-    const result = runMonteCarlo(returns, 1000, 252);
-    const values = result.paths.map((p) => p[0]);
-    for (let i = 1; i < values.length; i++) {
-      expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
-    }
-  });
-
-  it("percentiles are monotonic: p5 <= p10 <= p25 <= p50 <= p75 <= p90 <= p95", () => {
-    const result = runMonteCarlo(returns, 1000, 252);
-    const { p5, p10, p25, p50, p75, p90, p95 } = result.percentiles;
-    expect(p5).toBeLessThanOrEqual(p10);
-    expect(p10).toBeLessThanOrEqual(p25);
-    expect(p25).toBeLessThanOrEqual(p50);
-    expect(p50).toBeLessThanOrEqual(p75);
-    expect(p75).toBeLessThanOrEqual(p90);
-    expect(p90).toBeLessThanOrEqual(p95);
-  });
-
-  it("histogram counts sum to numSimulations", () => {
-    const result = runMonteCarlo(returns, 500, 100);
-    const totalCount = result.histogram.reduce((s, h) => s + h.count, 0);
-    expect(totalCount).toBe(500);
-  });
-
-  it("stats.min <= stats.max always", () => {
-    const result = runMonteCarlo(returns, 500, 100);
-    expect(result.stats.min).toBeLessThanOrEqual(result.stats.max);
-  });
-
-  it("throws on empty returns array", () => {
-    expect(() => runMonteCarlo([], 100, 252)).toThrow("Empty returns array");
-  });
-
-  it("handles single return value (zero variance)", () => {
-    const result = runMonteCarlo([0.001], 200, 30);
-    expect(result.stats.std).toBe(0);
-    // All terminal values should be identical (no randomness)
-    const values = result.paths.map((p) => p[0]);
-    const first = values[0];
-    for (const v of values) {
-      expect(v).toBeCloseTo(first, 10);
-    }
-    // All histogram counts in one bin, rest zero
-    const nonZero = result.histogram.filter((h) => h.count > 0);
-    expect(nonZero.length).toBe(1);
-    expect(nonZero[0].count).toBe(200);
-  });
-
-  it("works with large simulation count", () => {
-    const result = runMonteCarlo(returns, 1000, 50);
-    const totalCount = result.histogram.reduce((s, h) => s + h.count, 0);
-    expect(totalCount).toBe(1000);
-    expect(result.paths).toHaveLength(1000);
   });
 });
