@@ -2437,14 +2437,14 @@
       "capability": {
         "tool": "mark_source_event",
         "scope": "write",
-        "permission": "allowed",
+        "permission": "requires_confirmation",
         "risk_level": "low",
         "use_for": "标记来源事件已读或有用，优化后续队列"
       },
       "confirmation": {
-        "required": false,
-        "reason": null,
-        "token_ttl_seconds": null
+        "required": true,
+        "reason": "标记来源事件已读/有用属于写操作，需 AgentOps 确认后执行。",
+        "token_ttl_seconds": 900
       },
       "audit": {
         "event_type": "write",

@@ -201,15 +201,11 @@ func handleSystemAgent(cfg config.Config) http.HandlerFunc {
 	}
 }
 
-// maskSecret renders a key as "已配置(尾号 xxxx)" / "未配置" — 显示后 4 位
-// 便于区分轮换后的 key，绝不回显原文（设计 06 §2.5）。
+// maskSecret renders a key as "已配置" / "未配置" only — never expose even a
+// fragment of the key material in a response body（设计 06 §2.5）。
 func maskSecret(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
+	if strings.TrimSpace(value) == "" {
 		return "未配置"
 	}
-	if len(value) <= 4 {
-		return "已配置(****)"
-	}
-	return "已配置(尾号 " + value[len(value)-4:] + ")"
+	return "已配置"
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strings"
 )
 
 type requestIDContextKey struct{}
@@ -15,10 +16,7 @@ type requestIDContextKey struct{}
 // header and stored on the request context.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-Id")
-		if len(id) > 128 {
-			id = id[:128]
-		}
+		id := sanitizeRequestID(r.Header.Get("X-Request-Id"))
 		if id == "" {
 			id = newRequestID()
 		}
@@ -32,6 +30,22 @@ func RequestID(next http.Handler) http.Handler {
 func RequestIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDContextKey{}).(string)
 	return id
+}
+
+// sanitizeRequestID accepts only printable ASCII (no control chars, no
+// whitespace) so a client-supplied X-Request-Id cannot inject into response
+// headers or structured logs. Anything unsafe yields "" → a fresh ID is issued.
+func sanitizeRequestID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if len(raw) > 128 {
+		raw = raw[:128]
+	}
+	for _, c := range raw {
+		if c < 0x21 || c > 0x7e {
+			return ""
+		}
+	}
+	return raw
 }
 
 func newRequestID() string {

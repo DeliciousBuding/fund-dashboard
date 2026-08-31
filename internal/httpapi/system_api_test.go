@@ -56,12 +56,11 @@ func TestSystemReadEndpointsServeWithSession(t *testing.T) {
 		t.Fatalf("tools summary empty: %s", toJSONString(t, agent))
 	}
 	keys := agent["keys"].(map[string]any)
-	if keys["mcp_api_key"] != "已配置(尾号 -key)" { // test-admin-key 尾号 4 位含连字符
+	if keys["mcp_api_key"] != "已配置" { // 只回显配置状态，绝不泄漏 key 片段
 		t.Fatalf("mcp_api_key mask = %v", keys["mcp_api_key"])
 	}
-	if keys["public_mcp_key"] != "已配置(尾号 -key)" || keys["public_mcp_key"] == "未配置" {
-		// testPublicMCPKey = test-public-mcp-key → 尾号 key
-		t.Logf("public_mcp_key mask = %v", keys["public_mcp_key"])
+	if keys["public_mcp_key"] != "已配置" {
+		t.Fatalf("public_mcp_key mask = %v", keys["public_mcp_key"])
 	}
 
 	// 写端点(authedRouter 已带 CSRF 头)。

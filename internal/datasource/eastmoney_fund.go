@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -39,7 +40,7 @@ func (s *EastmoneyFund) baseURL() string {
 func (s *EastmoneyFund) FetchHistory(ctx context.Context, code string) ([]PricePoint, error) {
 	code = normalizeFundCode(code)
 	data, err := s.get(ctx, fmt.Sprintf(
-		"%s/pingzhongdata/%s.js", s.baseURL(), code,
+		"%s/pingzhongdata/%s.js", s.baseURL(), url.PathEscape(code),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("eastmoney FetchHistory(%s): %w", code, err)

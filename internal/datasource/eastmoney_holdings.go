@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -68,7 +69,7 @@ func (s *EastmoneyHoldings) FetchHoldings(ctx context.Context, code string, topl
 
 func (s *EastmoneyHoldings) fetchYear(ctx context.Context, code, year string, topline int) ([]FundHolding, error) {
 	url := fmt.Sprintf("%s/FundArchivesDatas.aspx?type=jjcc&code=%s&topline=%d&year=%s&month=&rt=%f",
-		s.baseURL, code, topline, year, rand.Float64())
+		s.baseURL, url.QueryEscape(code), topline, year, rand.Float64())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

@@ -334,17 +334,13 @@ func revokeRequestSession(r *http.Request, svc *auth.Service) {
 // and the first untrusted IP is the client. An untrusted direct peer ignores
 // XFF entirely (fail-closed — the advertised client IP cannot be spoofed).
 //
-// With an empty allowlist the behavior stays legacy: trust the right-most XFF
-// entry (assumes a single-hopping reverse proxy that overwrites XFF per hop).
-// Without a proxy, per-IP buckets degrade toward a single bucket — acceptable
-// for single-tenant (worst case the owner locks themselves out for 15 minutes;
-// data is never at risk).
+// With an empty proxy allowlist we must NOT trust X-Forwarded-For: it is
+// entirely client-controlled, so trusting it lets an attacker rotate the header
+// to evade the login limiter and forge the audited source IP. Fail closed to the
+// direct peer address (degrades to a single bucket — acceptable for single-tenant).
 func clientIP(r *http.Request, trusted []*net.IPNet) string {
 	remote := remoteHost(r.RemoteAddr)
 	if len(trusted) == 0 {
-		if ip := rightmostXFF(r); ip != "" {
-			return ip
-		}
 		return remote
 	}
 	if !ipInNetworks(remote, trusted) {

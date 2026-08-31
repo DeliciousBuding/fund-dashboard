@@ -17,6 +17,9 @@ func (s *Server) callAdjustPosition(ctx context.Context, args map[string]any) (m
 	if !ok {
 		return nil, jsonrpcError(-32602, "invalid_params: shares is required")
 	}
+	if shares < 0 {
+		return nil, jsonrpcError(-32602, "invalid_params: shares must be non-negative")
+	}
 	res, err := s.portfolio.AdjustPosition(ctx, portfoliosvc.AdjustPositionInput{
 		Code:        code,
 		Shares:      shares,
