@@ -74,8 +74,7 @@ type Scheduler struct {
 // jobDefinitions lists the tracked jobs (name + schedule description) so
 // StatusSnapshot always reports the full calendar surface. nextRunEpoch
 // computes the next window for each.
-func jobDefinitions(now time.Time) []jobRuntime {
-	now = now.In(cst)
+func jobDefinitions() []jobRuntime {
 	return []jobRuntime{
 		{name: "startup_refresh", schedule: "startup catch-up stale_only (once per CST day)"},
 		{name: "price_dca", schedule: "daily 20:00 CST all_held + DCA weekdays"},
@@ -192,7 +191,7 @@ func (s *Scheduler) StatusSnapshot() []JobStatus {
 	// Defs are rebuilt per call so the schedule text stays current while the
 	// stored runtime records are looked up by name.
 	out := make([]JobStatus, 0, 4)
-	for _, def := range jobDefinitions(now) {
+	for _, def := range jobDefinitions() {
 		snap := JobStatus{Name: def.name, Schedule: def.schedule, NextRun: nextRunEpoch(def.name, now)}
 		if rt := s.jobs[def.name]; rt != nil {
 			snap.LastRun = rt.lastRun
@@ -489,8 +488,8 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 				if err2 := s.db.QueryRowContext(ctx, `SELECT latest_date FROM crawl_log WHERE fund_code = ?`, code).Scan(&again); err2 == nil && again == windowID {
 					return false
 				}
-				slog.Debug("scheduler durable claim insert failed", "job", job, "window", windowID, "error", err)
-				return true
+				slog.Error("scheduler durable claim insert failed", "job", job, "window", windowID, "error", err)
+				return false
 			}
 			return true
 		}

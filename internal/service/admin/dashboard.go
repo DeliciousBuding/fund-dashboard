@@ -250,6 +250,10 @@ func (s Service) dashboardDatabaseSize(ctx context.Context) (int64, error) {
 func readDashboardMemory() DashboardMemory {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+	// NOTE: RSSMB is a legacy field name — the value is runtime.MemStats.Sys
+	// (total bytes obtained from the OS), not actual process RSS. Keep the JSON
+	// key `rss_mb` for API compatibility; do not rename without a frontend+MCP
+	// contract review.
 	return DashboardMemory{
 		RSSMB:       roundTenths(float64(mem.Sys) / 1024 / 1024),
 		HeapUsedMB:  roundTenths(float64(mem.HeapAlloc) / 1024 / 1024),

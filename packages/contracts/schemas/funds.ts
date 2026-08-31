@@ -38,7 +38,6 @@ export const TransactionSchema = z
     anomaly: z.string().nullable(),
   })
   .passthrough();
-export type Transaction = z.infer<typeof TransactionSchema>;
 
 export const FundDetailSchema = z
   .object({

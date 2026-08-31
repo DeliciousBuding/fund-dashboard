@@ -14,6 +14,8 @@ interface ChartProps {
   empty?: boolean;
   emptyText?: string;
   className?: string;
+  /** Accessible name for the rendered chart (role="img"). */
+  ariaLabel?: string;
   onClick?: (params: unknown) => void;
 }
 
@@ -25,6 +27,7 @@ export function Chart({
   empty,
   emptyText = "暂无数据",
   className,
+  ariaLabel,
 }: ChartProps) {
   // 主题快照：dataset.theme 变化时 deps 里的 themeKey 驱动重渲染。
   const themeKey =
@@ -59,5 +62,13 @@ export function Chart({
       </div>
     );
   }
-  return <div ref={ref} className={cn("w-full", className)} style={{ height }} role="img" />;
+  return (
+    <div
+      ref={ref}
+      className={cn("w-full", className)}
+      style={{ height }}
+      role="img"
+      aria-label={ariaLabel ?? "chart"}
+    />
+  );
 }

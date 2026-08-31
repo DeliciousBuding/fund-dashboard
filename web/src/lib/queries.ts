@@ -4,12 +4,9 @@
 import {
   CompareResultSchema,
   DrawdownResultSchema,
-  ExchangeRateSchema,
   FundDetailSchema,
-  FundInfoSchema,
   IndexHistorySchema,
   InvestmentHarnessSnapshotSchema,
-  InvestmentSourceBriefSchema,
   MarketIndexSchema,
   NavPointSchema,
   PenetrationResultSchema,
@@ -17,7 +14,6 @@ import {
   PortfolioSchema,
   SecurityInfoSchema,
   SourceEventsResponseSchema,
-  USStockInfoSchema,
   XirrResultSchema,
 } from "@fund-dashboard/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -95,15 +91,6 @@ export function usePortfolioXirr(portfolioId?: number) {
     queryKey: ["portfolio-xirr", portfolioId ?? 1],
     queryFn: ({ signal }) =>
       fetchValidated(withPortfolio("/api/portfolio/xirr", portfolioId), XirrResultSchema, signal),
-    staleTime: FIVE_MIN,
-  });
-}
-
-export function useFunds(portfolioId?: number) {
-  return useQuery({
-    queryKey: ["funds", portfolioId ?? 1],
-    queryFn: ({ signal }) =>
-      fetchValidated(withPortfolio("/api/funds/", portfolioId), z.array(FundInfoSchema), signal),
     staleTime: FIVE_MIN,
   });
 }
@@ -214,15 +201,6 @@ export function useIndices() {
   });
 }
 
-export function useExchangeRate() {
-  return useQuery({
-    queryKey: ["exchange-rate"],
-    queryFn: ({ signal }) =>
-      fetchValidated("/api/market/exchange-rate", ExchangeRateSchema, signal),
-    staleTime: 10 * 60 * 1000,
-  });
-}
-
 export function useIndexHistory(code: string, range: string, interval?: string) {
   return useQuery({
     queryKey: ["index-history", code, range, interval ?? ""],
@@ -232,16 +210,6 @@ export function useIndexHistory(code: string, range: string, interval?: string) 
         IndexHistorySchema,
         signal,
       ),
-    staleTime: FIVE_MIN,
-    enabled: code.length > 0,
-  });
-}
-
-export function useUSStock(code: string) {
-  return useQuery({
-    queryKey: ["us-stock", code],
-    queryFn: ({ signal }) =>
-      fetchValidated(`/api/stocks/${encodeURIComponent(code)}`, USStockInfoSchema, signal),
     staleTime: FIVE_MIN,
     enabled: code.length > 0,
   });
@@ -280,19 +248,6 @@ export function useHarness(portfolioId?: number) {
       fetchValidated(
         withPortfolio("/api/portfolio/harness", portfolioId),
         InvestmentHarnessSnapshotSchema,
-        signal,
-      ),
-    staleTime: FIVE_MIN,
-  });
-}
-
-export function useSourceBrief(portfolioId?: number) {
-  return useQuery({
-    queryKey: ["source-brief", portfolioId ?? 1],
-    queryFn: ({ signal }) =>
-      fetchValidated(
-        withPortfolio("/api/portfolio/source-brief", portfolioId),
-        InvestmentSourceBriefSchema,
         signal,
       ),
     staleTime: FIVE_MIN,

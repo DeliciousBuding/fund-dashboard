@@ -267,7 +267,15 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 			result.Items = append(result.Items, item)
 			continue
 		}
-		affected, _ := res.RowsAffected()
+		affected, err := res.RowsAffected()
+		if err != nil {
+			_ = tx.Rollback()
+			item.Status = "error"
+			item.Message = "rows_affected_failed"
+			result.Skipped++
+			result.Items = append(result.Items, item)
+			continue
+		}
 		if affected == 0 {
 			_ = tx.Rollback()
 			item.Status = "skipped_duplicate"
@@ -356,7 +364,10 @@ func (s Service) recalcSnapshotLight(ctx context.Context, code string, portfolio
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		// portfolio_snapshot has no market column on production PG.
 		var name, secType sql.NullString
@@ -380,10 +391,6 @@ func (s Service) recalcSnapshotLight(ctx context.Context, code string, portfolio
 		return err
 	}
 	return nil
-}
-
-func (s Service) recordDCAPlanExecution(ctx context.Context, planID int, fundCode, tradeDate string, amount float64, orderID string, nav float64, status, message string) error {
-	return s.recordDCAPlanExecutionTx(ctx, s.db, planID, fundCode, tradeDate, amount, orderID, nav, status, message)
 }
 
 type dcaExecer interface {

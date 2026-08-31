@@ -16,7 +16,7 @@
 
 - 分支命名：`feature/`（新功能）、`fix/`（缺陷）、`refactor/`（重构）、`docs/`（文档）、`chore/`（杂项）
 - 一个分支只做一件事，便于 review 与回滚
-- 合并到 `main` 后自动触发 CI：`test-go` / `build-go` / `smoke-e2e`，全绿后构建多架构镜像推送到 GHCR
+- 合并到 `main` 后自动触发 CI：`test-go` / `build-go` / `test-web` / `build-web` / `smoke-e2e`，全绿后构建多架构镜像推送到 GHCR
 
 ## 提交规范
 
@@ -75,9 +75,9 @@ go vet ./...
 
    脚本会：把 `CHANGELOG.md` 的 `[Unreleased]` 归入 `## [2.0.0] - YYYY-MM-DD`、补一个新的空 `[Unreleased]` 段、提交、打 tag `v2.0.0`、推送。
 
-3. tag 推送触发 GitHub Actions：
-   - `ci.yml` 构建 `amd64` + `arm64` 镜像并合成 multi-arch manifest 推送到 GHCR
-   - `release.yml` 从 `CHANGELOG.md` 提取对应版本段作为 release notes，创建 GitHub Release
+3. 推送后 GitHub Actions：
+   - `ci.yml`（main push / workflow_dispatch）构建 `amd64` + `arm64` 镜像并合成 multi-arch manifest 推送到 GHCR
+   - `release.yml`（tag push）运行测试 + 镜像 smoke，并从 `CHANGELOG.md` 提取对应版本段作为 release notes，创建 GitHub Release
 
 发布后可在 [Releases](https://github.com/DeliciousBuding/fund-dashboard/releases) 查看更新内容。
 

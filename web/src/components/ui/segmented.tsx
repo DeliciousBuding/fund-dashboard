@@ -1,6 +1,21 @@
 import { motion } from "motion/react";
 import { cn } from "../../lib/utils";
 
+function nextTabIndex(current: number, key: string, length: number): number {
+  switch (key) {
+    case "ArrowRight":
+      return (current + 1) % length;
+    case "ArrowLeft":
+      return (current - 1 + length) % length;
+    case "Home":
+      return 0;
+    case "End":
+      return length - 1;
+    default:
+      return -1;
+  }
+}
+
 // Segmented — 分段选择器（时间区间/视角切换），motion layoutId 滑动指示器。
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -19,6 +34,14 @@ export function Segmented<T extends string>(props: {
   return (
     <div
       role="tablist"
+      aria-orientation="horizontal"
+      onKeyDown={(e) => {
+        const idx = props.options.findIndex((o) => o.value === props.value);
+        const next = nextTabIndex(idx, e.key, props.options.length);
+        if (next < 0 || next === idx) return;
+        e.preventDefault();
+        props.onChange(props.options[next].value);
+      }}
       className={cn(
         "inline-flex items-center gap-0.5 rounded-lg border border-border bg-surface-1 p-0.5",
         props.className,
@@ -31,6 +54,7 @@ export function Segmented<T extends string>(props: {
             key={opt.value}
             type="button"
             role="tab"
+            tabIndex={active ? 0 : -1}
             aria-selected={active}
             onClick={() => props.onChange(opt.value)}
             className={cn(

@@ -35,7 +35,7 @@ COPY . .
 COPY --from=web-build /src/internal/webui/dist ./internal/webui/dist
 RUN CGO_ENABLED=0 go build -o /out/${BIN} -ldflags="-s -w" ./cmd/${BIN}/
 
-FROM alpine:3.20 AS runtime
+FROM alpine:3.22 AS runtime
 
 ARG BIN=fund-dashboard
 ENV BIN=${BIN}

@@ -370,17 +370,6 @@ func remoteHost(remoteAddr string) string {
 	return host
 }
 
-// rightmostXFF returns the right-most non-empty X-Forwarded-For entry.
-func rightmostXFF(r *http.Request) string {
-	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
-	for i := len(parts) - 1; i >= 0; i-- {
-		if ip := strings.TrimSpace(parts[i]); ip != "" {
-			return ip
-		}
-	}
-	return ""
-}
-
 func ipInNetworks(ip string, networks []*net.IPNet) bool {
 	parsed := net.ParseIP(ip)
 	if parsed == nil {

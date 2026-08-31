@@ -72,24 +72,6 @@ export const PortfolioSchema = z.object({
 export type Portfolio = z.infer<typeof PortfolioSchema>;
 export type HoldingContributor = z.infer<typeof HoldingContributorSchema>;
 
-// ═══════ DCA plan ═══════
-
-export const DcaPlanSchema = z.object({
-  fund_code: z.string().optional(),
-  mode: z.enum(["nav_deviation", "change_pct"]),
-  base_amount: z.number(),
-  latest_nav: z.number(),
-  cost_per_share: z.number().nullable(),
-  change_pct: z.number().nullable(),
-  deviation_pct: z.number().nullable(),
-  dca_rate: z.number(),
-  actual_amount: z.number(),
-  signal: z.string(),
-  range: z.string().optional(),
-  explanation: z.string(),
-});
-export type DcaPlan = z.infer<typeof DcaPlanSchema>;
-
 // ═══════ Portfolio Penetration ═══════
 
 export const PenetrationFundSchema = z.object({

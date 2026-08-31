@@ -20,7 +20,7 @@
 | **Contract** | Go `httptest` / MCP tests | 状态码、JSON 字段、fail-closed 鉴权 | 视觉与 chunk 加载 |
 | **Browser E2E** | Playwright Chromium | setup/login、受保护壳、桌面/移动导航、intent preload、直接点击加载反馈、opacity 回归、console error gate | 真生产凭据与外部数据源 |
 | **Container smoke** | CI `smoke-e2e` | 镜像能起、API/MCP、内嵌 SPA 与浏览器关键路径 | 全站视觉像素比较 |
-| **Production acceptance** | 私有运维 Playwright + `scripts/smoke-prod.sh` | 线上镜像、入口、真实数据与回滚锚 | PR 默认门禁 |
+| **Production acceptance** | 私有运维 Playwright + `smoke-prod.sh`（私有运维仓，非本仓） | 线上镜像、入口、真实数据与回滚锚 | PR 默认门禁 |
 
 ## 2. 默认命令（本地）
 
@@ -41,7 +41,8 @@ E2E_BASE_URL=http://127.0.0.1:8080 \
 E2E_PASSWORD=ci-smoke-password-1 \
 pnpm test:e2e
 
-# 生产热换后（需要私有运维配置，不进入公开仓）
+# 生产热换后（`smoke-prod.sh` 位于私有运维仓，本仓不包含）
+# 在私有运维仓运行，而非本仓：
 ./scripts/smoke-prod.sh
 ```
 
