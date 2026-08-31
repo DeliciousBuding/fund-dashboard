@@ -1,3 +1,5 @@
 packages:
   - web
   - packages/*
+patchedDependencies:
+  sonner@2.0.8: patches/sonner@2.0.8.patch

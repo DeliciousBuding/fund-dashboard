@@ -19,6 +19,12 @@
 
 ## [Unreleased]
 
+- **修复** 工作台「数据新鲜度」徽章崩溃：前端映射键（ok/warn/critical）与后端 `freshnessHealth` 实际枚举（fresh/stale/degraded）不匹配且缺 `neutral` 兜底，`/system` 状态卡渲染即抛错；现按后端枚举对齐并补兜底。
+- **修复** toast 样式在严格 CSP 下失效：sonner 运行时注入 `<style>` 被 `style-src 'self'` 拦截；改为静态样式表（`sonner/dist/styles.css`，`patches/sonner@2.0.8.patch` 移除注入调用），Docker web 构建阶段同步复制 `patches/`。
+- **改进** oklch→rgb 主题取色画布加 `willReadFrequently`，消除 Chromium canvas readback 警告。
+- **测试** Playwright 上下文 `serviceWorkers: "block"`：SW 预缓存会绕过 `page.route` 慢 chunk 拦截，禁用后导航反馈断言确定性成立。
+- **改进** 导航直接点击与移动端触控新增顶部路由进度反馈；路由内容继续只保留入场动画并显式验收最终 `opacity=1`。
+- **测试** 新增 Playwright Chromium 门禁：真实登录跳转、桌面/移动导航、intent route preload、慢 chunk 直接点击反馈、全核心路由透明态与 console error gate；失败 trace/screenshot/video 作为 CI artifact。
 - **改进** 路由切换预加载：`createRouter` 开启 `defaultPreload: "intent"`（20ms 意图延迟），悬停/聚焦导航即预取目标路由的懒加载 chunk；点击提交通常直接命中缓存，消除切换导航时页面延迟出现/停在原地的感知。保持 viewport/render 级全量预载关闭，避免图表页连带拉入大体积 echarts chunk 破坏首屏预算。
 - **修复** 登录、首次初始化、退出登录统一在导航前主动读取最新 `/api/auth/status` 并原子更新 TanStack Query 缓存，避免 60 秒 fresh cache 让路由守卫把成功的会话切换重定向回旧页面。
 - **测试** 新增 auth cache transition 回归测试，覆盖成功替换 fresh cache 与刷新失败时保留旧状态。

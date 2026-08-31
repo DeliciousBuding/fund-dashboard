@@ -12,9 +12,11 @@
     "dev:web": "pnpm -C web dev",
     "build:web": "pnpm -C web build",
     "test:web": "pnpm -C web test",
-    "check:web": "biome check . && pnpm -C web exec tsc --noEmit"
+    "check:web": "biome check . && pnpm -C web exec tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.2.0"
+    "@biomejs/biome": "^2.2.0",
+    "@playwright/test": "^1.62.1"
   }
 }

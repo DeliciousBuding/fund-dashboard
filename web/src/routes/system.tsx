@@ -57,11 +57,14 @@ function fmtUptime(sec: number): string {
   return `${m} 分`;
 }
 
+// 后端 freshnessHealth（internal/service/admin/freshness.go）返回 fresh / stale / degraded；
+// neutral 兜底任何缺失或未知值，禁止裸索引导致渲染崩溃。
 const HEALTH_BADGE: Record<string, { tone: "up" | "warn" | "danger" | "neutral"; label: string }> =
   {
-    ok: { tone: "up", label: "健康" },
-    warn: { tone: "warn", label: "有陈旧数据" },
-    critical: { tone: "danger", label: "严重滞后" },
+    fresh: { tone: "up", label: "健康" },
+    stale: { tone: "warn", label: "陈旧数据较多" },
+    degraded: { tone: "danger", label: "数据不完整" },
+    neutral: { tone: "neutral", label: "状态未知" },
   };
 
 type ActionKey = "crawl-nav" | "crawl-holdings" | "verify";
