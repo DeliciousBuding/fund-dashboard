@@ -33,8 +33,8 @@ func TestClientIPTrustedProxyMatrix(t *testing.T) {
 		want       string
 	}{
 		{
-			name: "无白名单:维持最右一跳", remoteAddr: "192.168.1.2:8888",
-			xff: "203.0.113.9, 10.1.1.1", trusted: nil, want: "10.1.1.1",
+			name: "无白名单:忽略 XFF 回退 RemoteAddr(fail-closed)", remoteAddr: "192.168.1.2:8888",
+			xff: "203.0.113.9, 10.1.1.1", trusted: nil, want: "192.168.1.2",
 		},
 		{
 			name: "无白名单:无 XFF 回退 RemoteAddr", remoteAddr: "198.51.100.7:9999",

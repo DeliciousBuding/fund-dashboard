@@ -31,7 +31,9 @@ func TestStatusSnapshotRecordsLastRun(t *testing.T) {
 		}
 	}
 	stub := &stubDCARunner{}
-	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
+	s := NewScheduler(NewPriceRefresher(db), db).
+		WithDCARunner(stub).
+		WithMarketIndicesRefresher(func(context.Context) (int, error) { return 0, nil })
 	now := time.Date(2026, 7, 15, 20, 3, 0, 0, cst) // Wednesday
 	s.tick(now)
 

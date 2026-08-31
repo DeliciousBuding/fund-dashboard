@@ -13,6 +13,19 @@ import { fmtCNY } from "../lib/format";
 import { useAlerts, useHarness, useSourceEvents } from "../lib/queries";
 import { useUi } from "../stores/ui";
 
+// isSafeHttp allows only http(s) URLs to be used as clickable hrefs. Source
+// event URLs originate from crawled pages and are rendered as links, so any
+// other scheme (javascript:, data:, vbscript:) must be neutralised.
+function isSafeHttp(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 // ── 支架卡 ──────────────────────────────────────────────────────────
 
 function HarnessCard() {
@@ -198,7 +211,7 @@ function EventsCard() {
                     <div className="flex items-center gap-2">
                       {e.url ? (
                         <a
-                          href={e.url}
+                          href={isSafeHttp(e.url) ? e.url : undefined}
                           target="_blank"
                           rel="noreferrer noopener"
                           className="truncate text-sm font-medium text-fg hover:text-accent"

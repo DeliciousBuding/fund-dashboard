@@ -307,6 +307,12 @@ function RunDialog(props: { open: boolean; onOpenChange: (v: boolean) => void })
   );
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const nowLocalDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
 // ── 页面 ────────────────────────────────────────────────────────────
 
 export function DcaPage() {
@@ -323,7 +329,7 @@ export function DcaPage() {
     fund_name: "",
     amount: "100",
     weekday_mask: ["1", "2", "3", "4", "5"],
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: nowLocalDate(),
   });
 
   const disable = useMutation({
@@ -353,7 +359,7 @@ export function DcaPage() {
               fund_name: "",
               amount: "100",
               weekday_mask: ["1", "2", "3", "4", "5"],
-              start_date: new Date().toISOString().slice(0, 10),
+              start_date: nowLocalDate(),
             });
             setFormOpen(true);
           }}

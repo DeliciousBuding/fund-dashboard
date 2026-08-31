@@ -14,3 +14,11 @@ data/
 **/node_modules
 internal/webui/dist
 web/dist
+
+# Never bake secrets or local env into the build context.
+.env
+.env.*
+*.key
+*.pem
+*.crt
+deploy/ci-data/

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	"github.com/go-chi/chi/v5"
@@ -177,6 +179,10 @@ func handleCreateSourceEvent(service *portfoliosvc.Service) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "title is required")
 			return
 		}
+		if input.URL != nil && !safeHTTPURL(strings.TrimSpace(*input.URL)) {
+			writeError(w, http.StatusBadRequest, "url must use http(s) scheme")
+			return
+		}
 		event, err := service.CreateSourceEvent(r.Context(), portfoliosvc.CreateSourceEventInput{
 			Title:               input.Title,
 			URL:                 input.URL,
@@ -221,6 +227,20 @@ func handleMarkSourceEvent(service *portfoliosvc.Service) http.HandlerFunc {
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
 	}
+}
+
+// safeHTTPURL accepts empty or http(s) URLs only. Source events are rendered
+// as clickable links by the SPA, so any other scheme (javascript:, data:, …)
+// must be rejected at the write boundary to prevent stored-XSS/script execution.
+func safeHTTPURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
 }
 
 type sourceEventRequest struct {

@@ -81,11 +81,21 @@ interface TxFormState {
   fee: string;
 }
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const nowLocalDateTime = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+const nowLocalDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+
 const EMPTY_FORM: TxFormState = {
   seq: null,
   fund_code: "",
-  trade_time: new Date().toISOString().slice(0, 16),
-  confirm_date: new Date().toISOString().slice(0, 10),
+  trade_time: nowLocalDateTime(),
+  confirm_date: nowLocalDate(),
   direction: "buy",
   trade_type: "用户买入",
   amount: "",

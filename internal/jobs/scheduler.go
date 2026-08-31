@@ -52,11 +52,12 @@ type jobRuntime struct {
 // The ticker fires every 5 minutes, but each scheduled window runs at most once
 // per calendar day (CST) via lastRun + durable crawl_log claims.
 type Scheduler struct {
-	refresher *PriceRefresher
-	holdings  *HoldingsRefresher
-	dca       DCARunner
-	db        *sql.DB
-	authSweep AuthEventSweeper
+	refresher      *PriceRefresher
+	holdings       *HoldingsRefresher
+	dca            DCARunner
+	indicesRefresh func(ctx context.Context) (int, error)
+	db             *sql.DB
+	authSweep      AuthEventSweeper
 
 	mu           sync.Mutex
 	jobsMu       sync.RWMutex
@@ -129,19 +130,28 @@ func (t *realTicker) Stop()                  { t.Ticker.Stop() }
 // NewScheduler creates a Scheduler. It does not start automatically —
 // call Start() to begin periodic execution.
 func NewScheduler(refresher *PriceRefresher, db *sql.DB) *Scheduler {
+	svc := portfoliosvc.NewService(db)
 	return &Scheduler{
-		refresher: refresher,
-		holdings:  NewHoldingsRefresher(db),
-		dca:       portfoliosvc.NewService(db),
-		db:        db,
-		lastRun:   map[string]string{},
-		jobs:      map[string]*jobRuntime{},
+		refresher:      refresher,
+		holdings:       NewHoldingsRefresher(db),
+		dca:            svc,
+		indicesRefresh: svc.RefreshMarketIndices,
+		db:             db,
+		lastRun:        map[string]string{},
+		jobs:           map[string]*jobRuntime{},
 	}
 }
 
 // WithDCARunner overrides the DCA materialization runner (tests / custom wiring).
 func (s *Scheduler) WithDCARunner(r DCARunner) *Scheduler {
 	s.dca = r
+	return s
+}
+
+// WithMarketIndicesRefresher overrides the best-effort indices cache refresh
+// (tests / custom wiring). Default is portfolio.Service.RefreshMarketIndices.
+func (s *Scheduler) WithMarketIndicesRefresher(fn func(ctx context.Context) (int, error)) *Scheduler {
+	s.indicesRefresh = fn
 	return s
 }
 
@@ -316,7 +326,7 @@ func (s *Scheduler) tick(now time.Time) {
 		}
 		// MarketTicker indices cache (#92) — best-effort Yahoo refresh.
 		idxCtx, idxCancel := s.jobContext(2 * time.Minute)
-		if _, err := portfoliosvc.NewService(s.db).RefreshMarketIndices(idxCtx); err != nil {
+		if _, err := s.indicesRefresh(idxCtx); err != nil {
 			slog.Error("market indices refresh failed", "error", err)
 			if jobErr == nil {
 				jobErr = err
