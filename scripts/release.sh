@@ -3,9 +3,10 @@
 # 发布脚本：把 CHANGELOG 的 [Unreleased] 归入新版本，打 tag 并推送。
 # 用法：./scripts/release.sh <x.y.z>   例如 ./scripts/release.sh 2.0.0
 #
-# tag 推送后，GitHub Actions 会：
-#   - ci.yml    构建 amd64/arm64 镜像并合成 multi-arch manifest 推送到 GHCR
-#   - release.yml 从 CHANGELOG.md 提取版本段作为 release notes 创建 GitHub Release
+# 推送后，GitHub Actions 会：
+#   - ci.yml     （push main 触发）构建 amd64/arm64 镜像并合成 multi-arch manifest
+#   - release.yml（push tag 触发）从 CHANGELOG.md 提取版本段创建 GitHub Release；
+#     版本镜像复用 main push 的 SHA 镜像（详见 release.yml image-smoke 注释）
 set -euo pipefail
 
 version="${1:-}"
