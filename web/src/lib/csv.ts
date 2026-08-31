@@ -24,19 +24,25 @@ const DIRECTION_LABEL: Record<string, string> = {
   forced_redeem: "强制赎回",
 };
 
+// csvText 对可能被 Excel 当公式执行的文本列做防护：以 = + - @ 开头时前置单引号。
+function csvText(v: unknown): string {
+  const s = v == null ? "" : String(v);
+  return /^[=+\-@]/.test(s) ? `'${s}` : s;
+}
+
 export function transactionsToCsv(rows: TransactionListItem[]): string {
   const lines = rows.map((tx) =>
     [
       (tx.trade_time ?? "").substring(0, 16),
       tx.confirm_date ?? "",
-      DIRECTION_LABEL[tx.direction ?? ""] ?? tx.direction ?? "",
-      tx.trade_type ?? "",
+      DIRECTION_LABEL[tx.direction ?? ""] ?? csvText(tx.direction),
+      csvText(tx.trade_type),
       tx.amount != null ? tx.amount.toFixed(2) : "",
       tx.shares != null ? tx.shares.toFixed(2) : "",
       tx.fee != null && tx.fee > 0 ? tx.fee.toFixed(2) : "",
       tx.settlement_days != null ? `T+${tx.settlement_days}` : "",
-      tx.order_id ?? "",
-      tx.anomaly ?? "",
+      csvText(tx.order_id),
+      csvText(tx.anomaly),
     ]
       .map((v) => `"${String(v).replaceAll('"', '""')}"`)
       .join(","),

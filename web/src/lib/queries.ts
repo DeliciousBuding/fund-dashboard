@@ -16,6 +16,7 @@ import {
   PortfolioAllocationSchema,
   PortfolioSchema,
   SecurityInfoSchema,
+  SourceEventsResponseSchema,
   USStockInfoSchema,
   XirrResultSchema,
 } from "@fund-dashboard/contracts";
@@ -166,8 +167,8 @@ export function useDrawdown(code: string) {
 export interface DcaComputeResult {
   code?: string;
   base_amount: number;
-  multiplier: number;
-  suggested_amount: number;
+  dca_rate: number;
+  actual_amount: number;
   signal: string;
   explanation: string;
   error?: string;
@@ -178,7 +179,7 @@ export function useDcaCompute(code: string, baseAmount: number, mode: string) {
     queryKey: ["dca-compute", code, baseAmount, mode],
     queryFn: ({ signal }) =>
       api<DcaComputeResult>(
-        `/api/funds/${encodeURIComponent(code)}/dca?base_amount=${baseAmount}&mode=${encodeURIComponent(mode)}`,
+        `/api/funds/${encodeURIComponent(code)}/dca?base=${baseAmount}&mode=${encodeURIComponent(mode)}`,
         { signal },
       ),
     staleTime: FIVE_MIN,
@@ -209,6 +210,7 @@ export function useIndices() {
     queryFn: ({ signal }) =>
       fetchValidated("/api/market/indices", z.array(MarketIndexSchema), signal),
     staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
 
@@ -297,30 +299,15 @@ export function useSourceBrief(portfolioId?: number) {
   });
 }
 
-export interface SourceEvent {
-  id: number;
-  title: string;
-  url?: string | null;
-  source: string;
-  snippet?: string | null;
-  related_security_code?: string | null;
-  related_security_name?: string | null;
-  is_read: boolean;
-  is_useful: boolean;
-  fetched_at: string;
-}
-
 export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
   const params = new URLSearchParams();
-  if (opts?.unreadOnly) params.set("unread", "true");
+  // 后端读 show_read（false=仅未读）。unreadOnly → show_read=false。
+  if (opts?.unreadOnly) params.set("show_read", "false");
   params.set("limit", "100");
   return useQuery({
     queryKey: ["source-events", opts?.unreadOnly ?? false],
-    // 契约 SourceEventsResponseSchema：{count, decision_boundary, events}（G6 修复后的包装形状）
     queryFn: ({ signal }) =>
-      api<{ count: number; events: SourceEvent[] }>(`/api/portfolio/source-events?${params}`, {
-        signal,
-      }),
+      fetchValidated(`/api/portfolio/source-events?${params}`, SourceEventsResponseSchema, signal),
     staleTime: 60 * 1000,
   });
 }

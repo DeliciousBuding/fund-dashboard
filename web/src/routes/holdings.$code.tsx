@@ -165,12 +165,12 @@ function DcaTab({ code }: { code: string }) {
             <div>
               <div className="text-xs text-fg-3">建议金额</div>
               <div className="mt-1 text-3xl font-medium tabular-nums text-accent">
-                {fmtCNY(sim.data.suggested_amount)}
+                {fmtCNY(sim.data.actual_amount)}
               </div>
             </div>
             <div>
               <div className="text-xs text-fg-3">倍数</div>
-              <div className="mt-1 text-xl tabular-nums text-fg">×{sim.data.multiplier}</div>
+              <div className="mt-1 text-xl tabular-nums text-fg">×{sim.data.dca_rate}</div>
             </div>
             <Badge tone="accent">{sim.data.signal}</Badge>
             <p className="w-full text-xs text-fg-2">{sim.data.explanation}</p>

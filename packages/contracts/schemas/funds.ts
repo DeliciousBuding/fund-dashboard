@@ -76,6 +76,6 @@ export type NavPoint = z.infer<typeof NavPointSchema>;
 /** Extended fund info that also covers individual stocks. */
 export const SecurityInfoSchema = FundInfoSchema.extend({
   market: z.string(),
-  security_type: z.enum(["fund", "stock"]),
+  security_type: z.string(),
 });
 export type SecurityInfo = z.infer<typeof SecurityInfoSchema>;
