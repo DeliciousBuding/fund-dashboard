@@ -1619,7 +1619,7 @@
     {
       "name": "get_market_indices",
       "category": "market",
-      "description": "获取美股主要指数实时行情（纳斯达克100 ^NDX、标普500 ^GSPC）。返回最新价格、涨跌幅、涨跌额。数据来源：Yahoo Finance。",
+      "description": "获取全球主要指数实时行情：美股（纳斯达克100 ^NDX、标普500 ^GSPC、道琼斯 ^DJI、纳斯达克综合 ^IXIC）、港股（恒生指数 ^HSI）、A股（上证 000001.SS、深证成指 399001.SZ、创业板指 399006.SZ）。返回最新价格、涨跌幅、涨跌额。数据来源：Yahoo Finance。",
       "input_schema": {
         "type": "object",
         "properties": {},

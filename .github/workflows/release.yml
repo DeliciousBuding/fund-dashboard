@@ -62,7 +62,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.26.x'
+          go-version: '1.26.6'
 
       - name: Go tests
         run: go test ./... -count=1
@@ -169,7 +169,7 @@ jobs:
           ' CHANGELOG.md > release_notes.md
           if [ ! -s release_notes.md ]; then
             {
-              echo "自动生成的发布。镜像：\`ghcr.io/deliciousbuding/fund-dashboard:$TAG\`"
+              echo "自动生成的发布。镜像：\`ghcr.io/deliciousbuding/fund-dashboard:latest\`"
               echo
               echo '```bash'
               echo 'docker pull ghcr.io/deliciousbuding/fund-dashboard:latest'
