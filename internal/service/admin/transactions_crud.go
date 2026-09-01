@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"strings"
 )
 
@@ -128,11 +130,11 @@ func (s Service) UpdateTransaction(ctx context.Context, seq int, update UpdateTr
 	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return UpdateTransactionResult{}, fmt.Errorf("update transaction: %w", err)
 	}
-	if err := s.recalcSnapshotTx(ctx, tx, next.FundCode); err != nil {
+	if err := snapshot.Recalc(ctx, tx, next.FundCode, snapshot.ModeFull); err != nil {
 		return UpdateTransactionResult{}, err
 	}
 	if next.FundCode != existing.FundCode {
-		if err := s.recalcSnapshotTx(ctx, tx, existing.FundCode); err != nil {
+		if err := snapshot.Recalc(ctx, tx, existing.FundCode, snapshot.ModeFull); err != nil {
 			return UpdateTransactionResult{}, err
 		}
 	}
@@ -160,7 +162,7 @@ func (s Service) DeleteTransaction(ctx context.Context, seq int) (DeleteTransact
 	if _, err := tx.ExecContext(ctx, "DELETE FROM transactions WHERE seq = ?", seq); err != nil {
 		return DeleteTransactionResult{}, fmt.Errorf("delete transaction: %w", err)
 	}
-	if err := s.recalcSnapshotTx(ctx, tx, existing.FundCode); err != nil {
+	if err := snapshot.Recalc(ctx, tx, existing.FundCode, snapshot.ModeFull); err != nil {
 		return DeleteTransactionResult{}, err
 	}
 	if err := tx.Commit(); err != nil {

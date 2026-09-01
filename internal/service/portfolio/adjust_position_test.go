@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 func TestAdjustPositionOverridesShares(t *testing.T) {
@@ -66,7 +67,7 @@ func TestAdjustPositionOverridesShares(t *testing.T) {
 	}
 
 	// Durability: recalcSnapshotLight (as price refresh does) must keep 50 shares.
-	if err := svc.recalcSnapshotLight(context.Background(), "019173", 1); err != nil {
+	if err := snapshot.RecalcForPortfolio(context.Background(), db, "019173", 1, snapshot.ModeLight); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT held_shares FROM portfolio_snapshot WHERE fund_code='019173'`).Scan(&shares); err != nil {

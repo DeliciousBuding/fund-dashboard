@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"math"
 	"strings"
 	"time"
@@ -80,7 +82,7 @@ func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (Ad
 	}
 	delta := target - current
 	if math.Abs(delta) < 0.001 {
-		if err := s.recalcSnapshotLight(ctx, code, portfolioID); err != nil {
+		if err := snapshot.RecalcForPortfolio(ctx, s.db, code, portfolioID, snapshot.ModeLight); err != nil {
 			return AdjustPositionResult{}, fmt.Errorf("recalc snapshot: %w", err)
 		}
 		item, err := s.getSecurityItem(ctx, code)
@@ -136,7 +138,7 @@ func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (Ad
 	}
 
 	// Recalc from transactions SSOT so held_shares matches the new ledger row.
-	if err := s.recalcSnapshotLight(ctx, code, portfolioID); err != nil {
+	if err := snapshot.RecalcForPortfolio(ctx, s.db, code, portfolioID, snapshot.ModeLight); err != nil {
 		return AdjustPositionResult{}, fmt.Errorf("recalc snapshot after adjust: %w", err)
 	}
 

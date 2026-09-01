@@ -86,7 +86,7 @@ func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAle
 			COALESCE(ps.held_shares,0), ps.latest_nav, ps.pnl_pct
 		FROM portfolio_snapshot ps
 		LEFT JOIN fund_details fd ON fd.fund_code = ps.fund_code
-		WHERE COALESCE(ps.portfolio_id,1) = ? AND COALESCE(ps.held_shares,0) > 0
+		WHERE COALESCE(ps.portfolio_id,1) = ? AND COALESCE(ps.held_shares,0) > 0.001
 		ORDER BY ps.fund_code
 		LIMIT 5000
 	`, portfolioID)

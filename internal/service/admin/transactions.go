@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"time"
 )
 
@@ -154,7 +156,7 @@ func (s Service) ImportTransactions(ctx context.Context, transactions []ImportTr
 	}
 
 	for code := range affected {
-		if err := s.recalcSnapshotTx(ctx, tx, code); err != nil {
+		if err := snapshot.Recalc(ctx, tx, code, snapshot.ModeFull); err != nil {
 			return ImportTransactionsResult{}, err
 		}
 	}

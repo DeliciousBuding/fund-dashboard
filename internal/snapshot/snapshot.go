@@ -1,0 +1,227 @@
+// Package snapshot owns the single source of truth for rebuilding a
+// portfolio_snapshot row from the transactions ledger + nav_history.
+//
+// Three historical copies existed (jobs.recalcSnapshot, admin.recalcSnapshotTx,
+// portfolio.recalcSnapshotLight) with subtle drift. They are unified here behind
+// a Mode that preserves the only intentional divergence: whether identity
+// columns (fund_name/security_type) and latest_nav are refreshed.
+package snapshot
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
+
+// HeldSharesDust is the minimum absolute share count treated as a real holding.
+// Float residue after full sells (~1e-15) is not a real position (#90).
+const HeldSharesDust = 0.001
+
+// Querier is the minimal SQL surface Recalc needs. *sql.DB and *sql.Tx both
+// satisfy it, so a snapshot can be rebuilt inside or outside a transaction.
+type Querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// Mode selects which columns Recalc refreshes.
+type Mode uint8
+
+const (
+	// ModeFull refreshes fund_name/security_type and writes latest_nav as-is
+	// (NULL when nav_history has no row). Used by price refresh and admin
+	// transaction writes.
+	ModeFull Mode = iota
+	// ModeLight keeps fund_name/security_type untouched and preserves the
+	// existing latest_nav when the new NAV is 0/absent. Used by DCA and
+	// adjust-position paths that must not clobber identity or wipe NAV.
+	ModeLight
+)
+
+// Recalc rebuilds one portfolio_snapshot row, resolving portfolio_id from the
+// existing snapshot row (default 1). It matches the former jobs/admin helpers.
+func Recalc(ctx context.Context, q Querier, code string, mode Mode) error {
+	return recalc(ctx, q, code, 0, mode, true)
+}
+
+// RecalcForPortfolio rebuilds one row for an explicit portfolioID. It matches
+// the former portfolio.recalcSnapshotLight.
+func RecalcForPortfolio(ctx context.Context, q Querier, code string, portfolioID int, mode Mode) error {
+	return recalc(ctx, q, code, portfolioID, mode, false)
+}
+
+func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode Mode, resolveID bool) error {
+	if code == "" {
+		return nil
+	}
+
+	var shares, cost sql.NullFloat64
+	var txFundName sql.NullString
+	if err := q.QueryRowContext(ctx, `
+		SELECT SUM(COALESCE(signed_share_change, 0)), SUM(COALESCE(signed_cash_flow, 0)), MAX(fund_name)
+		FROM transactions
+		WHERE fund_code = ?
+	`, code).Scan(&shares, &cost, &txFundName); err != nil {
+		return fmt.Errorf("recalc snapshot transactions: %w", err)
+	}
+
+	heldShares := 0.0
+	totalCost := 0.0
+	if shares.Valid {
+		heldShares = shares.Float64
+	}
+	if cost.Valid {
+		totalCost = cost.Float64
+	}
+	if heldShares > -HeldSharesDust && heldShares < HeldSharesDust {
+		heldShares = 0
+	}
+
+	fundName := code
+	secType := "fund"
+	// Full resolves identity up-front; Light defers it to the INSERT branch.
+	if mode == ModeFull {
+		var err error
+		fundName, secType, err = resolveIdentity(ctx, q, code, txFundName)
+		if err != nil {
+			return err
+		}
+	}
+
+	var latestNAV sql.NullFloat64
+	if err := q.QueryRowContext(ctx, `
+		SELECT unit_nav
+		FROM nav_history
+		WHERE fund_code = ?
+		ORDER BY date DESC
+		LIMIT 1
+	`, code).Scan(&latestNAV); err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("recalc snapshot latest nav: %w", err)
+	}
+	navVal := 0.0
+	var navArg any
+	if latestNAV.Valid {
+		navVal = latestNAV.Float64
+		navArg = navVal
+	}
+
+	currentValue := 0.0
+	if latestNAV.Valid {
+		currentValue = heldShares * latestNAV.Float64
+	}
+	unrealized := currentValue + totalCost
+	pnlPct := 0.0
+	if totalCost != 0 {
+		denom := totalCost
+		if denom < 0 {
+			denom = -denom
+		}
+		pnlPct = unrealized / denom * 100
+	}
+	if heldShares == 0 {
+		currentValue = 0
+		unrealized = 0
+		pnlPct = 0
+	}
+
+	if resolveID {
+		id, err := resolvePortfolioID(ctx, q, code)
+		if err != nil {
+			return err
+		}
+		portfolioID = int(id)
+	} else if portfolioID <= 0 {
+		portfolioID = 1
+	}
+
+	var res sql.Result
+	var err error
+	if mode == ModeFull {
+		res, err = q.ExecContext(ctx, `
+			UPDATE portfolio_snapshot SET
+				fund_name = ?, held_shares = ?, total_cost = ?, latest_nav = ?,
+				current_value = ?, unrealized_pnl = ?, pnl_pct = ?, security_type = ?
+			WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
+		`, fundName, heldShares, totalCost, navArg, currentValue, unrealized, pnlPct, secType, code, portfolioID)
+	} else {
+		res, err = q.ExecContext(ctx, `
+			UPDATE portfolio_snapshot SET
+				held_shares = ?, total_cost = ?, latest_nav = COALESCE(NULLIF(?,0), latest_nav),
+				current_value = ?, unrealized_pnl = ?, pnl_pct = ?
+			WHERE fund_code = ? AND COALESCE(portfolio_id,1) = ?
+		`, heldShares, totalCost, navVal, currentValue, unrealized, pnlPct, code, portfolioID)
+	}
+	if err != nil {
+		return fmt.Errorf("recalc snapshot update: %w", err)
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return fmt.Errorf("recalc snapshot rows affected: %w", raErr)
+	}
+	if n == 0 {
+		insertNav := navArg
+		if mode == ModeLight {
+			var idErr error
+			fundName, secType, idErr = resolveIdentity(ctx, q, code, txFundName)
+			if idErr != nil {
+				return idErr
+			}
+			insertNav = nullIfZero(navVal)
+		}
+		_, err = q.ExecContext(ctx, `
+			INSERT INTO portfolio_snapshot
+				(fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, code, fundName, heldShares, totalCost, insertNav, currentValue, unrealized, pnlPct, secType, portfolioID)
+		if err != nil {
+			return fmt.Errorf("recalc snapshot insert: %w", err)
+		}
+	}
+	return nil
+}
+
+func resolveIdentity(ctx context.Context, q Querier, code string, txFundName sql.NullString) (string, string, error) {
+	var detailName, securityType sql.NullString
+	if err := q.QueryRowContext(ctx, `
+		SELECT fund_name, security_type
+		FROM fund_details
+		WHERE fund_code = ?
+	`, code).Scan(&detailName, &securityType); err != nil && err != sql.ErrNoRows {
+		return "", "", fmt.Errorf("recalc snapshot identity: %w", err)
+	}
+	fundName := code
+	if detailName.Valid && detailName.String != "" {
+		fundName = detailName.String
+	} else if txFundName.Valid && txFundName.String != "" {
+		fundName = txFundName.String
+	}
+	secType := "fund"
+	if securityType.Valid && securityType.String != "" {
+		secType = securityType.String
+	}
+	return fundName, secType, nil
+}
+
+func resolvePortfolioID(ctx context.Context, q Querier, code string) (int64, error) {
+	portfolioID := int64(1)
+	err := q.QueryRowContext(ctx, `
+		SELECT portfolio_id FROM portfolio_snapshot
+		WHERE fund_code = ?
+		ORDER BY portfolio_id
+		LIMIT 1
+	`, code).Scan(&portfolioID)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, fmt.Errorf("recalc snapshot portfolio_id: %w", err)
+	}
+	if portfolioID <= 0 {
+		portfolioID = 1
+	}
+	return portfolioID, nil
+}
+
+func nullIfZero(v float64) any {
+	if v == 0 {
+		return nil
+	}
+	return v
+}
