@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart } from "../../components/charts/Chart";
 import { baseChartOption } from "../../components/charts/theme";
+import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -75,6 +76,12 @@ export function CompareTab() {
                   loading={navs.some((q) => q.isPending)}
                   empty={normalized.every((s) => s.data.length === 0)}
                   emptyText="所选标的暂无净值数据"
+                  error={navs.some((q) => q.isError)}
+                  errorText="净值对比加载失败"
+                  onRetry={() => {
+                    navs.forEach((q) => void q.refetch());
+                    void compare.refetch();
+                  }}
                   deps={[normalized]}
                   option={(t) => ({
                     ...baseChartOption(t),
@@ -119,6 +126,20 @@ export function CompareTab() {
                           <Skeleton className="h-6 w-full" />
                         </Td>
                       </Tr>
+                    ) : compare.isError ? (
+                      <Tr>
+                        <Td colSpan={codes.length + 1}>
+                          <EmptyState
+                            title="指标加载失败"
+                            description="无法读取对比指标，请重试。"
+                            action={
+                              <Button size="sm" onClick={() => void compare.refetch()}>
+                                重试
+                              </Button>
+                            }
+                          />
+                        </Td>
+                      </Tr>
                     ) : (
                       METRICS.map((m) => (
                         <Tr key={m.key}>
@@ -157,6 +178,9 @@ export function CompareTab() {
                     height={280}
                     loading={compare.isPending}
                     empty={funds.length === 0}
+                    error={compare.isError}
+                    errorText="指标对比加载失败"
+                    onRetry={() => void compare.refetch()}
                     deps={[funds]}
                     option={(t) => {
                       // 归一化到 0-100：每项指标全组 min-max 映射（回撤反向——越小越好）

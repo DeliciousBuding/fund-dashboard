@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart } from "../../components/charts/Chart";
 import { baseChartOption } from "../../components/charts/theme";
+import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Input, Label } from "../../components/ui/input";
@@ -105,6 +106,16 @@ export function BacktestTab() {
         />
       ) : nav.isPending ? (
         <Skeleton className="h-72" />
+      ) : nav.isError ? (
+        <EmptyState
+          title="净值历史加载失败"
+          description="无法读取该标的净值，请重试。"
+          action={
+            <Button size="sm" onClick={() => void nav.refetch()}>
+              重试
+            </Button>
+          }
+        />
       ) : !result ? (
         <EmptyState title="净值数据不足" description="该标的至少需要 2 个净值点。" />
       ) : (

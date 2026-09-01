@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart } from "../../components/charts/Chart";
 import { baseChartOption } from "../../components/charts/theme";
+import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { simulatePath } from "../../services/montecarlo";
@@ -87,6 +88,17 @@ export function AdvancedTab() {
       </Card>
 
       <div className="space-y-4">
+        {navs.some((q) => q.isError) && (
+          <EmptyState
+            title="净值数据加载失败"
+            description="部分标的净值拉取失败，请重试。"
+            action={
+              <Button size="sm" onClick={() => navs.forEach((q) => void q.refetch())}>
+                重试
+              </Button>
+            }
+          />
+        )}
         <Card>
           <CardHeader>
             <CardTitle>相关性热力图（日收益 pearson）</CardTitle>
