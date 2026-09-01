@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"bytes"
+	"log/slog"
+	"strings"
+	"testing"
+)
 
 func TestParseUsesSafeDefaults(t *testing.T) {
 	cfg, err := Parse(map[string]string{})
@@ -370,5 +375,76 @@ func TestParseTrustedProxies(t *testing.T) {
 	}
 	if cfg.TrustedProxies != nil {
 		t.Fatalf("unset trusted = %v, want nil", cfg.TrustedProxies)
+	}
+}
+
+func TestParseBoolEnvRecognizesTruthyAndFalsySpellings(t *testing.T) {
+	falsy := []string{"0", "false", "no", "off", "disabled", "FALSE", "Off"}
+	for _, raw := range falsy {
+		cfg, err := Parse(map[string]string{"FUND_AGENT_OPS_ENABLED": raw})
+		if err != nil {
+			t.Fatalf("Parse(FUND_AGENT_OPS_ENABLED=%q): %v", raw, err)
+		}
+		if cfg.AgentOpsEnabled {
+			t.Fatalf("FUND_AGENT_OPS_ENABLED=%q parsed as enabled", raw)
+		}
+	}
+
+	truthy := []string{"1", "true", "yes", "on", "enabled", "TRUE"}
+	for _, raw := range truthy {
+		cfg, err := Parse(map[string]string{
+			"FUND_AGENT_OPS_ENABLED":         raw,
+			"FUND_AGENT_CONFIRMATION_SECRET": "agent-confirmation-secret",
+		})
+		if err != nil {
+			t.Fatalf("Parse(FUND_AGENT_OPS_ENABLED=%q): %v", raw, err)
+		}
+		if !cfg.AgentOpsEnabled {
+			t.Fatalf("FUND_AGENT_OPS_ENABLED=%q parsed as disabled", raw)
+		}
+	}
+
+	// Unknown spellings stay fail-closed (false), not a startup error.
+	cfg, err := Parse(map[string]string{"FUND_AGENT_OPS_ENABLED": "maybe"})
+	if err != nil {
+		t.Fatalf("Parse(unknown bool): %v", err)
+	}
+	if cfg.AgentOpsEnabled {
+		t.Fatal("unknown bool spelling must parse as disabled")
+	}
+}
+
+func TestParseWarnsOnInvalidEnvValues(t *testing.T) {
+	var buf bytes.Buffer
+	orig := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(orig) })
+
+	if _, err := Parse(map[string]string{
+		"FUND_API_RPM":           "abc",
+		"FUND_MCP_RPM":           "-1",
+		"FUND_AUTH_SESSION_TTL":  "not-a-duration",
+		"FUND_AGENT_OPS_ENABLED": "maybe",
+		"FUND_EDGE_AUTH_ENABLED": "yep",
+	}); err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	out := buf.String()
+	for _, env := range []string{"FUND_API_RPM", "FUND_MCP_RPM", "FUND_AUTH_SESSION_TTL", "FUND_AGENT_OPS_ENABLED", "FUND_EDGE_AUTH_ENABLED"} {
+		if !strings.Contains(out, env) {
+			t.Fatalf("startup diagnostics missing env %s\n%s", env, out)
+		}
+	}
+
+	// Conflicting TTL/MaxAge is lenient at parse time but must be diagnosable.
+	buf.Reset()
+	if _, err := Parse(map[string]string{
+		"FUND_AUTH_SESSION_TTL":     "2160h",
+		"FUND_AUTH_SESSION_MAX_AGE": "720h",
+	}); err != nil {
+		t.Fatalf("Parse(ttl>max_age): %v", err)
+	}
+	if !strings.Contains(buf.String(), "session TTL exceeds max age") {
+		t.Fatalf("missing TTL/MaxAge diagnostic\n%s", buf.String())
 	}
 }

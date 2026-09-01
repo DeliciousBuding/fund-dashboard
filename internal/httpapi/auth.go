@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -189,6 +190,7 @@ func handleAuthPassword(svc *auth.Service, trusted []*net.IPNet) http.HandlerFun
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		svc.Limiter.Success("password:" + ip)
 		svc.RecordAuthEvent(r.Context(), "password_change", ip, truncatedUserAgent(r), "")
 		WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "other_sessions_revoked": true})
 	}
@@ -280,6 +282,14 @@ func decodeAuthBody(w http.ResponseWriter, r *http.Request, out any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(out); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request")
+		return false
+	}
+	// A credential body must be exactly one JSON object. Reject trailing values
+	// and garbage so chained documents cannot smuggle unexpected input into a
+	// handler that read only the first value.
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
 		writeError(w, http.StatusBadRequest, "bad_request")
 		return false
 	}

@@ -127,6 +127,62 @@ func TestAuthStatusSetupLoginLogoutFlow(t *testing.T) {
 	}
 }
 
+func TestAuthLoginRejectsTrailingJSONDocuments(t *testing.T) {
+	router, _ := newAuthTestRouter(t)
+	res := postAuth(t, router, "/api/auth/setup", map[string]string{"password": testAuthPassword})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("setup status=%d body=%s", res.Code, res.Body.String())
+	}
+
+	// A credential body must be exactly one JSON object; a chained second document
+	// must be rejected instead of being silently ignored.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login",
+		strings.NewReader("{\"password\":\""+testAuthPassword+"\"} {\"password\":\"x\"}"))
+	req.Header.Set("Content-Type", "application/json")
+	res = httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("chained body status = %d, want 400; body=%s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthPasswordChangeResetsFailureState(t *testing.T) {
+	router, svc := newAuthTestRouter(t)
+	res := postAuth(t, router, "/api/auth/setup", map[string]string{"password": testAuthPassword})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("setup status=%d body=%s", res.Code, res.Body.String())
+	}
+	cookie := sessionCookieFrom(t, res)
+
+	wrong := map[string]string{"current_password": "wrong-old-password", "new_password": "new-password-1234"}
+	// Fail MaxFails-1 times without tripping the lockout.
+	for i := 0; i < svc.Limiter.MaxFails-1; i++ {
+		res = postAuth(t, router, "/api/auth/password", wrong, cookie)
+		if res.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong password attempt %d = %d, want 401; body=%s", i+1, res.Code, res.Body.String())
+		}
+	}
+
+	// A successful change must clear the per-IP failure state (login parity).
+	good := map[string]string{"current_password": testAuthPassword, "new_password": "new-password-1234"}
+	res = postAuth(t, router, "/api/auth/password", good, cookie)
+	if res.Code != http.StatusOK {
+		t.Fatalf("password change = %d, want 200; body=%s", res.Code, res.Body.String())
+	}
+
+	// If state had survived, the very first post-change failure would be the
+	// MaxFails-th and immediately lock the key, so the second attempt would 429.
+	for i := 0; i < svc.Limiter.MaxFails-1; i++ {
+		res = postAuth(t, router, "/api/auth/password", map[string]string{
+			"current_password": "wrong-old-password",
+			"new_password":     "another-password-9",
+		}, cookie)
+		if res.Code != http.StatusUnauthorized {
+			t.Fatalf("post-change wrong attempt %d = %d, want 401 (state must be reset); body=%s", i+1, res.Code, res.Body.String())
+		}
+	}
+}
+
 func TestAuthSetupRejectsWeakPassword(t *testing.T) {
 	router, _ := newAuthTestRouter(t)
 	res := postAuth(t, router, "/api/auth/setup", map[string]string{"password": "short"})

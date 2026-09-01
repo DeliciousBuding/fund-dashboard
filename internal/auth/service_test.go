@@ -283,6 +283,89 @@ func TestLimiterGlobalWindow(t *testing.T) {
 	}
 }
 
+func TestSessionInitialExpiryRespectsMaxAge(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	svc := newTestService(t, Options{
+		TTL:    48 * time.Hour,
+		MaxAge: 24 * time.Hour,
+		Now:    func() time.Time { return now },
+	})
+	ctx := context.Background()
+
+	// A TTL longer than MaxAge must be clamped so a freshly created session never
+	// outlives the absolute cap, and the cookie TTL agrees with the server cap.
+	if got := svc.SessionTTL(); got != 24*time.Hour {
+		t.Fatalf("SessionTTL = %v, want clamped 24h", got)
+	}
+	token, err := svc.Setup(ctx, "cap-initial-pw1", "", "")
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	sess, err := svc.Authenticate(ctx, token)
+	if err != nil || sess == nil {
+		t.Fatalf("Authenticate = %#v, %v", sess, err)
+	}
+	if want := now.Unix() + int64((24 * time.Hour).Seconds()); sess.ExpiresAt != want {
+		t.Fatalf("initial expiry = %d, want %d (created+maxAge)", sess.ExpiresAt, want)
+	}
+
+	// An idle session must be dead at created+MaxAge even though the raw 48h TTL
+	// would still be running.
+	now = now.Add(30 * time.Hour)
+	if got, _ := svc.Authenticate(ctx, token); got != nil {
+		t.Fatal("session past absolute cap must be rejected")
+	}
+}
+
+func TestAuthenticateSkipsNoOpTouchAtAbsoluteCap(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	svc := newTestService(t, Options{
+		TTL:    24 * time.Hour,
+		MaxAge: 48 * time.Hour,
+		Now:    func() time.Time { return now },
+	})
+	ctx := context.Background()
+	token, err := svc.Setup(ctx, "cap-touch-pw1", "", "")
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// Slide twice so the expiry lands exactly on created+MaxAge.
+	now = now.Add(13 * time.Hour)
+	if _, err := svc.Authenticate(ctx, token); err != nil {
+		t.Fatalf("first slide: %v", err)
+	}
+	now = now.Add(20 * time.Hour)
+	if _, err := svc.Authenticate(ctx, token); err != nil {
+		t.Fatalf("second slide: %v", err)
+	}
+
+	stored, err := svc.store.SessionByID(ctx, tokenID(token))
+	if err != nil || stored == nil {
+		t.Fatalf("read stored session: %#v, %v", stored, err)
+	}
+	capExpiry := stored.CreatedAt + int64((48 * time.Hour).Seconds())
+	if stored.ExpiresAt != capExpiry {
+		t.Fatalf("stored expiry = %d, want cap %d", stored.ExpiresAt, capExpiry)
+	}
+	lastSeen := stored.LastSeenAt
+
+	// A renewal that computes the same cap must not rewrite the row (no-op writes
+	// on every request once the absolute cap is pinned).
+	now = now.Add(13 * time.Hour)
+	if _, err := svc.Authenticate(ctx, token); err != nil {
+		t.Fatalf("capped renewal: %v", err)
+	}
+	after, err := svc.store.SessionByID(ctx, tokenID(token))
+	if err != nil || after == nil {
+		t.Fatalf("re-read stored session: %#v, %v", after, err)
+	}
+	if after.LastSeenAt != lastSeen || after.ExpiresAt != capExpiry {
+		t.Fatalf("no-op renewal rewrote session: before={last_seen:%d expiry:%d} after={last_seen:%d expiry:%d}",
+			lastSeen, capExpiry, after.LastSeenAt, after.ExpiresAt)
+	}
+}
+
 func TestWeakPasswordRejected(t *testing.T) {
 	svc := newTestService(t, Options{})
 	if _, err := svc.Setup(context.Background(), "short", "", ""); !errors.Is(err, ErrWeakPassword) {

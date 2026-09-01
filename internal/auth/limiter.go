@@ -40,6 +40,11 @@ type Limiter struct {
 // maxLockout caps the escalating lockout duration (design §2.2).
 const maxLockout = 24 * time.Hour
 
+// maxLockStrikes caps the per-key escalation counter. Escalation saturates at
+// 8 strikes (maxLockout), so any larger count is equivalent; capping keeps the
+// int counter from ever overflowing after years of lockout trips.
+const maxLockStrikes = 64
+
 // strikeDecay is how long an idle key keeps its escalation strikes. After this
 // long without any failure the key's state is garbage-collected and its next
 // lockout trip restarts at the base Lockout. It must exceed maxLockout with
@@ -114,7 +119,9 @@ func (l *Limiter) Failure(key string) (locked bool, lockDuration time.Duration) 
 	l.fails[key] = append(prune(l.fails[key], windowStart), now)
 	l.lastFailure[key] = now
 	if len(l.fails[key]) >= l.MaxFails {
-		l.lockStrikes[key]++
+		if l.lockStrikes[key] < maxLockStrikes {
+			l.lockStrikes[key]++
+		}
 		lockDuration = escalatedLockout(l.Lockout, l.lockStrikes[key])
 		l.lockedUntil[key] = now.Add(lockDuration)
 		delete(l.fails, key)

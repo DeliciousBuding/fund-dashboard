@@ -98,6 +98,35 @@ func TestEscalatedLockoutShiftOverflowSafe(t *testing.T) {
 	}
 }
 
+func TestLimiterLockStrikesSaturateInsteadOfOverflowing(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	l := NewLimiter(func() time.Time { return now })
+
+	// Seed the escalation counter one below the saturation cap, then keep
+	// tripping lockouts: the counter must stop growing and the lock duration
+	// must stay pinned at maxLockout.
+	l.mu.Lock()
+	l.lockStrikes["ip:sat"] = maxLockStrikes - 1
+	l.mu.Unlock()
+
+	ra := roundTrip(t, l, "ip:sat", &now) // increments to maxLockStrikes
+	if ra != maxLockout {
+		t.Fatalf("first trip retry = %v, want 24h cap", ra)
+	}
+	now = now.Add(25 * time.Hour)
+	ra = roundTrip(t, l, "ip:sat", &now) // must not exceed the cap
+	if ra != maxLockout {
+		t.Fatalf("post-saturation retry = %v, want 24h cap", ra)
+	}
+
+	l.mu.Lock()
+	strikes := l.lockStrikes["ip:sat"]
+	l.mu.Unlock()
+	if strikes != maxLockStrikes {
+		t.Fatalf("strikes = %d, want saturated at %d", strikes, maxLockStrikes)
+	}
+}
+
 func TestPasswordPolicyLetterAndDigit(t *testing.T) {
 	cases := []struct {
 		password string

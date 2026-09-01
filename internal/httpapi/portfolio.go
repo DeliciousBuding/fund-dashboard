@@ -50,6 +50,11 @@ func handlePortfolioDefinitions(service *portfoliosvc.Service) http.HandlerFunc 
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		if portfolios == nil {
+			// SPA contract is a bare array: an empty table must serialize as [],
+			// never null (zod z.array rejects null).
+			portfolios = []portfoliosvc.PortfolioDefinition{}
+		}
 		WriteJSON(w, http.StatusOK, portfolios)
 	}
 }
@@ -101,6 +106,7 @@ func handlePortfolioAllocation(service *portfoliosvc.Service) http.HandlerFunc {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
+		normalizeAllocationSlices(allocation)
 		WriteJSON(w, http.StatusOK, allocation)
 	}
 }
@@ -256,6 +262,26 @@ type sourceEventRequest struct {
 type markSourceEventRequest struct {
 	IsRead   *bool `json:"is_read"`
 	IsUseful *bool `json:"is_useful"`
+}
+
+// normalizeAllocationSlices keeps the allocation contract stable: the zod
+// schema requires arrays for by_security_type/by_market/by_fund_type, while the
+// service returns nil slices when the corresponding bucket query has no rows
+// (nil serializes as null). risk_flags already has a nullable→[] transform
+// in the contract, so it is intentionally left alone.
+func normalizeAllocationSlices(allocation *portfoliosvc.Allocation) {
+	if allocation == nil {
+		return
+	}
+	if allocation.BySecurityType == nil {
+		allocation.BySecurityType = []portfoliosvc.AllocationBucket{}
+	}
+	if allocation.ByMarket == nil {
+		allocation.ByMarket = []portfoliosvc.AllocationBucket{}
+	}
+	if allocation.ByFundType == nil {
+		allocation.ByFundType = []portfoliosvc.AllocationBucket{}
+	}
 }
 
 func portfolioIDFromRequest(r *http.Request) int {
