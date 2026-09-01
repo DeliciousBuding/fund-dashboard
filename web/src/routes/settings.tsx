@@ -1,6 +1,11 @@
 // 设置 /settings —— 四 tab（06 §3）：安全（改密/会话管理/登录事件）/ 偏好 /
 // 数据（导入导出/备份说明）/ Agent（MCP 端点与密钥掩码）。
 
+import {
+  AuthEventsResponseSchema,
+  AuthSessionsResponseSchema,
+  SystemAgentResponseSchema,
+} from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { KeyRound, LogOut, MonitorSmartphone, ShieldCheck } from "lucide-react";
@@ -15,28 +20,11 @@ import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ApiError, api } from "../lib/api";
+import { fetchValidated } from "../lib/queries";
 import { cn } from "../lib/utils";
 import { useSettings } from "../stores/settings";
 
 // ── 安全 tab ────────────────────────────────────────────────────────
-
-interface SessionInfo {
-  id_prefix: string;
-  created_at: number;
-  expires_at: number;
-  last_seen_at: number;
-  ip: string;
-  user_agent: string;
-  current: boolean;
-}
-
-interface AuthEvent {
-  ts: number;
-  event: string;
-  ip?: string;
-  user_agent?: string;
-  detail?: string;
-}
 
 const EVENT_LABEL: Record<string, string> = {
   setup: "初始化密码",
@@ -162,7 +150,8 @@ function SessionsCard() {
   const queryClient = useQueryClient();
   const sessions = useQuery({
     queryKey: ["auth-sessions"],
-    queryFn: ({ signal }) => api<{ sessions: SessionInfo[] }>("/api/auth/sessions", { signal }),
+    queryFn: ({ signal }) =>
+      fetchValidated("/api/auth/sessions", AuthSessionsResponseSchema, signal),
   });
   const revoke = useMutation({
     mutationFn: (idPrefix: string) =>
@@ -195,6 +184,8 @@ function SessionsCard() {
               </Button>
             }
           />
+        ) : (sessions.data?.sessions ?? []).length === 0 ? (
+          <p className="text-sm text-fg-3">暂无活动会话</p>
         ) : (
           (sessions.data?.sessions ?? []).map((s) => (
             <div
@@ -233,7 +224,8 @@ function SessionsCard() {
 function AuthEventsCard() {
   const events = useQuery({
     queryKey: ["auth-events"],
-    queryFn: ({ signal }) => api<{ events: AuthEvent[] }>("/api/auth/events?limit=20", { signal }),
+    queryFn: ({ signal }) =>
+      fetchValidated("/api/auth/events?limit=20", AuthEventsResponseSchema, signal),
   });
   return (
     <Card>
@@ -398,22 +390,10 @@ function DataTab() {
 
 // ── Agent tab ───────────────────────────────────────────────────────
 
-interface AgentInfo {
-  endpoint: string;
-  request_method: string;
-  tools: {
-    total_tools: number;
-    by_scope: Record<string, number>;
-    by_permission: Record<string, number>;
-  };
-  key_env_vars: string[];
-  keys: Record<string, string>;
-}
-
 function AgentTab() {
   const info = useQuery({
     queryKey: ["system-agent"],
-    queryFn: ({ signal }) => api<AgentInfo>("/api/system/agent", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/system/agent", SystemAgentResponseSchema, signal),
   });
 
   if (info.isPending) return <Skeleton className="h-48 max-w-2xl" />;
