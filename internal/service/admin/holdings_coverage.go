@@ -46,12 +46,7 @@ type HoldingsCoverageByType struct {
 }
 
 func (s Service) GetHoldingsCoverage(ctx context.Context, portfolioID int) (HoldingsCoverageReport, error) {
-	if portfolioID <= 0 {
-		portfolioID = 1
-	}
-	if portfolioID > 1000 {
-		portfolioID = 1000
-	}
+	portfolioID = clampPortfolioID(portfolioID)
 
 	var total int
 	var applicable int
@@ -156,9 +151,9 @@ func (s Service) queryHoldingsCoverageFunds(ctx context.Context, portfolioID int
 		  AND %s
 		%s
 		ORDER BY ps.fund_code
-		LIMIT 5000
+		LIMIT ?
 	`, condition, groupHaving)
-	rows, err := s.db.QueryContext(ctx, query, portfolioID)
+	rows, err := s.db.QueryContext(ctx, query, portfolioID, adminListMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("holdings coverage funds: %w", err)
 	}

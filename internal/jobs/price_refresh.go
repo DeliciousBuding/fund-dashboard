@@ -133,7 +133,10 @@ func (r *PriceRefresher) RefreshAllHeld(ctx context.Context) (securities, totalA
 // RefreshStaleHeld refreshes only held securities with missing or stale NAV
 // (same selection as admin/MCP stale_only). Fresh holdings are skipped entirely.
 func (r *PriceRefresher) RefreshStaleHeld(ctx context.Context) (securities, totalAdded int, err error) {
-	svc := adminsvc.NewServiceWithDriver(r.db, r.driver)
+	svc, err := adminsvc.NewServiceWithDriverChecked(r.db, r.driver)
+	if err != nil {
+		return 0, 0, fmt.Errorf("admin service for stale refresh: %w", err)
+	}
 	report, err := svc.GetFreshness(ctx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("freshness for stale refresh: %w", err)
@@ -244,6 +247,11 @@ func filterPointsSince(points []datasource.PricePoint, since string) []datasourc
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
+// heldSecuritiesMaxCodes bounds one RefreshAllHeld batch. Production holds far
+// fewer codes, so this is defense-in-depth like recalcAllMaxCodes: the query
+// probes limit+1 rows and the extra row proves tail codes would be dropped.
+const heldSecuritiesMaxCodes = 5000
+
 // getHeldSecurities lists held codes (held_shares > 0.001, same filter as the
 // SPA). The security type is deliberately not carried: CrawlCode re-resolves it
 // from portfolio_snapshot/fund_details at crawl time, so caching it here was
@@ -252,8 +260,8 @@ func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]string, error
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT fund_code
 		FROM portfolio_snapshot WHERE held_shares > 0.001
-		LIMIT 5000
-	`)
+		LIMIT ?
+	`, heldSecuritiesMaxCodes+1)
 	if err != nil {
 		return nil, fmt.Errorf("getHeldSecurities: %w", err)
 	}
@@ -267,13 +275,31 @@ func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]string, error
 		}
 		codes = append(codes, code)
 	}
-	return codes, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	codes, dropped := capCodes(codes, heldSecuritiesMaxCodes)
+	if dropped > 0 {
+		// Silent LIMIT truncation made observable: one extra row is fetched
+		// (LIMIT max+1), so its presence proves held codes were left out.
+		slog.Warn("held securities code list truncated",
+			"limit", heldSecuritiesMaxCodes,
+			"processed", len(codes),
+			"at_least_dropped", dropped,
+		)
+	}
+	return codes, nil
 }
+
+// maxNavSeriesPoints caps the upserted series per security (#241). Oldest
+// points are dropped so one pathological upstream response cannot balloon a
+// single crawl into thousands of writes.
+const maxNavSeriesPoints = 5000
 
 func upsertNavHistory(ctx context.Context, db *sql.DB, driver, code, secType string, points []datasource.PricePoint) (int, error) {
 	// Soft-cap series length defense-in-depth (#241).
-	if len(points) > 5000 {
-		points = points[len(points)-5000:]
+	if len(points) > maxNavSeriesPoints {
+		points = points[len(points)-maxNavSeriesPoints:]
 	}
 	if len(points) == 0 {
 		return 0, nil
@@ -363,14 +389,15 @@ func (r *PriceRefresher) CrawlCode(ctx context.Context, code string) (added int,
 
 // recalcAllMaxCodes bounds one RecalcAllSnapshots batch. Production currently
 // has ~61 distinct fund codes, so 5000 is defense-in-depth rather than a
-// workload number; detection fetches limit+1 rows (see capRecalcCodes) so an
+// workload number; detection fetches limit+1 rows (see capCodes) so an
 // oversized ledger is reported instead of silently dropping codes.
 const recalcAllMaxCodes = 5000
 
-// capRecalcCodes keeps the first limit codes and reports how many rows were
-// dropped, converting silent LIMIT truncation into an observable boundary.
-// Split out so the cut point is unit-tested without a 5001-row fixture.
-func capRecalcCodes(list []string, limit int) ([]string, int) {
+// capCodes keeps the first limit codes and reports how many rows were dropped,
+// converting silent LIMIT truncation into an observable boundary. Shared by
+// RecalcAllSnapshots and getHeldSecurities; split out so the cut point is
+// unit-tested without a 5001-row fixture.
+func capCodes(list []string, limit int) ([]string, int) {
 	if len(list) <= limit {
 		return list, 0
 	}
@@ -403,7 +430,7 @@ func RecalcAllSnapshots(ctx context.Context, db *sql.DB) (codes int, failed []st
 		return 0, nil, err
 	}
 	var dropped int
-	list, dropped = capRecalcCodes(list, recalcAllMaxCodes)
+	list, dropped = capCodes(list, recalcAllMaxCodes)
 	if dropped > 0 {
 		// Silent LIMIT truncation made observable: one extra row is fetched
 		// (LIMIT max+1), so its presence proves codes were left unprocessed.

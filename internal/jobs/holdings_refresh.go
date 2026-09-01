@@ -61,13 +61,18 @@ func (r *HoldingsRefresher) CrawlCode(ctx context.Context, code string) (added i
 	return n, reportDate, nil
 }
 
+// holdingsCrawlMaxCodes bounds one CrawlAllHeld batch. Same defense-in-depth
+// pattern as getHeldSecurities/recalc: probe limit+1 rows and warn instead of
+// silently dropping tail funds.
+const holdingsCrawlMaxCodes = 5000
+
 // CrawlAllHeld refreshes holdings for every held fund in portfolio_snapshot.
 func (r *HoldingsRefresher) CrawlAllHeld(ctx context.Context) (funds int, added int, err error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT fund_code FROM portfolio_snapshot
 		WHERE held_shares > 0.001 AND COALESCE(security_type, 'fund') = 'fund'
-		LIMIT 5000
-	`)
+		LIMIT ?
+	`, holdingsCrawlMaxCodes+1)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -82,6 +87,14 @@ func (r *HoldingsRefresher) CrawlAllHeld(ctx context.Context) (funds int, added 
 	}
 	if err := rows.Err(); err != nil {
 		return 0, 0, err
+	}
+	codes, dropped := capCodes(codes, holdingsCrawlMaxCodes)
+	if dropped > 0 {
+		slog.Warn("holdings crawl code list truncated",
+			"limit", holdingsCrawlMaxCodes,
+			"processed", len(codes),
+			"at_least_dropped", dropped,
+		)
 	}
 	attempted := 0
 	for i, code := range codes {
@@ -109,6 +122,10 @@ func (r *HoldingsRefresher) CrawlAllHeld(ctx context.Context) (funds int, added 
 	}
 	return funds, added, nil
 }
+
+// fundHoldingsMatchMaxRows caps the stored-slice comparison read. A top-10
+// holdings payload can never approach it, so it is defense-in-depth only.
+const fundHoldingsMatchMaxRows = 500
 
 func upsertFundHoldings(ctx context.Context, db *sql.DB, fundCode, reportDate string, holdings []datasource.FundHolding) (int, error) {
 	// Skip rewrite when the stored report slice already matches the crawl payload (#88).
@@ -175,8 +192,8 @@ func fundHoldingsMatch(ctx context.Context, db *sql.DB, fundCode, reportDate str
 		SELECT stock_code, COALESCE(stock_name, ''), COALESCE(weight_pct, 0), COALESCE(shares, 0), COALESCE(market_value, 0)
 		FROM fund_holdings
 		WHERE fund_code = ? AND report_date = ?
-		LIMIT 500
-	`, fundCode, reportDate)
+		LIMIT ?
+	`, fundCode, reportDate, fundHoldingsMatchMaxRows)
 	if err != nil {
 		return false, fmt.Errorf("query existing holdings: %w", err)
 	}

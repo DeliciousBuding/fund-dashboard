@@ -9,6 +9,19 @@ import (
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
+)
+
+// CheckAlerts defaults and input bounds.
+const (
+	defaultAlertPriceChangePct = 5
+	defaultAlertDrawdownPct    = 10
+	defaultAlertStaleDays      = 4
+
+	// Single-user deployment: portfolio id is optional in admin inputs and
+	// defaults to the canonical portfolio.
+	defaultPortfolioID  = 1
+	maxAdminPortfolioID = 1000
 )
 
 type CheckAlertsInput struct {
@@ -16,6 +29,19 @@ type CheckAlertsInput struct {
 	DrawdownPct    float64 // absolute threshold, default 10
 	StaleDays      int     // default 4
 	PortfolioID    int
+}
+
+// clampPortfolioID normalizes the single-user default portfolio id (non-positive
+// values select the canonical portfolio) and bounds it like the other admin
+// surfaces so a huge input cannot fan out queries.
+func clampPortfolioID(id int) int {
+	if id <= 0 {
+		return defaultPortfolioID
+	}
+	if id > maxAdminPortfolioID {
+		return maxAdminPortfolioID
+	}
+	return id
 }
 
 type AlertItem struct {
@@ -50,23 +76,17 @@ type CheckAlertsResult struct {
 func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAlertsResult, error) {
 	priceThr := in.PriceChangePct
 	if priceThr <= 0 {
-		priceThr = 5
+		priceThr = defaultAlertPriceChangePct
 	}
 	ddThr := in.DrawdownPct
 	if ddThr <= 0 {
-		ddThr = 10
+		ddThr = defaultAlertDrawdownPct
 	}
 	staleDays := in.StaleDays
 	if staleDays <= 0 {
-		staleDays = 4
+		staleDays = defaultAlertStaleDays
 	}
-	portfolioID := in.PortfolioID
-	if portfolioID <= 0 {
-		portfolioID = 1
-	}
-	if portfolioID > 1000 {
-		portfolioID = 1000
-	}
+	portfolioID := clampPortfolioID(in.PortfolioID)
 	now := time.Now().In(chinatime.Loc)
 	checkedAt := now.UTC().Format(time.RFC3339)
 
@@ -80,8 +100,8 @@ func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAle
 		LEFT JOIN fund_details fd ON fd.fund_code = ps.fund_code
 		WHERE COALESCE(ps.portfolio_id,1) = ? AND COALESCE(ps.held_shares,0) > 0.001
 		ORDER BY ps.fund_code
-		LIMIT 5000
-	`, portfolioID)
+		LIMIT ?
+	`, portfolioID, adminListMaxRows)
 	if err != nil {
 		return CheckAlertsResult{}, fmt.Errorf("list held: %w", err)
 	}
@@ -198,12 +218,11 @@ func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAle
 		SELECT id, fund_code, COALESCE(fund_name,''), amount, weekday_mask, portfolio_id
 		FROM dca_plans
 		WHERE active = 1 AND portfolio_id = ?
-		LIMIT 5000
-	`, portfolioID)
+		LIMIT ?
+	`, portfolioID, adminListMaxRows)
 	if err != nil {
-		msg := strings.ToLower(err.Error())
 		// Missing dca_plans on older fixtures — skip dca_day alerts only.
-		if !(strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table")) {
+		if !dialect.IsMissingTableError(err) {
 			return CheckAlertsResult{}, fmt.Errorf("list dca plans: %w", err)
 		}
 	} else {

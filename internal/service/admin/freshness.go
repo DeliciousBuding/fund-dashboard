@@ -11,17 +11,49 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
-const stalePriceDays = 4
+const (
+	stalePriceDays = 4
+
+	// adminListMaxRows bounds read-only admin list payloads (freshness/verify/
+	// alerts/holdings coverage). Defense-in-depth, same rationale as the jobs
+	// code-list caps.
+	adminListMaxRows = 5000
+
+	// maxRecentAnomalies bounds anomaly preview lists on dashboard and system
+	// status payloads.
+	maxRecentAnomalies = 20
+)
 
 type Service struct {
 	db      *sql.DB
 	dialect dialect.Dialect
 }
 
-// NewServiceWithDriver creates a Service aware of the underlying database driver
-// so it can generate the correct SQL dialect (e.g. julianday vs EXTRACT/EPOCH).
+// NewServiceWithDriverChecked creates a Service aware of the underlying database
+// driver so it can generate the correct SQL dialect (e.g. julianday vs
+// EXTRACT/EPOCH). It fails closed on unknown drivers and propagates the
+// construction error, so callers that cannot trust their driver string never
+// silently degrade to a wrong dialect.
+func NewServiceWithDriverChecked(db *sql.DB, driver string) (Service, error) {
+	d, err := dialect.NewChecked(driver, db)
+	if err != nil {
+		return Service{}, err
+	}
+	return Service{db: db, dialect: d}, nil
+}
+
+// NewServiceWithDriver is the legacy single-value assembly entrypoint kept for
+// call sites that already resolved and validated the driver upstream
+// (internal/app fails closed through dialect.NewChecked before wiring). It
+// routes through NewServiceWithDriverChecked and panics on unknown drivers
+// instead of the previous silent SQLite fallback. New code should prefer
+// NewServiceWithDriverChecked so construction errors can be propagated.
 func NewServiceWithDriver(db *sql.DB, driver string) Service {
-	return Service{db: db, dialect: dialect.New(driver, db)}
+	svc, err := NewServiceWithDriverChecked(db, driver)
+	if err != nil {
+		panic("admin: " + err.Error())
+	}
+	return svc
 }
 
 type FreshnessReport struct {
@@ -157,9 +189,9 @@ func (s Service) queryMissingNAVSecurities(ctx context.Context, heldOnly bool) (
 		  AND fd.fund_code NOT IN (SELECT DISTINCT fund_code FROM nav_history)
 		GROUP BY fd.fund_code
 		ORDER BY fd.fund_code
-		LIMIT 5000
+		LIMIT ?
 	`, join, heldPredicate)
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, adminListMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("admin freshness missing nav: %w", err)
 	}
@@ -197,10 +229,10 @@ func (s Service) queryStaleSecurities(ctx context.Context) ([]StaleSecurity, err
 		GROUP BY nh.fund_code, fd.fund_name
 		HAVING %s > %d
 		ORDER BY %s DESC, nh.fund_code
-		LIMIT 5000
+		LIMIT ?
 	`, daysSince, daysSince, stalePriceDays, daysSince)
 
-	rows, err := s.db.QueryContext(ctx, staleSQL)
+	rows, err := s.db.QueryContext(ctx, staleSQL, adminListMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("admin freshness stale securities: %w", err)
 	}

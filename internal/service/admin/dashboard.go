@@ -193,8 +193,8 @@ func (s Service) dashboardAnomalies(ctx context.Context) ([]DashboardAnomaly, er
 		FROM transactions
 		WHERE anomaly IS NOT NULL
 		ORDER BY seq
-		LIMIT 20
-	`)
+		LIMIT ?
+	`, maxRecentAnomalies)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard anomalies: %w", err)
 	}
