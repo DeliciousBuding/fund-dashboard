@@ -2,6 +2,7 @@
 // 数据（导入导出/备份说明）/ Agent（MCP 端点与密钥掩码）。
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { KeyRound, LogOut, MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -366,10 +367,10 @@ function DataTab() {
         <CardContent className="space-y-2 text-sm text-fg-2">
           <p>
             交易导入与 CSV/XLSX 导出在
-            <a href="/transactions" className="text-accent hover:underline">
+            <Link to="/transactions" className="text-accent hover:underline">
               {" "}
               交易{" "}
-            </a>
+            </Link>
             页完成（新增 = 单条导入；导出带中文表头与 BOM）。
           </p>
           <p className="text-xs text-fg-3">批量 JSON 导入走同一入口的幂等语义（order_id 去重）。</p>
@@ -383,10 +384,10 @@ function DataTab() {
           <p>SQLite 模式：每日 03:00 自动 WAL 检查点 + 三表清扫（过期会话/确认/审计）。</p>
           <p className="text-xs text-fg-3">
             数据库文件级别的备份由部署侧（容器卷快照）负责；一致性校验与体检在
-            <a href="/system" className="text-accent hover:underline">
+            <Link to="/system" className="text-accent hover:underline">
               {" "}
               工作台{" "}
-            </a>
+            </Link>
             触发。
           </p>
         </CardContent>

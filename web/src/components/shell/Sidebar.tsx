@@ -165,6 +165,7 @@ export function Sidebar() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜索标的…"
+                aria-label="搜索标的"
                 className="h-8 w-full rounded-lg border border-border bg-surface-2 pl-8 pr-2 text-xs text-fg outline-none placeholder:text-fg-3 focus:border-accent"
               />
             </div>
