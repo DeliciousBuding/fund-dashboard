@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/textutil"
 	"github.com/go-chi/chi/v5"
 	"github.com/xuri/excelize/v2"
 )
@@ -37,7 +40,8 @@ type exportTransactionRow struct {
 	TradeDayType   string   `json:"trade_day_type"`
 }
 
-// exportLang is a tiny label pack for XLSX headers/direction (mirrors SPA fundDetail.csv.* / dir.*).
+// exportLang is a tiny label pack for XLSX headers/direction labels so exported
+// sheets stay readable in both product locales (zh default, en via Accept-Language).
 type exportLang struct {
 	headers []string
 	dirMap  map[string]string
@@ -112,12 +116,22 @@ func handleExportTransactionsXLSX() http.HandlerFunc {
 		if sheet == "" {
 			sheet = "Sheet1"
 		}
-		_ = f.SetSheetName(sheet, "transactions")
+		if err := f.SetSheetName(sheet, "transactions"); err != nil {
+			writeSafeError(w, r, http.StatusInternalServerError, err)
+			return
+		}
 		sheet = "transactions"
 
 		for i, h := range lang.headers {
-			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-			_ = f.SetCellValue(sheet, cell, h)
+			cell, err := excelize.CoordinatesToCellName(i+1, 1)
+			if err != nil {
+				writeSafeError(w, r, http.StatusInternalServerError, err)
+				return
+			}
+			if err := f.SetCellValue(sheet, cell, h); err != nil {
+				writeSafeError(w, r, http.StatusInternalServerError, err)
+				return
+			}
 		}
 
 		for rowIdx, tx := range req.Transactions {
@@ -164,8 +178,15 @@ func handleExportTransactionsXLSX() http.HandlerFunc {
 				clampExportCell(tx.TradeDayType, 32),
 			}
 			for col, v := range values {
-				cell, _ := excelize.CoordinatesToCellName(col+1, rIdx)
-				_ = f.SetCellValue(sheet, cell, v)
+				cell, err := excelize.CoordinatesToCellName(col+1, rIdx)
+				if err != nil {
+					writeSafeError(w, r, http.StatusInternalServerError, err)
+					return
+				}
+				if err := f.SetCellValue(sheet, cell, v); err != nil {
+					writeSafeError(w, r, http.StatusInternalServerError, err)
+					return
+				}
 			}
 		}
 
@@ -184,10 +205,14 @@ func handleExportTransactionsXLSX() http.HandlerFunc {
 		filename := fmt.Sprintf("%s_transactions_%s.xlsx", safe, time.Now().Format("20060102"))
 
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+		// RFC 6266: ASCII fallback + RFC 5987 UTF-8 name so CJK fund names survive (#231).
+		asciiName := fmt.Sprintf("transactions_%s.xlsx", time.Now().Format("20060102"))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, asciiName, url.PathEscape(filename)))
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(buf.Bytes())
+		if _, err := w.Write(buf.Bytes()); err != nil {
+			slog.Warn("export transactions xlsx: write failed", "err", err)
+		}
 	}
 }
 
@@ -222,15 +247,5 @@ func sanitizeExportFilename(name string) string {
 }
 
 // clampExportCell bounds client-supplied XLSX cell strings (#232).
-func clampExportCell(s string, max int) string {
-	s = strings.TrimSpace(s)
-	if max <= 0 || len(s) <= max {
-		return s
-	}
-	// Prefer rune-safe cut for CJK fund labels.
-	runes := []rune(s)
-	if len(runes) > max {
-		return string(runes[:max])
-	}
-	return s
-}
+// Single implementation lives in internal/textutil.
+func clampExportCell(s string, max int) string { return textutil.Clamp(s, max) }

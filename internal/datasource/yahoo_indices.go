@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,9 +39,6 @@ type IndexHistory struct {
 // DefaultUSIndexSymbols are the SPA MarketTicker core US indices.
 // DefaultIndexSymbols are all MarketTicker indices including CN/HK (#100).
 var DefaultIndexSymbols = []string{"^NDX", "^GSPC", "^DJI", "^IXIC", "^HSI", "000001.SS", "399001.SZ", "399006.SZ"}
-
-// DefaultUSIndexSymbols is kept for backward compatibility.
-var DefaultUSIndexSymbols = DefaultIndexSymbols
 
 // defaultIndexNames is the Yahoo shortName fallback when meta is empty (#164).
 // English Yahoo-style labels — SPA MarketTicker display uses market.index.* i18n.
@@ -106,7 +102,7 @@ func FetchYahooIndexQuotes(ctx context.Context, symbols []string) ([]IndexQuote,
 	if template == "" {
 		template = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=5d&interval=1d"
 	}
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := yahooQuoteClient
 	out := make([]IndexQuote, 0, len(symbols))
 	var firstErr error
 	for _, symbol := range symbols {
@@ -150,7 +146,7 @@ func FetchYahooIndexHistory(ctx context.Context, symbol, rangeKey, interval stri
 		template = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s"
 	}
 	endpoint := fmt.Sprintf(template, url.PathEscape(symbol), url.QueryEscape(rangeKey), url.QueryEscape(interval))
-	client := &http.Client{Timeout: 12 * time.Second}
+	client := yahooHistoryClient
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return IndexHistory{}, err
@@ -164,8 +160,12 @@ func FetchYahooIndexHistory(ctx context.Context, symbol, rangeKey, interval stri
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return IndexHistory{}, fmt.Errorf("status %d", res.StatusCode)
 	}
+	body, err := readBodyLimited(res.Body, 4<<20)
+	if err != nil {
+		return IndexHistory{}, err
+	}
 	var payload yahooChartHistoryResponse
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return IndexHistory{}, err
 	}
 	if len(payload.Chart.Result) == 0 {
@@ -232,8 +232,12 @@ func fetchOneYahooIndex(ctx context.Context, client *http.Client, template, symb
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return IndexQuote{}, fmt.Errorf("status %d", res.StatusCode)
 	}
+	body, err := readBodyLimited(res.Body, 4<<20)
+	if err != nil {
+		return IndexQuote{}, err
+	}
 	var payload yahooChartResponse
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return IndexQuote{}, err
 	}
 	if len(payload.Chart.Result) == 0 {

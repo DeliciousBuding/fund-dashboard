@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	_ "modernc.org/sqlite"
 )
 
@@ -212,7 +212,7 @@ func openSummaryFixture(t *testing.T) *sql.DB {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: dbPath})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
 	if err != nil {
 		t.Fatalf("open sqlite fixture: %v", err)
 	}

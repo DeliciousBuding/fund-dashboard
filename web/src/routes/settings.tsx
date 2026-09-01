@@ -2,12 +2,14 @@
 // 数据（导入导出/备份说明）/ Agent（MCP 端点与密钥掩码）。
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { KeyRound, LogOut, MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { EmptyState } from "../components/ui/empty-state";
 import { Input, Label } from "../components/ui/input";
 import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
@@ -183,6 +185,16 @@ function SessionsCard() {
       <CardContent className="space-y-2">
         {sessions.isPending ? (
           <Skeleton className="h-24" />
+        ) : sessions.isError ? (
+          <EmptyState
+            title="会话加载失败"
+            description="无法读取活动会话，请重试。"
+            action={
+              <Button size="sm" onClick={() => void sessions.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : (
           (sessions.data?.sessions ?? []).map((s) => (
             <div
@@ -234,6 +246,16 @@ function AuthEventsCard() {
       <CardContent>
         {events.isPending ? (
           <Skeleton className="h-24" />
+        ) : events.isError ? (
+          <EmptyState
+            title="登录事件加载失败"
+            description="无法读取登录事件，请重试。"
+            action={
+              <Button size="sm" onClick={() => void events.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : (events.data?.events ?? []).length === 0 ? (
           <p className="text-sm text-fg-3">暂无记录</p>
         ) : (
@@ -345,10 +367,10 @@ function DataTab() {
         <CardContent className="space-y-2 text-sm text-fg-2">
           <p>
             交易导入与 CSV/XLSX 导出在
-            <a href="/transactions" className="text-accent hover:underline">
+            <Link to="/transactions" className="text-accent hover:underline">
               {" "}
               交易{" "}
-            </a>
+            </Link>
             页完成（新增 = 单条导入；导出带中文表头与 BOM）。
           </p>
           <p className="text-xs text-fg-3">批量 JSON 导入走同一入口的幂等语义（order_id 去重）。</p>
@@ -362,10 +384,10 @@ function DataTab() {
           <p>SQLite 模式：每日 03:00 自动 WAL 检查点 + 三表清扫（过期会话/确认/审计）。</p>
           <p className="text-xs text-fg-3">
             数据库文件级别的备份由部署侧（容器卷快照）负责；一致性校验与体检在
-            <a href="/system" className="text-accent hover:underline">
+            <Link to="/system" className="text-accent hover:underline">
               {" "}
               工作台{" "}
-            </a>
+            </Link>
             触发。
           </p>
         </CardContent>
@@ -395,6 +417,19 @@ function AgentTab() {
   });
 
   if (info.isPending) return <Skeleton className="h-48 max-w-2xl" />;
+  if (info.isError) {
+    return (
+      <EmptyState
+        title="Agent 信息加载失败"
+        description="无法读取 MCP 端点与密钥掩码，请重试。"
+        action={
+          <Button size="sm" onClick={() => void info.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const d = info.data;
 
   return (

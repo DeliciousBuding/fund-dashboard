@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 // ensureNavSchema is a best-effort SQLite/legacy column backfill, run once per refresher.
@@ -27,12 +29,12 @@ func (r *PriceRefresher) ensureNavSchemaOnce(ctx context.Context) error {
 
 	var firstErr error
 	if _, ok := cols["daily_change_pct"]; !ok {
-		if err := addNavHistoryColumn(ctx, r.db, "daily_change_pct", "REAL DEFAULT 0"); err != nil {
+		if err := addNavHistoryColumn(ctx, r.db, "daily_change_pct"); err != nil {
 			firstErr = err
 		}
 	}
 	if _, ok := cols["security_type"]; !ok {
-		if err := addNavHistoryColumn(ctx, r.db, "security_type", "TEXT DEFAULT 'fund'"); err != nil {
+		if err := addNavHistoryColumn(ctx, r.db, "security_type"); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -94,8 +96,17 @@ func navHistoryColumns(ctx context.Context, db *sql.DB) (map[string]struct{}, er
 	return out, rows.Err()
 }
 
-func addNavHistoryColumn(ctx context.Context, db *sql.DB, name, def string) error {
-	stmt := fmt.Sprintf("ALTER TABLE nav_history ADD COLUMN %s %s", name, def)
+var navHistoryColumnDefs = map[string]string{
+	"daily_change_pct": "REAL DEFAULT 0",
+	"security_type":    "TEXT DEFAULT 'fund'",
+}
+
+func addNavHistoryColumn(ctx context.Context, db *sql.DB, name string) error {
+	def, ok := navHistoryColumnDefs[name]
+	if !ok {
+		return fmt.Errorf("unknown nav_history backfill column %q", name)
+	}
+	stmt := fmt.Sprintf("ALTER TABLE nav_history ADD COLUMN %s %s", dialect.QuoteIdentifier(name), def)
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
 		// Concurrent/race: column may already exist after probe; treat as success.
 		if isDuplicateColumnErr(err) {

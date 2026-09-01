@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
+	"sync"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/contracts"
 )
 
 //go:embed default_registry.json
@@ -119,20 +121,26 @@ func WithDisabledBoundaries() LoadOption {
 	}
 }
 
-func LoadFile(path string, options ...LoadOption) (*Registry, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read tool registry: %w", err)
-	}
-	return LoadJSON(payload, options...)
-}
+var (
+	defaultRegistryOnce sync.Once
+	defaultRegistry     *Registry
+	defaultRegistryErr  error
+)
 
+// DefaultRegistry returns the embedded registry including the hard-disabled
+// boundary tools. The result is parsed once per process: the registry is
+// immutable after load, and callers needing different load options must use
+// LoadJSON directly (which is intentionally not cached).
 func DefaultRegistry() (*Registry, error) {
-	payload, err := defaultRegistryFS.ReadFile("default_registry.json")
-	if err != nil {
-		return nil, fmt.Errorf("read embedded tool registry: %w", err)
-	}
-	return LoadJSON(payload, WithDisabledBoundaries())
+	defaultRegistryOnce.Do(func() {
+		payload, err := defaultRegistryFS.ReadFile("default_registry.json")
+		if err != nil {
+			defaultRegistryErr = fmt.Errorf("read embedded tool registry: %w", err)
+			return
+		}
+		defaultRegistry, defaultRegistryErr = LoadJSON(payload, WithDisabledBoundaries())
+	})
+	return defaultRegistry, defaultRegistryErr
 }
 
 func LoadJSON(payload []byte, options ...LoadOption) (*Registry, error) {
@@ -155,6 +163,16 @@ func LoadJSON(payload []byte, options ...LoadOption) (*Registry, error) {
 	registry.reindex()
 	if err := registry.Validate(); err != nil {
 		return nil, err
+	}
+	// Re-encode the assembled registry (including disabled boundary tools) and
+	// enforce the same contract invariants the public contract validator checks,
+	// so the validator runs on the production load path rather than only tests.
+	encoded, err := json.Marshal(registry)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode tool registry: %w", err)
+	}
+	if err := contracts.ValidateToolRegistryJSON(encoded); err != nil {
+		return nil, fmt.Errorf("tool registry contract validation: %w", err)
 	}
 	return &registry, nil
 }

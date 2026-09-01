@@ -13,6 +13,7 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 // PriceRefresher updates nav_history from external price sources.
@@ -22,7 +23,6 @@ type PriceRefresher struct {
 	db            *sql.DB
 	driver        string // "sqlite" (default) or "pg" — freshness dialect
 	sources       map[datasource.SecurityType]datasource.PriceSource
-	clock         func() time.Time
 	navSchemaOnce sync.Once
 	navSchemaErr  error
 }
@@ -34,7 +34,6 @@ func NewPriceRefresher(db *sql.DB, opts ...PriceRefresherOption) *PriceRefresher
 		db:      db,
 		driver:  "sqlite",
 		sources: map[datasource.SecurityType]datasource.PriceSource{},
-		clock:   time.Now,
 	}
 	for _, o := range opts {
 		o(r)
@@ -58,13 +57,6 @@ func WithDBDriver(driver string) PriceRefresherOption {
 		if strings.TrimSpace(driver) != "" {
 			r.driver = strings.ToLower(strings.TrimSpace(driver))
 		}
-	}
-}
-
-// WithClock injects a clock for deterministic tests.
-func WithClock(fn func() time.Time) PriceRefresherOption {
-	return func(r *PriceRefresher) {
-		r.clock = fn
 	}
 }
 
@@ -115,7 +107,7 @@ func (r *PriceRefresher) RefreshSecurity(ctx context.Context, code string, secTy
 	}
 
 	latest := points[len(points)-1].Date
-	if err := recalcSnapshot(ctx, r.db, code); err != nil {
+	if err := snapshot.Recalc(ctx, r.db, code, snapshot.ModeFull); err != nil {
 		return nil, fmt.Errorf("recalc snapshot %s: %w", code, err)
 	}
 	slog.Info("price refresh", "code", code, "type", secType, "added", added, "latest", latest)
@@ -247,10 +239,7 @@ func filterPointsSince(points []datasource.PricePoint, since string) []datasourc
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-// heldSharesDust is the minimum absolute share count treated as a real holding.
 // Matches SPA filters (held_shares > 0.001) and scheduler/MCP held queries.
-const heldSharesDust = 0.001
-
 type heldRow struct {
 	Code string
 	Type datasource.SecurityType
@@ -334,140 +323,6 @@ func upsertNavHistory(ctx context.Context, db *sql.DB, code, secType string, poi
 	return added, nil
 }
 
-// recalcSnapshot recomputes portfolio_snapshot using the production column shape:
-// latest_nav / current_value / unrealized_pnl / pnl_pct / held_shares / total_cost.
-// Matches admin.recalcSnapshotTx so crawl/scheduler and transaction writes stay aligned.
-func recalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
-	if code == "" {
-		return nil
-	}
-
-	var shares sql.NullFloat64
-	var cost sql.NullFloat64
-	var txFundName sql.NullString
-	if err := db.QueryRowContext(ctx, `
-		SELECT SUM(COALESCE(signed_share_change, 0)), SUM(COALESCE(signed_cash_flow, 0)), MAX(fund_name)
-		FROM transactions
-		WHERE fund_code = ?
-	`, code).Scan(&shares, &cost, &txFundName); err != nil {
-		return fmt.Errorf("recalc snapshot transactions: %w", err)
-	}
-
-	heldShares := 0.0
-	totalCost := 0.0
-	if shares.Valid {
-		heldShares = shares.Float64
-	}
-	if cost.Valid {
-		totalCost = cost.Float64
-	}
-	// Float residue after full sells (~1e-15) is not a real position (#90).
-	// Align with SPA / scheduler held filters (held_shares > 0.001).
-	if heldShares > -heldSharesDust && heldShares < heldSharesDust {
-		heldShares = 0
-	}
-
-	var detailName sql.NullString
-	var securityType sql.NullString
-	if err := db.QueryRowContext(ctx, `
-		SELECT fund_name, security_type
-		FROM fund_details
-		WHERE fund_code = ?
-	`, code).Scan(&detailName, &securityType); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("recalc snapshot identity: %w", err)
-	}
-
-	fundName := code
-	if detailName.Valid && detailName.String != "" {
-		fundName = detailName.String
-	} else if txFundName.Valid && txFundName.String != "" {
-		fundName = txFundName.String
-	}
-	secType := "fund"
-	if securityType.Valid && securityType.String != "" {
-		secType = securityType.String
-	}
-
-	var latestNAV sql.NullFloat64
-	if err := db.QueryRowContext(ctx, `
-		SELECT unit_nav
-		FROM nav_history
-		WHERE fund_code = ?
-		ORDER BY date DESC
-		LIMIT 1
-	`, code).Scan(&latestNAV); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("recalc snapshot latest nav: %w", err)
-	}
-
-	currentValue := 0.0
-	if latestNAV.Valid {
-		currentValue = heldShares * latestNAV.Float64
-	}
-	unrealized := currentValue + totalCost
-	pnlPct := 0.0
-	if totalCost != 0 {
-		denom := totalCost
-		if denom < 0 {
-			denom = -denom
-		}
-		pnlPct = unrealized / denom * 100
-	}
-
-	if heldShares == 0 {
-		currentValue = 0
-		unrealized = 0
-		pnlPct = 0
-	}
-
-	var latestNAVArg any
-	if latestNAV.Valid {
-		latestNAVArg = latestNAV.Float64
-	}
-
-	// Explicit portfolio_id (default 1). Never use unconstrained scalar SELECT under multi-row PK.
-	// SQLite still has PRIMARY KEY(fund_code) only (composite key is a PG/migration target).
-	// Use UPDATE+INSERT so both single-column PK and composite PK shapes work.
-	portfolioID := int64(1)
-	if err := db.QueryRowContext(ctx, `
-		SELECT portfolio_id FROM portfolio_snapshot
-		WHERE fund_code = ?
-		ORDER BY portfolio_id
-		LIMIT 1
-	`, code).Scan(&portfolioID); err != nil {
-		if err != sql.ErrNoRows {
-			return fmt.Errorf("recalc snapshot portfolio_id: %w", err)
-		}
-		portfolioID = 1
-	}
-	if portfolioID <= 0 {
-		portfolioID = 1
-	}
-	res, err := db.ExecContext(ctx, `
-		UPDATE portfolio_snapshot SET
-			fund_name = ?, held_shares = ?, total_cost = ?, latest_nav = ?,
-			current_value = ?, unrealized_pnl = ?, pnl_pct = ?, security_type = ?
-		WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
-	`, fundName, heldShares, totalCost, latestNAVArg, currentValue, unrealized, pnlPct, secType, code, portfolioID)
-	if err != nil {
-		return fmt.Errorf("recalc snapshot update: %w", err)
-	}
-	n, raErr := res.RowsAffected()
-	if raErr != nil {
-		return fmt.Errorf("recalc snapshot rows affected: %w", raErr)
-	}
-	if n == 0 {
-		_, err = db.ExecContext(ctx, `
-			INSERT INTO portfolio_snapshot
-				(fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, code, fundName, heldShares, totalCost, latestNAVArg, currentValue, unrealized, pnlPct, secType, portfolioID)
-		if err != nil {
-			return fmt.Errorf("recalc snapshot insert: %w", err)
-		}
-	}
-	return nil
-}
-
 // CrawlAllHeld is the MCP/admin-facing alias for RefreshAllHeld.
 func (r *PriceRefresher) CrawlAllHeld(ctx context.Context) (securities int, added int, err error) {
 	return r.RefreshAllHeld(ctx)
@@ -504,7 +359,7 @@ func (r *PriceRefresher) CrawlCode(ctx context.Context, code string) (added int,
 
 // RecalcSnapshot is the exported maintenance entrypoint used by MCP/admin.
 func RecalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
-	return recalcSnapshot(ctx, db, code)
+	return snapshot.Recalc(ctx, db, code, snapshot.ModeFull)
 }
 
 // RecalcAllSnapshots rebuilds portfolio_snapshot for every distinct fund_code in transactions.
@@ -536,7 +391,7 @@ func RecalcAllSnapshots(ctx context.Context, db *sql.DB) (codes int, failed []st
 			}
 			return codes, failed, err
 		}
-		if err := recalcSnapshot(ctx, db, code); err != nil {
+		if err := snapshot.Recalc(ctx, db, code, snapshot.ModeFull); err != nil {
 			slog.Error("recalc snapshot failed", "code", code, "error", err)
 			failed = append(failed, code)
 			continue

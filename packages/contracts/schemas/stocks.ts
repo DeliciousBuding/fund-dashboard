@@ -35,10 +35,3 @@ export const USStockInfoSchema = z.object({
   source: z.string(),
 });
 export type USStockInfo = z.infer<typeof USStockInfoSchema>;
-
-export const USSectorSummarySchema = z.object({
-  sector: z.string(),
-  avg_change_pct: z.number(),
-  stock_count: z.number(),
-});
-export type USSectorSummary = z.infer<typeof USSectorSummarySchema>;

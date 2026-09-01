@@ -37,8 +37,9 @@ import sys
 version, today, path = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(path, encoding="utf-8").read()
 marker = "## [Unreleased]"
-if marker not in text:
-    sys.exit("CHANGELOG.md 缺少 [Unreleased] 段")
+count = text.count(marker)
+if count != 1:
+    sys.exit(f"CHANGELOG.md [Unreleased] 头数量为 {count}（必须恰好 1 个；重复头请先手工合并，否则发版归并会错位）")
 
 replacement = f"{marker}\n\n## [{version}] - {today}\n"
 text = text.replace(marker, replacement, 1)

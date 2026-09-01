@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -112,10 +113,14 @@ func (s Service) GetUSStock(ctx context.Context, opts USStockOptions) (USStockRe
 		}
 	}
 	effects := []string{}
-	if n, err := s.upsertUSStockSnapshot(ctx, snap); err == nil && n > 0 {
+	if n, err := s.upsertUSStockSnapshot(ctx, snap); err != nil {
+		slog.Error("us stock snapshot upsert failed", "symbol", snap.Symbol, "error", err)
+	} else if n > 0 {
 		effects = append(effects, "stock_realtime_upsert")
 	}
-	if n, err := s.upsertUSStockHistory(ctx, snap); err == nil && n > 0 {
+	if n, err := s.upsertUSStockHistory(ctx, snap); err != nil {
+		slog.Error("us stock history upsert failed", "symbol", snap.Symbol, "error", err)
+	} else if n > 0 {
 		effects = append(effects, "stock_kline_upsert")
 	}
 	if len(effects) > 0 {

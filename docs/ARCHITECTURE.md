@@ -34,7 +34,7 @@ SQLite（FUND_DB_PATH）或 PostgreSQL（FUND_DB_DRIVER=pg）
 | MCP | JSON-RPC over HTTP（单端点 `POST /mcp`）；operator / analyst 双 scope |
 | 前端 | `web/`：React 19 + Vite 7 + Tailwind v4 + Radix + ECharts + TanStack（go:embed 内嵌）——见 `docs/design/02/03` |
 
-> 历史：`packages/web` 旧前端 2026-08-29 移出，现由 `web/` + go:embed 取代（dist 缺失时回退占位页，`FUND_STATIC_DIR` 为 dev 覆盖口）。
+> 运行时：`web/` + go:embed 内嵌（dist 缺失时回退占位页，`FUND_STATIC_DIR` 为 dev 覆盖口）；旧 `packages/web` 前端移出历史见 `CHANGELOG.md`。
 
 ## 2. 后端分层
 

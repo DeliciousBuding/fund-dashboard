@@ -13,7 +13,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/audit"
 	"github.com/DeliciousBuding/fund-dashboard/internal/confirmations"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/agentstate"
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestPrepareConfirmationPersistsHashOnlyTokenAndAuditAttempt(t *testing.T) {
@@ -294,8 +294,8 @@ func TestConsumeConfirmationRejectsReplayAndPayloadMismatchWithoutMarkingUsed(t 
 
 func openAgentOpsFixture(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{
-		Path: filepath.Join(t.TempDir(), "fund.db"),
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite",
+		SQLitePath: filepath.Join(t.TempDir(), "fund.db"),
 	})
 	if err != nil {
 		t.Fatalf("open sqlite fixture: %v", err)

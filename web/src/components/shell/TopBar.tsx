@@ -1,12 +1,15 @@
 // 顶栏：指数 ticker（SSE，无动画更新）+ 新鲜度徽章 + 主题切换 + ⌘K + 账户菜单。
 // 移动端隐藏 ticker 细节，只留连接态点。
-import { useMutation, useQuery } from "@tanstack/react-query";
+
+import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { CircleDot, LogOut, Moon, Search, Sun, SunMoon } from "lucide-react";
+import { toast } from "sonner";
 import { useMarketStream } from "../../hooks/useMarketStream";
-import { api } from "../../lib/api";
+import { ApiError } from "../../lib/api";
 import { logout } from "../../lib/auth";
 import { refreshAuthStatus } from "../../lib/authQuery";
+import { useFreshness } from "../../lib/queries";
 import { queryClient } from "../../lib/queryClient";
 import { cn } from "../../lib/utils";
 import { type ThemeMode, useSettings } from "../../stores/settings";
@@ -22,20 +25,6 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-
-interface FreshnessReport {
-  last_nav_date: string | null;
-  health: string;
-  anomaly_count: number;
-}
-
-function useFreshness() {
-  return useQuery({
-    queryKey: ["freshness"],
-    queryFn: ({ signal }) => api<FreshnessReport>("/api/freshness", { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
-}
 
 function daysSince(date: string | null): number | null {
   if (!date) return null;
@@ -129,6 +118,8 @@ export function TopBar({ title }: { title?: string }) {
       await refreshAuthStatus(queryClient);
       await router.navigate({ to: "/login" });
     },
+    onError: (e) =>
+      toast.error("退出登录失败", { description: e instanceof ApiError ? e.code : String(e) }),
   });
 
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : SunMoon;

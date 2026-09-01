@@ -229,8 +229,9 @@ func yearMonth(date string) (int, int) {
 	if len(date) < 7 {
 		return 0, 0
 	}
-	var year int
-	var month int
-	_, _ = fmt.Sscanf(date[:7], "%d-%d", &year, &month)
-	return year, month
+	t, err := time.Parse("2006-01", date[:7])
+	if err != nil {
+		return 0, 0
+	}
+	return t.Year(), int(t.Month())
 }

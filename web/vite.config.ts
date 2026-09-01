@@ -20,9 +20,14 @@ export default defineConfig({
     target: "es2022",
     rollupOptions: {
       output: {
-        // echarts 单独成 chunk：图表页懒加载时再拉，首屏不含（W7 预算 <400KB gzip）。
-        manualChunks: {
-          echarts: ["echarts/core", "echarts/charts", "echarts/components", "echarts/renderers"],
+        // 供应商分包（W7 预算 <400KB gzip）：echarts+zrender 独立 chunk；
+        // react 系 / tanstack 系 / 其余 vendor 分开，便于长缓存，避免单一巨型首屏 chunk。
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("echarts") || id.includes("zrender")) return "echarts";
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
+          if (id.includes("@tanstack")) return "tanstack";
+          return "vendor";
         },
       },
     },

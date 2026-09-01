@@ -1493,7 +1493,7 @@
     {
       "name": "get_investment_harness_snapshot",
       "category": "portfolio",
-      "description": "获取 Hermes/Agent 使用的金融 Harness 事实快照：持仓、配置、价格/成本/涨跌幅信号、数据质量和可用工具。只提供事实，不做投资决策或扣款建议。",
+      "description": "获取 AI Agent 使用的金融 Harness 事实快照：持仓、配置、价格/成本/涨跌幅信号、数据质量和可用工具。只提供事实，不做投资决策或扣款建议。",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1549,7 +1549,7 @@
     {
       "name": "get_investment_source_brief",
       "category": "portfolio",
-      "description": "为 Hermes/WebSearch 生成消息源与爬取上下文：组合级、持仓级、穿透股票级搜索 query，外部 source target 和本地 MCP 补数入口。只提供检索上下文，不做投资判断。",
+      "description": "为 AI Agent/搜索服务 生成消息源与爬取上下文：组合级、持仓级、穿透股票级搜索 query，外部 source target 和本地 MCP 补数入口。只提供检索上下文，不做投资判断。",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -1584,7 +1584,7 @@
         "scope": "external_context",
         "permission": "allowed",
         "risk_level": "low",
-        "use_for": "生成 Hermes/DSA/WebSearch 可消费的消息源查询"
+        "use_for": "生成 AI Agent/搜索服务 可消费的消息源查询"
       },
       "confirmation": {
         "required": false,
@@ -1619,7 +1619,7 @@
     {
       "name": "get_market_indices",
       "category": "market",
-      "description": "获取美股主要指数实时行情（纳斯达克100 ^NDX、标普500 ^GSPC）。返回最新价格、涨跌幅、涨跌额。数据来源：Yahoo Finance。",
+      "description": "获取全球主要指数实时行情：美股（纳斯达克100 ^NDX、标普500 ^GSPC、道琼斯 ^DJI、纳斯达克综合 ^IXIC）、港股（恒生指数 ^HSI）、A股（上证 000001.SS、深证成指 399001.SZ、创业板指 399006.SZ）。返回最新价格、涨跌幅、涨跌额。数据来源：Yahoo Finance。",
       "input_schema": {
         "type": "object",
         "properties": {},
@@ -2015,7 +2015,7 @@
     {
       "name": "get_source_events",
       "category": "admin",
-      "description": "获取来源事件队列——Hermes/Agent 可消费的已抓取新闻、公告、搜索结果。支持按证券代码、来源、已读状态过滤。只提供事实引用，不做投资判断。",
+      "description": "获取来源事件队列——AI Agent 可消费的已抓取新闻、公告、搜索结果。支持按证券代码、来源、已读状态过滤。只提供事实引用，不做投资判断。",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -2386,7 +2386,7 @@
     {
       "name": "mark_source_event",
       "category": "admin",
-      "description": "标记来源事件已读/有用——Hermes/Agent 消费事件后反馈状态，用于后续过滤和质量排序。",
+      "description": "标记来源事件已读/有用——AI Agent 消费事件后反馈状态，用于后续过滤和质量排序。",
       "input_schema": {
         "type": "object",
         "properties": {

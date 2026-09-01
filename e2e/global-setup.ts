@@ -1,6 +1,6 @@
-import { request, type FullConfig } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { type FullConfig, request } from "@playwright/test";
 
 export default async function globalSetup(_config: FullConfig) {
   const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:8080";
@@ -12,7 +12,9 @@ export default async function globalSetup(_config: FullConfig) {
   try {
     const statusResponse = await api.get("/api/auth/status");
     if (!statusResponse.ok()) {
-      throw new Error(`auth status failed: ${statusResponse.status()} ${await statusResponse.text()}`);
+      throw new Error(
+        `auth status failed: ${statusResponse.status()} ${await statusResponse.text()}`,
+      );
     }
     const status = (await statusResponse.json()) as { initialized: boolean };
     const endpoint = status.initialized ? "/api/auth/login" : "/api/auth/setup";

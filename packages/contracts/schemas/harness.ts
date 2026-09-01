@@ -17,7 +17,11 @@ export const InvestmentHarnessHoldingSignalSchema = z.object({
   deviation_pct: z.number().nullable(),
   /** Snapshot unrealized PnL % (preferred for distribution charts). */
   pnl_pct: z.number().nullable().optional(),
-  signal_tags: z.array(z.string()),
+  // Go 端无涨跌幅且无成本基础时 nil slice 序列化为 null；归一化为空数组。
+  signal_tags: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
   data_points: z.object({
     has_price: z.boolean(),
     has_cost_basis: z.boolean(),

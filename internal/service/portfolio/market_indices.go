@@ -67,7 +67,11 @@ func (s Service) GetMarketIndices(ctx context.Context) (MarketIndicesReport, err
 		defer cancel()
 		return s.RefreshMarketIndices(rctx)
 	})
-	n, _ := v.(int)
+	n, ok := v.(int)
+	if !ok {
+		slog.Warn("market indices singleflight returned unexpected type", "type", fmt.Sprintf("%T", v))
+		n = 0
+	}
 	if refreshErr != nil {
 		slog.Warn("market indices refresh failed; serving cache", "error", refreshErr)
 		report.ExternalFetch = "yahoo_chart_failed_using_cache"

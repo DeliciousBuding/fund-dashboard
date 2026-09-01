@@ -34,8 +34,11 @@ func TestPortfolioAgentRoutesExposeFactsOnlySurfaces(t *testing.T) {
 	if brief["decision_boundary"] != "source_queries_only" {
 		t.Fatalf("source brief decision_boundary = %v, want source_queries_only", brief["decision_boundary"])
 	}
-	if !strings.Contains(toJSONString(t, brief), "DSA search providers") {
-		t.Fatalf("source brief missing DSA search providers: %s", toJSONString(t, brief))
+	if !strings.Contains(toJSONString(t, brief), "搜索服务商") {
+		t.Fatalf("source brief missing neutral search providers: %s", toJSONString(t, brief))
+	}
+	if strings.Contains(toJSONString(t, brief), "Hermes") || strings.Contains(toJSONString(t, brief), "DSA") || strings.Contains(toJSONString(t, brief), "dsa:") {
+		t.Fatalf("source brief leaks internal codenames: %s", toJSONString(t, brief))
 	}
 	if strings.Contains(toJSONString(t, brief), "建议扣款") || strings.Contains(toJSONString(t, brief), "加仓") {
 		t.Fatalf("source brief contains decision language: %s", toJSONString(t, brief))

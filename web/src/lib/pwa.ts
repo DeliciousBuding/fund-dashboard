@@ -11,8 +11,9 @@ let lastChunkReload = 0;
 export function registerPWA() {
   if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
       // SW 注册失败不阻塞应用（隐私模式/旧浏览器）
+      console.warn("[pwa] service worker registration failed", err);
     });
   });
 

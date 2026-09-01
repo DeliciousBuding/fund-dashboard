@@ -3,7 +3,6 @@ package datasource
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -84,7 +83,7 @@ func (s *EastmoneyHoldings) fetchYear(ctx context.Context, code, year string, to
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("eastmoney holdings HTTP %d", res.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
+	body, err := readBodyLimited(res.Body, 2<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -134,13 +133,23 @@ func parseHoldingsApidata(data string) ([]FundHolding, error) {
 		if _, err := strconv.Atoi(texts[0]); err != nil {
 			continue
 		}
-		weight, _ := strconv.ParseFloat(strings.TrimSuffix(strings.ReplaceAll(texts[4], ",", ""), "%"), 64)
+		weightText := strings.TrimSuffix(strings.ReplaceAll(texts[4], ",", ""), "%")
+		weight, err := strconv.ParseFloat(weightText, 64)
+		if err != nil {
+			return nil, fmt.Errorf("holdings row %q weight %q: %w", stockCode, weightText, err)
+		}
 		var shares, mv float64
 		if len(texts) > 5 {
-			shares, _ = strconv.ParseFloat(strings.ReplaceAll(texts[5], ",", ""), 64)
+			sharesText := strings.ReplaceAll(texts[5], ",", "")
+			if shares, err = strconv.ParseFloat(sharesText, 64); err != nil {
+				return nil, fmt.Errorf("holdings row %q shares %q: %w", stockCode, sharesText, err)
+			}
 		}
 		if len(texts) > 6 {
-			mv, _ = strconv.ParseFloat(strings.ReplaceAll(texts[6], ",", ""), 64)
+			mvText := strings.ReplaceAll(texts[6], ",", "")
+			if mv, err = strconv.ParseFloat(mvText, 64); err != nil {
+				return nil, fmt.Errorf("holdings row %q market_value %q: %w", stockCode, mvText, err)
+			}
 		}
 		out = append(out, FundHolding{
 			StockCode:   stockCode,

@@ -2,7 +2,6 @@
 // 陈旧度：/api/freshness 的 stale_securities 客户端 join。
 
 import type { SecurityInfo } from "@fund-dashboard/contracts";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   createColumnHelper,
@@ -19,24 +18,14 @@ import { Card } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
-import { api } from "../lib/api";
 import { fmtCNY, fmtPct, fmtSignedCNY, fmtSignedPct, pnlTone } from "../lib/format";
-import { useSecurities } from "../lib/queries";
+import { useFreshness, useSecurities } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
 
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
-
-interface FreshnessReport {
-  stale_securities: { code: string; stale_days: number }[];
-}
-
 function useStaleMap() {
-  const freshness = useQuery({
-    queryKey: ["freshness"],
-    queryFn: ({ signal }) => api<FreshnessReport>("/api/freshness", { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const freshness = useFreshness();
   return useMemo(() => {
     const map = new Map<string, number>();
     for (const s of freshness.data?.stale_securities ?? []) map.set(s.code, s.stale_days);

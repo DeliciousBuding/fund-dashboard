@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellRing, BookOpenCheck, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
+import { AlertList } from "../components/AlertList";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -33,6 +34,19 @@ function HarnessCard() {
   const harness = useHarness(portfolioId);
 
   if (harness.isPending) return <Skeleton className="h-48" />;
+  if (harness.isError) {
+    return (
+      <EmptyState
+        title="支架快照加载失败"
+        description="无法读取投资支架，请重试。"
+        action={
+          <Button size="sm" onClick={() => void harness.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const h = harness.data;
   if (!h) return null;
 
@@ -119,6 +133,19 @@ function HarnessCard() {
 function AlertsCard() {
   const alerts = useAlerts();
   if (alerts.isPending) return <Skeleton className="h-32" />;
+  if (alerts.isError) {
+    return (
+      <EmptyState
+        title="告警扫描加载失败"
+        description="无法读取告警，请重试。"
+        action={
+          <Button size="sm" onClick={() => void alerts.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const list = alerts.data?.alerts ?? [];
   return (
     <Card>
@@ -135,29 +162,7 @@ function AlertsCard() {
         {list.length === 0 ? (
           <p className="text-sm text-fg-3">无告警：涨跌、回撤、陈旧、定投命中均正常。</p>
         ) : (
-          <ul className="space-y-2">
-            {list.map((a) => (
-              <li
-                key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
-                className="flex items-center gap-3 text-sm"
-              >
-                <Badge
-                  tone={
-                    a.severity === "critical"
-                      ? "danger"
-                      : a.severity === "warn"
-                        ? "warn"
-                        : "neutral"
-                  }
-                >
-                  {a.kind}
-                </Badge>
-                <span className="min-w-0 flex-1 truncate text-fg-2">
-                  {a.name || a.code} · {a.message}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <AlertList alerts={list} />
         )}
       </CardContent>
     </Card>
@@ -197,6 +202,16 @@ function EventsCard() {
       <CardContent>
         {events.isPending ? (
           <Skeleton className="h-32" />
+        ) : events.isError ? (
+          <EmptyState
+            title="来源事件加载失败"
+            description="无法读取来源事件，请重试。"
+            action={
+              <Button size="sm" onClick={() => void events.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : list.length === 0 ? (
           <EmptyState title="暂无事件" description="Agent 抓取的相关资讯会出现在这里。" />
         ) : (

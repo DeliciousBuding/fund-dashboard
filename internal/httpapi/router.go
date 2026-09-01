@@ -25,17 +25,16 @@ type DB = *sql.DB
 type RouterOption func(*routerDeps)
 
 type routerDeps struct {
-	portfolio    *portfoliosvc.Service
-	agentOps     *agentops.Service
-	auth         *auth.Service
-	staticFS     fs.FS
-	db           DB
-	dbDriver     string
-	crawlHandler http.HandlerFunc // optional, registered when set
-	navCrawler   mcp.NavCrawler   // optional, for MCP crawl_nav
-	snapshots    mcp.SnapshotRecalculator
-	holdings     mcp.HoldingsCrawler
-	jobStatus    func() []jobs.JobStatus // optional, scheduler runtime snapshot
+	portfolio  *portfoliosvc.Service
+	agentOps   *agentops.Service
+	auth       *auth.Service
+	staticFS   fs.FS
+	db         DB
+	dbDriver   string
+	navCrawler mcp.NavCrawler // optional, for MCP crawl_nav
+	snapshots  mcp.SnapshotRecalculator
+	holdings   mcp.HoldingsCrawler
+	jobStatus  func() []jobs.JobStatus // optional, scheduler runtime snapshot
 }
 
 func WithDB(db DB) RouterOption {
@@ -64,12 +63,6 @@ func WithStaticFS(staticFS fs.FS) RouterOption {
 // session gating on reads and browser writes.
 func WithAuth(svc *auth.Service) RouterOption {
 	return func(deps *routerDeps) { deps.auth = svc }
-}
-
-// WithCrawlHandler registers POST /api/admin/crawl-nav with the given handler.
-// The handler is expected to call the price-refresh job and return JSON.
-func WithCrawlHandler(fn http.HandlerFunc) RouterOption {
-	return func(deps *routerDeps) { deps.crawlHandler = fn }
 }
 
 // WithNavCrawler wires the NAV/price crawler into MCP crawl_nav.
@@ -198,9 +191,6 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 			}
 			if deps.navCrawler != nil {
 				admin.Post("/crawl-nav", navCrawlHandler(deps.navCrawler, adminForCrawl))
-			} else if deps.crawlHandler != nil {
-				// legacy all-held-only adapter
-				admin.Post("/crawl-nav", deps.crawlHandler)
 			}
 			if deps.holdings != nil {
 				admin.Post("/crawl-holdings", holdingsCrawlHandler(deps.holdings))

@@ -1,5 +1,6 @@
 // 市场 /market —— 指数看板（开盘状态着色）+ 纳斯达克透视（NDX 历史线 +
 // 全体交易散点叠加 + 统计卡）。SSE ticker 在顶栏，本页用轮询快照。
+
 import { useMemo, useState } from "react";
 import { Chart } from "../components/charts/Chart";
 import { baseChartOption } from "../components/charts/theme";
@@ -10,10 +11,10 @@ import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
 import { fmtCNY, fmtSignedPct, pnlTone } from "../lib/format";
 import { useIndexHistory, useIndices, useTransactions } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { isUSMarketOpen } from "../services/marketTime";
-
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
+import { useUi } from "../stores/ui";
 
 const RANGES = [
   { value: "3mo", label: "3月" },
@@ -66,10 +67,11 @@ function IndicesBoard() {
 }
 
 function NasdaqPanel() {
+  const portfolioId = useUi((s) => s.portfolioId);
   const [range, setRange] = useState("1y");
   const history = useIndexHistory("^NDX", range);
-  // 全部交易散点叠加在 NDX 线上（继承旧 NasdaqOverview 语义）
-  const txs = useTransactions({ limit: 5000 });
+  // 全部交易散点叠加在 NDX 线上（继承旧 NasdaqOverview 语义，按当前组合隔离）
+  const txs = useTransactions({ limit: 5000, portfolioId });
 
   const scatter = useMemo(() => {
     const points = history.data?.data ?? [];
@@ -118,6 +120,9 @@ function NasdaqPanel() {
           loading={history.isPending}
           empty={!history.isPending && points.length === 0}
           emptyText="NDX 历史数据不可用"
+          error={history.isError}
+          errorText="NDX 历史加载失败"
+          onRetry={() => void history.refetch()}
           deps={[points, scatter]}
           option={(t) => ({
             ...baseChartOption(t),

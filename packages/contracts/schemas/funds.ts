@@ -30,10 +30,7 @@ export const TransactionSchema = z
     fee: z.number(),
     nav: z.number().nullable(),
     inferred_nav: z.number().nullable(),
-    nav_verified: z.union([z.boolean(), z.number()]).nullable().optional(),
-    trade_day_type: z.string().nullable().optional(),
     settlement_days: z.number().nullable().optional(),
-    effective_nav_date: z.string().nullable().optional(),
     order_id: z.string().nullable().optional(),
     anomaly: z.string().nullable(),
   })
@@ -68,7 +65,7 @@ export type FundDetail = z.infer<typeof FundDetailSchema>;
 export const NavPointSchema = z.object({
   date: z.string(),
   unit_nav: z.number(),
-  daily_change_pct: z.number().optional(),
+  daily_change_pct: z.number().nullable().optional(),
 });
 export type NavPoint = z.infer<typeof NavPointSchema>;
 
@@ -78,3 +75,26 @@ export const SecurityInfoSchema = FundInfoSchema.extend({
   security_type: z.string(),
 });
 export type SecurityInfo = z.infer<typeof SecurityInfoSchema>;
+export const TransactionsListItemSchema = z.object({
+  seq: z.number(),
+  trade_time: z.string().nullable(),
+  confirm_date: z.string().nullable(),
+  direction: z.string().nullable(),
+  trade_type: z.string().nullable(),
+  fund_code: z.string(),
+  fund_name: z.string().nullable(),
+  amount: z.number().nullable(),
+  shares: z.number().nullable(),
+  fee: z.number().nullable(),
+  order_id: z.string().nullable(),
+  anomaly: z.string().nullable(),
+  settlement_days: z.number().nullable(),
+  portfolio_id: z.number().nullable(),
+});
+export type TransactionsListItem = z.infer<typeof TransactionsListItemSchema>;
+
+export const TransactionsResponseSchema = z.object({
+  transactions: z.array(TransactionsListItemSchema),
+  total: z.number(),
+});
+export type TransactionsResponse = z.infer<typeof TransactionsResponseSchema>;

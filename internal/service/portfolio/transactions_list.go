@@ -33,6 +33,8 @@ type ListTransactionsOptions struct {
 	Search      string // substring on fund_name / fund_code
 	Limit       int    // default 200, hard cap 5000
 	Offset      int
+	SortBy      string // whitelisted column id: date|fund|direction|trade_type|amount|shares|fee
+	SortDesc    bool
 }
 
 type ListTransactionsResult struct {
@@ -107,11 +109,36 @@ func (s Service) ListTransactions(ctx context.Context, opts ListTransactionsOpti
 		return nil, fmt.Errorf("count transactions: %w", err)
 	}
 
+	orderBy := "trade_time DESC, seq DESC"
+	switch opts.SortBy {
+	case "date":
+		orderBy = "trade_time"
+	case "fund":
+		orderBy = "COALESCE(fund_name, fund_code)"
+	case "direction":
+		orderBy = "direction"
+	case "trade_type":
+		orderBy = "trade_type"
+	case "amount":
+		orderBy = "confirm_amount"
+	case "shares":
+		orderBy = "confirm_share"
+	case "fee":
+		orderBy = "fee"
+	}
+	if opts.SortBy != "" {
+		if opts.SortDesc {
+			orderBy += " DESC"
+		} else {
+			orderBy += " ASC"
+		}
+		orderBy += ", seq DESC"
+	}
 	queryArgs := append(append([]any(nil), args...), limit, offset)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+strings.Join(selectCols, ", ")+`
 		FROM transactions`+whereClause+`
-		ORDER BY trade_time DESC, seq DESC
+		ORDER BY `+orderBy+`
 		LIMIT ? OFFSET ?
 	`, queryArgs...)
 	if err != nil {

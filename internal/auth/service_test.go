@@ -38,6 +38,20 @@ func TestHashAndVerifyPassword(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordRejectsOversizedPHCParams(t *testing.T) {
+	// Attacker-controlled PHC params must be rejected before argon2 allocates
+	// memory / burns CPU on the public login path.
+	cases := []string{
+		"=19=1073741824,t=3,p=2", // m=1<<30 > 1 GiB cap
+		"=19=65536,t=999,p=2",    // t=999 > 10 cap
+		"=19=65536,t=3,p=64",     // p=64 > 8 cap
+	}
+	for _, phc := range cases {
+		if _, err := VerifyPassword("x", phc); !errors.Is(err, ErrMalformedPHC) {
+			t.Fatalf("oversized PHC %q = %v, want ErrMalformedPHC", phc, err)
+		}
+	}
+}
 func TestSetupLoginAuthenticateFlow(t *testing.T) {
 	svc := newTestService(t, Options{})
 	ctx := context.Background()

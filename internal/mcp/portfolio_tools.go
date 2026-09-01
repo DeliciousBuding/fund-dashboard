@@ -9,7 +9,7 @@ import (
 func (s *Server) callPortfolioTimeline(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	timeline, err := s.portfolio.GetTimeline(ctx, intArgMax(args, "portfolio_id", 1, 1000))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	payload := map[string]any{
 		"count":             len(timeline),
@@ -30,7 +30,7 @@ func (s *Server) callPortfolioPenetration(ctx context.Context, args map[string]a
 		SortBy:      stringArg(args, "sort_by"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }

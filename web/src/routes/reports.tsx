@@ -1,5 +1,6 @@
 // 报告 /reports —— 生成组合报告（JSON v1）→ 富渲染 + 下载。PDF 属 backlog（01 §4）。
 
+import { type GenerateReportResult, GenerateReportResultSchema } from "@fund-dashboard/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
 import { useState } from "react";
@@ -11,18 +12,6 @@ import { Input, Label } from "../components/ui/input";
 import { ApiError, api } from "../lib/api";
 import { downloadText } from "../lib/csv";
 import { useUi } from "../stores/ui";
-
-interface ReportResult {
-  ok: boolean;
-  report_id: string;
-  title: string;
-  as_of: string;
-  generated_at: string;
-  format: string;
-  portfolio_id: number;
-  sections: Record<string, unknown>;
-  decision_boundary: string;
-}
 
 // 章节标题中文化（known keys；未知 key 原样显示）
 const SECTION_LABEL: Record<string, string> = {
@@ -38,14 +27,16 @@ const SECTION_LABEL: Record<string, string> = {
 export function ReportsPage() {
   const portfolioId = useUi((s) => s.portfolioId);
   const [title, setTitle] = useState("");
-  const [report, setReport] = useState<ReportResult | null>(null);
+  const [report, setReport] = useState<GenerateReportResult | null>(null);
 
   const generate = useMutation({
-    mutationFn: () =>
-      api<ReportResult>("/api/reports", {
+    mutationFn: async () => {
+      const data = await api<unknown>("/api/reports", {
         method: "POST",
         body: { title: title || undefined, portfolio_id: portfolioId },
-      }),
+      });
+      return GenerateReportResultSchema.parse(data);
+    },
     onSuccess: (r) => setReport(r),
     onError: (e) =>
       toast.error("生成失败", { description: e instanceof ApiError ? e.code : String(e) }),

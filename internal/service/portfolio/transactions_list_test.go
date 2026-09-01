@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 // Legacy ledger DBs (pre-PG-schema SQLite) may lack anomaly / settlement_days /
 // portfolio_id on transactions. ListTransactions must probe and adapt instead of
 // erroring — the ledger stays the SSOT and is never ALTERed by a read service.
 func TestListTransactionsAdaptsToLegacyShape(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestListTransactionsAdaptsToLegacyShape(t *testing.T) {
 }
 
 func TestListTransactionsFullShapeFilterAndPagination(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,5 +129,62 @@ func TestListTransactionsFullShapeFilterAndPagination(t *testing.T) {
 	}
 	if page.Total != 3 || len(page.Transactions) != 1 || page.Transactions[0].OrderID == nil || *page.Transactions[0].OrderID != "a1" {
 		t.Fatalf("pagination result = %+v, want oldest row a1", page)
+	}
+}
+func TestListTransactionsServerSort(t *testing.T) {
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		`CREATE TABLE transactions (
+			seq INTEGER PRIMARY KEY AUTOINCREMENT,
+			order_id TEXT,
+			trade_time TEXT,
+			confirm_date TEXT,
+			trade_type TEXT,
+			direction TEXT,
+			fund_code TEXT,
+			fund_name TEXT,
+			confirm_amount REAL,
+			confirm_share REAL,
+			fee REAL,
+			anomaly TEXT,
+			settlement_days INTEGER,
+			portfolio_id INTEGER
+		)`,
+		`INSERT INTO transactions (order_id, trade_time, direction, fund_code, fund_name, confirm_amount, portfolio_id)
+			VALUES
+			('a1','2026-06-01T10:00:00+08:00','buy','019173','Alpha',100,1),
+			('a2','2026-06-02T10:00:00+08:00','buy','019173','Alpha',300,1),
+			('b1','2026-06-03T10:00:00+08:00','buy','AAPL','Apple',200,1)`,
+	} {
+		if _, err := db.ExecContext(context.Background(), q); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+	}
+
+	svc := NewService(db)
+	desc, err := svc.ListTransactions(context.Background(), ListTransactionsOptions{SortBy: "amount", SortDesc: true})
+	if err != nil {
+		t.Fatalf("sort desc: %v", err)
+	}
+	wantDesc := []string{"a2", "b1", "a1"}
+	for i, want := range wantDesc {
+		if desc.Transactions[i].OrderID == nil || *desc.Transactions[i].OrderID != want {
+			t.Fatalf("amount desc [%d] = %v, want %s", i, desc.Transactions[i].OrderID, want)
+		}
+	}
+
+	asc, err := svc.ListTransactions(context.Background(), ListTransactionsOptions{SortBy: "amount", SortDesc: false})
+	if err != nil {
+		t.Fatalf("sort asc: %v", err)
+	}
+	wantAsc := []string{"a1", "b1", "a2"}
+	for i, want := range wantAsc {
+		if asc.Transactions[i].OrderID == nil || *asc.Transactions[i].OrderID != want {
+			t.Fatalf("amount asc [%d] = %v, want %s", i, asc.Transactions[i].OrderID, want)
+		}
 	}
 }

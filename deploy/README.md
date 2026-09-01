@@ -8,7 +8,7 @@ Single-container image: Go API + MCP backend (static binary) with the React SPA 
 docker build -f deploy/Dockerfile -t fund-dashboard:local .
 ```
 
-The `deploy/Dockerfile` is multi-stage: `golang:1.26-alpine` compiles the backend,
+The `deploy/Dockerfile` is multi-stage: `golang:1.26.7-alpine` compiles the backend,
 and the final `alpine:3.22` image runs as an unprivileged `fund` user with
 `EXPOSE 8765`.
 
@@ -19,7 +19,7 @@ secrets read from a `.env` file:
 
 ```bash
 cp .env.example .env
-# edit .env: set MCP_API_KEY (openssl rand -hex 32), FUND_EDGE_KEY for frontend write routes
+# edit .env: set MCP_API_KEY (openssl rand -hex 32); FUND_EDGE_KEY is optional legacy fallback (write routes are session-first)
 docker compose -f deploy/docker-compose.yml up -d
 ```
 

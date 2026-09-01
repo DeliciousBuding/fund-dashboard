@@ -8,16 +8,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 // OpenTempDB opens a writable SQLite database in t.TempDir() with production-like
-// PRAGMAs (via sqlitedb.Open: busy_timeout, foreign_keys, WAL, synchronous=NORMAL).
+// PRAGMAs (via db.Open: busy_timeout, foreign_keys, WAL, synchronous=NORMAL).
 // Caller must Close (typically defer db.Close()).
 func OpenTempDB(t testing.TB) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: dbPath})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
 	if err != nil {
 		t.Fatalf("testutil.OpenTempDB: %v", err)
 	}

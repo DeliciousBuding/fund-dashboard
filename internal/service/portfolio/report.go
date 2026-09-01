@@ -3,6 +3,7 @@ package portfolio
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -89,6 +90,8 @@ func (s Service) GenerateReport(ctx context.Context, in GenerateReportInput) (Ge
 	var xirr any
 	if x, err := s.GetPortfolioXIRR(ctx, portfolioID); err == nil {
 		xirr = x
+	} else {
+		slog.Warn("report portfolio xirr unavailable", "portfolio_id", portfolioID, "error", err)
 	}
 
 	sections := map[string]any{

@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { echarts, registerCharts } from "./register";
 
-export type ChartInstance = ReturnType<typeof echarts.init>;
+type ChartInstance = ReturnType<typeof echarts.init>;
 
 /** Cap DPR for memory/perf while remaining sharp on 2x–3x displays. */
 function chartDpr(): number {

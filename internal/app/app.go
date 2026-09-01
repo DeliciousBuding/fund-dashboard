@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 
@@ -118,6 +117,7 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	// ── scheduler ────────────────────────────────────────────────────
 	scheduler := jobs.NewScheduler(refresher, db)
 	scheduler.WithAuthEventSweeper(authStore)
+	scheduler.WithAuthSessionSweeper(authService)
 	scheduler.Start()
 
 	// ── HTTP router ──────────────────────────────────────────────────
@@ -145,10 +145,6 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 		options = append(options, httpapi.WithAgentOps(agentOps))
 	}
 
-	// Crawl handler — thin adapter from HTTP to the job runner.
-	options = append(options, httpapi.WithCrawlHandler(
-		crawlHandler(refresher),
-	))
 	// MCP crawl_nav uses the same PriceRefresher instance.
 	options = append(options, httpapi.WithNavCrawler(refresher))
 	options = append(options, httpapi.WithSnapshotRecalculator(jobs.NewSnapshotService(db)))
@@ -164,34 +160,6 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────
-
-func crawlHandler(refresher *jobs.PriceRefresher) http.HandlerFunc {
-	type crawlResponse struct {
-		Status     string `json:"status"`
-		Securities int    `json:"securities"`
-		Added      int    `json:"added"`
-		Error      string `json:"error,omitempty"`
-	}
-
-	return func(w http.ResponseWriter, r *http.Request) {
-		securities, added, err := refresher.RefreshAllHeld(r.Context())
-		resp := crawlResponse{Securities: securities, Added: added}
-		if err != nil {
-			// Never leak driver/SQL detail to clients (#233; align safeAdminOpError).
-			slog.Error("crawl-nav legacy handler",
-				"request_id", httpapi.RequestIDFromContext(r.Context()),
-				"path", r.URL.Path,
-				"error", err.Error(),
-			)
-			resp.Status = "error"
-			resp.Error = "internal_error"
-			httpapi.WriteJSON(w, http.StatusInternalServerError, resp)
-			return
-		}
-		resp.Status = "complete"
-		httpapi.WriteJSON(w, http.StatusOK, resp)
-	}
-}
 
 func newAgentOpsService(
 	cfg config.Config,

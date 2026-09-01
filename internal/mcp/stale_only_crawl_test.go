@@ -44,7 +44,7 @@ func TestCallCrawlNavStaleOnlyDoesNotUseCrawlAllHeld(t *testing.T) {
 	db := openMCPFixture(t)
 	defer db.Close()
 	portfolio := portfoliosvc.NewService(db)
-	admin := adminsvc.NewService(db)
+	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	nav := &fakeNavCrawler{}
 	server, err := NewServer(ServerDeps{
 		Portfolio: &portfolio,

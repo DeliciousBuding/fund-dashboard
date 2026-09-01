@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 func TestRunDCAAutoInvestDryRunAndExecute(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +99,7 @@ func TestRunDCAAutoInvestDryRunAndExecute(t *testing.T) {
 }
 
 func TestRecalcSnapshotLightDustClamp(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "dust.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "dust.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +134,7 @@ func TestRecalcSnapshotLightDustClamp(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('019173','2026-07-10',1.5)`); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(db)
-	if err := svc.recalcSnapshotLight(context.Background(), "019173", 1); err != nil {
+	if err := snapshot.RecalcForPortfolio(context.Background(), db, "019173", 1, snapshot.ModeLight); err != nil {
 		t.Fatal(err)
 	}
 	var held, value, unrealized, pnl float64

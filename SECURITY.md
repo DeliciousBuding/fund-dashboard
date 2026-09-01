@@ -29,6 +29,10 @@
 - `MCP_API_KEY` / `PUBLIC_MCP_KEY` / `FUND_EDGE_KEY` 不提交到仓库或公开环境
 - 生产部署使用强随机密钥并妥善轮换
 - 不要将数据库文件（`*.db`）或 `.env` 暴露到公开可访问路径
+- Web 登录密码：首次访问 `/setup` 设置（≥12 位且含字母+数字），或通过 `FUND_AUTH_PASSWORD_HASH` 注入 argon2id PHC
+- 会话 cookie：HttpOnly + SameSite；HTTPS 部署必须设 `FUND_AUTH_SECURE_COOKIE=true`；`FUND_AUTH_SESSION_TTL` / `FUND_AUTH_SESSION_MAX_AGE` 控制有效期
+- 服务端默认下发 HSTS/CSP 等安全响应头；反向代理不应剥离 `Strict-Transport-Security` 与 `Content-Security-Policy`
+- 登录失败限流与锁定窗口内置于服务端，无需外部配置
 
 ## 响应流程
 

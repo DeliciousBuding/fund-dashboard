@@ -6,7 +6,7 @@
 # Env: 见 deploy/.env.example（公网形态：FUND_AUTH_SECURE_COOKIE=true + FUND_ALLOWED_ORIGINS 必配）。
 
 # ── web build: Vite outputs straight into internal/webui/dist (go:embed source)
-FROM node:24-alpine AS web-build
+FROM node:24.20.0-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS web-build
 WORKDIR /src
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -20,7 +20,7 @@ COPY packages/contracts/ packages/contracts/
 RUN pnpm -C web build
 
 # ── go build: static binary, SPA embedded via //go:embed all:dist
-FROM golang:1.26-alpine AS go-build
+FROM golang:1.26.7-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS go-build
 
 ARG BIN=fund-dashboard
 RUN apk add --no-cache git
@@ -35,7 +35,7 @@ COPY . .
 COPY --from=web-build /src/internal/webui/dist ./internal/webui/dist
 RUN CGO_ENABLED=0 go build -o /out/${BIN} -ldflags="-s -w" ./cmd/${BIN}/
 
-FROM alpine:3.22 AS runtime
+FROM alpine:3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce AS runtime
 
 ARG BIN=fund-dashboard
 ENV BIN=${BIN}

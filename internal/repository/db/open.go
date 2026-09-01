@@ -175,7 +175,7 @@ func (c *rebindConn) Close() error {
 }
 
 func (c *rebindConn) Begin() (driver.Tx, error) {
-	return c.inner.Begin()
+	return c.BeginTx(context.Background(), driver.TxOptions{})
 }
 
 // ExecContext intercepts direct execution and rebinds ? → $N.
@@ -207,7 +207,7 @@ func (c *rebindConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 	if beginner, ok := c.inner.(driver.ConnBeginTx); ok {
 		return beginner.BeginTx(ctx, opts)
 	}
-	return c.inner.Begin()
+	return nil, errors.New("pg: underlying driver does not implement driver.ConnBeginTx")
 }
 
 // ResetSession delegates pool checkout reset to the inner pgx connection when available.

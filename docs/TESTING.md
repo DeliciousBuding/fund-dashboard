@@ -35,15 +35,16 @@ pnpm -C web test
 pnpm exec biome check .
 pnpm -C web build
 
+# Contracts (zod SSOT) wire-shape tests — node:test, no extra deps
+node --test "packages/contracts/**/*.test.ts"
+
 # 浏览器 E2E：先启动 deploy/docker-compose.ci.yml，密码与环境变量一致
 pnpm exec playwright install chromium
 E2E_BASE_URL=http://127.0.0.1:8080 \
 E2E_PASSWORD=ci-smoke-password-1 \
 pnpm test:e2e
 
-# 生产热换后（`smoke-prod.sh` 位于私有运维仓，本仓不包含）
-# 在私有运维仓运行，而非本仓：
-./scripts/smoke-prod.sh
+# 生产热换后：在私有运维仓运行 fund-dashboard/scripts/smoke-prod.sh（本仓无此脚本），命令见私有仓 README。
 ```
 
 | 场景 | 跑什么 |
@@ -60,10 +61,10 @@ pnpm test:e2e
 
 1. `test-go`：gofmt / vet / race tests。
 2. `build-go`：静态 Go build。
-3. `test-web`：Biome + Vitest。
+3. `test-web`：Biome + Vitest + contracts node:test（`packages/contracts/**/*.test.ts`，覆盖 zod 契约线上形状）。
 4. `build-web`：TypeScript + Vite + go:embed 输出。
 5. `smoke-e2e`：seed → image → compose → API/MCP auth → Playwright Chromium。
-6. `build-and-push` 只在主分支 push 且上述门禁成功后构建双架构镜像。
+6. `build-and-push` 仅在 main push（或仅限 main 的 workflow_dispatch）且上述门禁成功后构建双架构镜像。
 
 Playwright 失败时上传 `test-results/`（trace / screenshot / video / HTML report），保留 7 天。
 

@@ -29,7 +29,7 @@ func (s *Server) callUpsertDCAPlan(ctx context.Context, args map[string]any) (ma
 	}
 	res, err := s.portfolio.UpsertDCAPlan(ctx, in)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -46,7 +46,7 @@ func (s *Server) callDisableDCAPlan(ctx context.Context, args map[string]any) (m
 	}
 	res, err := s.portfolio.DisableDCAPlan(ctx, id)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,

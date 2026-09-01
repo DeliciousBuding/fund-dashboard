@@ -149,10 +149,13 @@ func fetchExchangeRateUpstream(ctx context.Context) (ExchangeRateReport, error) 
 	}, nil
 }
 
+// exchangeRateClient is shared so repeated refreshes reuse the connection
+// pool instead of allocating a new http.Client (and transport) per request.
+// The timeout complements the per-request context deadline (#243).
+var exchangeRateClient = &http.Client{Timeout: 5 * time.Second}
+
 func defaultExchangeRateHTTPDo(req *http.Request) (*http.Response, error) {
-	// Explicit client timeout complements request context (#243).
-	client := &http.Client{Timeout: 5 * time.Second}
-	return client.Do(req)
+	return exchangeRateClient.Do(req)
 }
 
 type yahooExchangeRateResponse struct {

@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"strings"
 	"time"
 )
@@ -300,7 +301,7 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 			continue
 		}
 		var postMsgs []string
-		if err := s.recalcSnapshotLight(ctx, p.code, portfolioID); err != nil {
+		if err := snapshot.RecalcForPortfolio(ctx, s.db, p.code, portfolioID, snapshot.ModeLight); err != nil {
 			postMsgs = append(postMsgs, "snapshot_recalc_failed")
 		}
 		item.Status = "executed"
@@ -312,85 +313,6 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 	}
 
 	return result, nil
-}
-
-func (s Service) recalcSnapshotLight(ctx context.Context, code string, portfolioID int) error {
-	var shares, cost sql.NullFloat64
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT SUM(COALESCE(signed_share_change,0)), SUM(COALESCE(signed_cash_flow,0))
-		FROM transactions WHERE fund_code = ?
-	`, code).Scan(&shares, &cost); err != nil {
-		return err
-	}
-	held := 0.0
-	if shares.Valid {
-		held = shares.Float64
-	}
-	// Float residue after full sells is not a real position (#90); align with jobs.recalcSnapshot.
-	const heldSharesDust = 0.001
-	if held > -heldSharesDust && held < heldSharesDust {
-		held = 0
-	}
-	totalCost := 0.0
-	if cost.Valid {
-		totalCost = cost.Float64
-	}
-	var nav sql.NullFloat64
-	if err := s.db.QueryRowContext(ctx, `SELECT unit_nav FROM nav_history WHERE fund_code = ? ORDER BY date DESC LIMIT 1`, code).Scan(&nav); err != nil && err != sql.ErrNoRows {
-		return err
-	}
-	navVal := 0.0
-	if nav.Valid {
-		navVal = nav.Float64
-	}
-	value := held * navVal
-	unrealized := value + totalCost
-	pnl := 0.0
-	if totalCost != 0 {
-		pnl = unrealized / math.Abs(totalCost) * 100
-	}
-	if held == 0 {
-		value = 0
-		unrealized = 0
-		pnl = 0
-	}
-	// update if row exists
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE portfolio_snapshot SET
-			held_shares = ?, total_cost = ?, latest_nav = COALESCE(NULLIF(?,0), latest_nav),
-			current_value = ?, unrealized_pnl = ?, pnl_pct = ?
-		WHERE fund_code = ? AND COALESCE(portfolio_id,1) = ?
-	`, held, totalCost, navVal, value, unrealized, pnl, code, portfolioID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		// portfolio_snapshot has no market column on production PG.
-		var name, secType sql.NullString
-		if err := s.db.QueryRowContext(ctx, `SELECT fund_name, security_type FROM fund_details WHERE fund_code = ?`, code).
-			Scan(&name, &secType); err != nil && err != sql.ErrNoRows {
-			return err
-		}
-		fn := code
-		if name.Valid && name.String != "" {
-			fn = name.String
-		}
-		st := "fund"
-		if secType.Valid && secType.String != "" {
-			st = secType.String
-		}
-		_, err = s.db.ExecContext(ctx, `
-			INSERT INTO portfolio_snapshot
-			(fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, code, fn, held, totalCost, nullIfZero(navVal), value, unrealized, pnl, st, portfolioID)
-		return err
-	}
-	return nil
 }
 
 type dcaExecer interface {

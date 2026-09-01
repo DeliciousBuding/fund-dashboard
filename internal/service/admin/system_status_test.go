@@ -25,7 +25,7 @@ func TestGetSystemStatusReportsCounts(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetSystemStatus(context.Background(), time.Now().Add(-time.Hour), time.Now())
 	if err != nil {
 		t.Fatalf("GetSystemStatus: %v", err)
@@ -64,7 +64,7 @@ func TestGetSystemStatusEmptyDatabase(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetSystemStatus(context.Background(), time.Now().Add(-time.Hour), time.Now())
 	if err != nil {
 		t.Fatalf("GetSystemStatus on empty db: %v", err)

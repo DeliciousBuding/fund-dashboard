@@ -14,7 +14,8 @@
 <!-- 说明如何验证改动；列出新增/修改的测试 -->
 
 - [ ] `go test ./...` 通过
-- [ ] `npm test` 通过
+- [ ] `pnpm -C web test` 通过
+- [ ] `pnpm exec biome check .` 通过
 - [ ] 相关变更已更新 `CHANGELOG.md` 的 `[Unreleased]` 段（若用户可见）
 
 ## 关联 Issue

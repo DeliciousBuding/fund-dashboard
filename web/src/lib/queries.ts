@@ -2,8 +2,12 @@
 // 每个 hook 对应一个后端端点；401 由 api client 统一跳登录。
 
 import {
+  CheckAlertsResponseSchema,
   CompareResultSchema,
+  DcaComputeResultSchema,
+  DcaPlansResponseSchema,
   DrawdownResultSchema,
+  FreshnessReportSchema,
   FundDetailSchema,
   IndexHistorySchema,
   InvestmentHarnessSnapshotSchema,
@@ -14,9 +18,11 @@ import {
   PortfolioSchema,
   SecurityInfoSchema,
   SourceEventsResponseSchema,
+  type TransactionsListItemSchema,
+  TransactionsResponseSchema,
   XirrResultSchema,
 } from "@fund-dashboard/contracts";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "./api";
 
@@ -28,7 +34,11 @@ function withPortfolio(path: string, portfolioId?: number): string {
   return `${path}${sep}portfolio_id=${portfolioId}`;
 }
 
-async function fetchValidated<S extends z.ZodType>(path: string, schema: S, signal?: AbortSignal) {
+export async function fetchValidated<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  signal?: AbortSignal,
+) {
   const data = await api<unknown>(path, { signal });
   return schema.parse(data);
 }
@@ -109,8 +119,9 @@ export function useFundDetail(code: string, portfolioId?: number) {
   });
 }
 
-export function useNavHistory(code: string, limit = 2000) {
-  return useQuery({
+/** NAV 历史 queryOptions 工厂 —— useNavHistory 与 analysis useMultiNav 共用同一缓存键。 */
+export function navHistoryOptions(code: string, limit = 2000) {
+  return queryOptions({
     queryKey: ["nav", code, limit],
     queryFn: ({ signal }) =>
       fetchValidated(
@@ -121,6 +132,10 @@ export function useNavHistory(code: string, limit = 2000) {
     staleTime: FIVE_MIN,
     enabled: code.length > 0,
   });
+}
+
+export function useNavHistory(code: string, limit = 2000) {
+  return useQuery(navHistoryOptions(code, limit));
 }
 
 export function useFundXirr(code: string, portfolioId?: number) {
@@ -151,23 +166,14 @@ export function useDrawdown(code: string) {
   });
 }
 
-export interface DcaComputeResult {
-  code?: string;
-  base_amount: number;
-  dca_rate: number;
-  actual_amount: number;
-  signal: string;
-  explanation: string;
-  error?: string;
-}
-
 export function useDcaCompute(code: string, baseAmount: number, mode: string) {
   return useQuery({
     queryKey: ["dca-compute", code, baseAmount, mode],
     queryFn: ({ signal }) =>
-      api<DcaComputeResult>(
+      fetchValidated(
         `/api/funds/${encodeURIComponent(code)}/dca?base=${baseAmount}&mode=${encodeURIComponent(mode)}`,
-        { signal },
+        DcaComputeResultSchema,
+        signal,
       ),
     staleTime: FIVE_MIN,
     enabled: code.length > 0 && baseAmount > 0,
@@ -267,29 +273,19 @@ export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
   });
 }
 
+// ── 新鲜度（顶栏徽章 + 持仓陈旧度共用）────────────────────────────────
+
+export function useFreshness() {
+  return useQuery({
+    queryKey: ["freshness"],
+    queryFn: ({ signal }) => fetchValidated("/api/freshness", FreshnessReportSchema, signal),
+    staleTime: FIVE_MIN,
+  });
+}
+
 // ── W4 台账 / DCA ────────────────────────────────────────────────────
 
-export interface TransactionListItem {
-  seq: number;
-  trade_time: string | null;
-  confirm_date: string | null;
-  direction: string | null;
-  trade_type: string | null;
-  fund_code: string;
-  fund_name: string | null;
-  amount: number | null;
-  shares: number | null;
-  fee: number | null;
-  order_id: string | null;
-  anomaly: string | null;
-  settlement_days: number | null;
-  portfolio_id: number | null;
-}
-
-export interface TransactionsPage {
-  transactions: TransactionListItem[];
-  total: number;
-}
+export type TransactionListItem = z.infer<typeof TransactionsListItemSchema>;
 
 export interface TransactionsFilter {
   fundCode?: string;
@@ -298,6 +294,8 @@ export interface TransactionsFilter {
   limit?: number;
   offset?: number;
   portfolioId?: number;
+  sortBy?: string;
+  sortDesc?: boolean;
 }
 
 export function useTransactions(filter: TransactionsFilter) {
@@ -309,30 +307,16 @@ export function useTransactions(filter: TransactionsFilter) {
   params.set("offset", String(filter.offset ?? 0));
   if (filter.portfolioId && filter.portfolioId > 1)
     params.set("portfolio_id", String(filter.portfolioId));
+  if (filter.sortBy) params.set("sort", filter.sortBy);
+  if (filter.sortBy) params.set("sort_dir", filter.sortDesc ? "desc" : "asc");
   const qs = params.toString();
   return useQuery({
     queryKey: ["transactions", qs],
-    queryFn: ({ signal }) => api<TransactionsPage>(`/api/transactions?${qs}`, { signal }),
+    queryFn: ({ signal }) =>
+      fetchValidated(`/api/transactions?${qs}`, TransactionsResponseSchema, signal),
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
   });
-}
-
-export interface DcaPlan {
-  id: number;
-  fund_code: string;
-  fund_name: string | null;
-  amount: number;
-  frequency: string;
-  weekday_mask: string;
-  trade_type: string;
-  portfolio_id: number;
-  start_date: string;
-  end_date: string | null;
-  active: number;
-  source: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export function useDcaPlans(activeOnly = false, portfolioId?: number) {
@@ -343,29 +327,17 @@ export function useDcaPlans(activeOnly = false, portfolioId?: number) {
   return useQuery({
     queryKey: ["dca-plans", qs],
     queryFn: ({ signal }) =>
-      api<{ plans: DcaPlan[] }>(`/api/dca/plans${qs ? `?${qs}` : ""}`, { signal }),
+      fetchValidated(`/api/dca/plans${qs ? `?${qs}` : ""}`, DcaPlansResponseSchema, signal),
     staleTime: 60 * 1000,
   });
 }
 
 // ── W6 告警 ──────────────────────────────────────────────────────────
 
-export interface AlertItem {
-  kind: string;
-  code: string;
-  name?: string;
-  severity: string;
-  message: string;
-  value?: number;
-  threshold?: number;
-  as_of?: string;
-}
-
 export function useAlerts() {
   return useQuery({
     queryKey: ["alerts"],
-    queryFn: ({ signal }) =>
-      api<{ ok: boolean; count: number; alerts: AlertItem[] }>("/api/alerts", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/alerts", CheckAlertsResponseSchema, signal),
     staleTime: 5 * 60 * 1000,
   });
 }

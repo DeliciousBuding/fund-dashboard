@@ -19,10 +19,9 @@ import {
   useSecurities,
   useTimeline,
 } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
-
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
 
 // ── KPI 区 ──────────────────────────────────────────────────────────
 
@@ -92,7 +91,10 @@ function TimelineChart() {
         <Chart
           height={300}
           loading={timeline.isPending}
-          empty={!timeline.isPending && points.length === 0}
+          error={timeline.isError}
+          errorText="净值走势加载失败"
+          onRetry={() => void timeline.refetch()}
+          empty={!timeline.isPending && !timeline.isError && points.length === 0}
           emptyText="还没有净值历史——先同步行情"
           deps={[points]}
           option={(t) => ({
@@ -176,6 +178,9 @@ function AllocationSunburst() {
           loading={allocation.isPending}
           empty={!allocation.isPending && buckets.length === 0}
           emptyText="暂无配置数据"
+          error={allocation.isError}
+          errorText="配置结构加载失败"
+          onRetry={() => void allocation.refetch()}
           deps={[buckets]}
           option={(t) => ({
             ...baseChartOption(t),
@@ -229,6 +234,25 @@ function ContributorsCard() {
 
   const loading = portfolio.isPending || securities.isPending;
   if (loading) return <Skeleton className="h-72 w-full" />;
+  if (portfolio.isError || securities.isError) {
+    return (
+      <EmptyState
+        title="涨跌贡献加载失败"
+        description="无法读取贡献榜，请重试。"
+        action={
+          <Button
+            size="sm"
+            onClick={() => {
+              void portfolio.refetch();
+              void securities.refetch();
+            }}
+          >
+            重试
+          </Button>
+        }
+      />
+    );
+  }
 
   const top = portfolio.data?.top_gainer;
   const bottom = portfolio.data?.top_loser;
@@ -333,6 +357,9 @@ function PnlDistribution() {
           loading={securities.isPending}
           empty={empty}
           emptyText="暂无持仓盈亏数据"
+          error={securities.isError}
+          errorText="盈亏分布加载失败"
+          onRetry={() => void securities.refetch()}
           deps={[counts]}
           option={(t) => ({
             ...baseChartOption(t),

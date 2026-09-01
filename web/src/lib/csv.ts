@@ -15,7 +15,7 @@ const HEADERS = [
   "备注",
 ] as const;
 
-const DIRECTION_LABEL: Record<string, string> = {
+export const DIRECTION_LABEL: Record<string, string> = {
   buy: "买入",
   sell: "卖出",
   dividend: "分红",
@@ -33,8 +33,8 @@ function csvText(v: unknown): string {
 export function transactionsToCsv(rows: TransactionListItem[]): string {
   const lines = rows.map((tx) =>
     [
-      (tx.trade_time ?? "").substring(0, 16),
-      tx.confirm_date ?? "",
+      csvText((tx.trade_time ?? "").substring(0, 16)),
+      csvText(tx.confirm_date),
       DIRECTION_LABEL[tx.direction ?? ""] ?? csvText(tx.direction),
       csvText(tx.trade_type),
       tx.amount != null ? tx.amount.toFixed(2) : "",
@@ -51,12 +51,19 @@ export function transactionsToCsv(rows: TransactionListItem[]): string {
   return `﻿${[HEADERS.join(","), ...lines].join("\n")}`;
 }
 
-export function downloadText(filename: string, content: string, mime = "text/csv;charset=utf-8") {
-  const blob = new Blob([content], { type: mime });
+/** 触发浏览器下载并延迟回收 object URL —— 全站唯一出处。
+ * 立即 revoke 会与 click 竞态，导致 Safari/Firefox 取消下载。 */
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadText(filename: string, content: string, mime = "text/csv;charset=utf-8") {
+  downloadBlob(filename, new Blob([content], { type: mime }));
 }

@@ -86,7 +86,7 @@ function getEasterSunday(year: number): Date {
 }
 
 /** Compute the set of US market holiday dates (YYYY-MM-DD) for a given year. */
-export function getUSHolidays(year: number): Set<string> {
+function getUSHolidays(year: number): Set<string> {
   const holidays = new Set<string>();
 
   // New Year's Day (Jan 1, observed)

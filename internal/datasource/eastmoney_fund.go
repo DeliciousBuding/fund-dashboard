@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -37,6 +36,12 @@ func (s *EastmoneyFund) baseURL() string {
 	return "https://fund.eastmoney.com"
 }
 
+var (
+	eastmoneyNameRe = regexp.MustCompile(`var fS_name = "(.*?)";`)
+	eastmoneyCodeRe = regexp.MustCompile(`var fS_code = "(.*?)";`)
+	eastmoneyDateRe = regexp.MustCompile(`var fS_buyMinDate = "(.*?)";`)
+)
+
 func (s *EastmoneyFund) FetchHistory(ctx context.Context, code string) ([]PricePoint, error) {
 	code = normalizeFundCode(code)
 	data, err := s.get(ctx, fmt.Sprintf(
@@ -64,18 +69,14 @@ func (s *EastmoneyFund) FetchHistory(ctx context.Context, code string) ([]PriceP
 func (s *EastmoneyFund) FetchMeta(ctx context.Context, code string) (*FundMeta, error) {
 	code = normalizeFundCode(code)
 	data, err := s.get(ctx, fmt.Sprintf(
-		"%s/pingzhongdata/%s.js", s.baseURL(), code,
+		"%s/pingzhongdata/%s.js", s.baseURL(), url.PathEscape(code),
 	))
 	if err != nil {
 		return nil, fmt.Errorf("eastmoney FetchMeta(%s): %w", code, err)
 	}
 
-	nameRe := regexp.MustCompile(`var fS_name = "(.*?)";`)
-	typeRe := regexp.MustCompile(`var fS_code = "(.*?)";`)
-	dateRe := regexp.MustCompile(`var fS_buyMinDate = "(.*?)";`)
-
-	nameMatch := nameRe.FindStringSubmatch(data)
-	typeMatch := typeRe.FindStringSubmatch(data)
+	nameMatch := eastmoneyNameRe.FindStringSubmatch(data)
+	typeMatch := eastmoneyCodeRe.FindStringSubmatch(data)
 	if nameMatch == nil || typeMatch == nil {
 		return nil, nil
 	}
@@ -84,7 +85,7 @@ func (s *EastmoneyFund) FetchMeta(ctx context.Context, code string) (*FundMeta, 
 		Code:      code,
 		Name:      nameMatch[1],
 		Type:      typeMatch[1],
-		Inception: inception(data, dateRe),
+		Inception: inception(data, eastmoneyDateRe),
 	}, nil
 }
 
@@ -106,7 +107,7 @@ func (s *EastmoneyFund) get(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("eastmoney fund HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4 MiB
+	body, err := readBodyLimited(resp.Body, 4<<20) // 4 MiB
 	if err != nil {
 		return "", err
 	}

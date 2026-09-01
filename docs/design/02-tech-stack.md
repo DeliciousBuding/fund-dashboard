@@ -98,10 +98,10 @@ fund-dashboard/
 
 ### Dockerfile 三阶段
 ```
-node:24-alpine  → pnpm install --frozen-lockfile && pnpm -C web build
+node:24.20.0-alpine  → pnpm install --frozen-lockfile && pnpm -C web build
                 （outDir 直出 internal/webui/dist）
-golang:1.26-alpine → CGO_ENABLED=0 go build（go:embed all:dist 吃真实产物）
-alpine:3.20     → 不变（非 root fund 用户、tzdata、healthcheck）
+golang:1.26.7-alpine → CGO_ENABLED=0 go build（go:embed all:dist 吃真实产物）
+alpine:3.22     → 非 root fund 用户、tzdata、healthcheck（digest 以 deploy/Dockerfile 为准）
 ```
 - `internal/webui/dist/index.html` 占位文件入库：保证任何时候 `go build` 可编译；Docker 内被真实构建覆盖。
 - 生产 compose **零变更**（无 FUND_STATIC_DIR；嵌入即默认）。`FUND_STATIC_DIR` 保留为 dev/调试覆盖。

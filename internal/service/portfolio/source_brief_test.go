@@ -45,17 +45,20 @@ func TestServiceGetInvestmentSourceBriefBuildsFactsOnlyQueries(t *testing.T) {
 	if brief.Coverage.MaxQueries != 6 {
 		t.Fatalf("MaxQueries = %d, want 6", brief.Coverage.MaxQueries)
 	}
-	if !targetNameExists(brief.SourceTargets, "DSA search providers") {
-		t.Fatalf("SourceTargets missing DSA search providers: %#v", brief.SourceTargets)
+	if !targetNameExists(brief.SourceTargets, "网页搜索") {
+		t.Fatalf("SourceTargets missing 网页搜索: %#v", brief.SourceTargets)
 	}
-	if !targetNameExists(brief.SourceTargets, "DSA market context") {
-		t.Fatalf("SourceTargets missing DSA market context: %#v", brief.SourceTargets)
+	if !targetNameExists(brief.SourceTargets, "搜索服务商") {
+		t.Fatalf("SourceTargets missing 搜索服务商: %#v", brief.SourceTargets)
+	}
+	if !targetNameExists(brief.SourceTargets, "多市场复盘上下文") {
+		t.Fatalf("SourceTargets missing 多市场复盘上下文: %#v", brief.SourceTargets)
 	}
 	if !targetKindExists(brief.SourceTargets, "web_search") {
 		t.Fatalf("SourceTargets missing web_search kind: %#v", brief.SourceTargets)
 	}
-	if !strings.Contains(brief.AgentBrief, "Hermes") || !strings.Contains(brief.AgentBrief, "DSA search providers") {
-		t.Fatalf("AgentBrief = %q, want Hermes and DSA target context", brief.AgentBrief)
+	if !strings.Contains(brief.AgentBrief, "网页搜索") || !strings.Contains(brief.AgentBrief, "搜索服务商") {
+		t.Fatalf("AgentBrief = %q, want neutral web search target context", brief.AgentBrief)
 	}
 
 	payload, err := json.Marshal(brief)
@@ -65,6 +68,11 @@ func TestServiceGetInvestmentSourceBriefBuildsFactsOnlyQueries(t *testing.T) {
 	for _, forbidden := range []string{"买入", "卖出", "加仓", "减仓", "建议扣款"} {
 		if strings.Contains(string(payload), forbidden) {
 			t.Fatalf("source brief contains decision language %q: %s", forbidden, string(payload))
+		}
+	}
+	for _, codename := range []string{"Hermes", "DSA", "dsa:"} {
+		if strings.Contains(string(payload), codename) {
+			t.Fatalf("source brief leaks internal codename %q: %s", codename, string(payload))
 		}
 	}
 }

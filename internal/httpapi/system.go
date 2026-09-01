@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,9 +35,6 @@ func registerSystemReadRoutes(r chi.Router, cfg config.Config, deps *routerDeps,
 func registerSystemWriteRoutes(r chi.Router, cfg config.Config, deps *routerDeps, admin adminsvc.Service) {
 	if deps.navCrawler != nil {
 		r.Post("/api/system/crawl-nav", navCrawlHandler(deps.navCrawler, &admin))
-	} else if deps.crawlHandler != nil {
-		// legacy all-held-only adapter（admin /crawl-nav 同款）
-		r.Post("/api/system/crawl-nav", deps.crawlHandler)
 	}
 	if deps.holdings != nil {
 		r.Post("/api/system/crawl-holdings", holdingsCrawlHandler(deps.holdings))
@@ -118,7 +114,10 @@ type systemAuditEntry struct {
 
 func handleSystemAudit(deps *routerDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limit, ok := intQueryOpt(w, r, "limit", 100)
+		if !ok {
+			return
+		}
 		if limit <= 0 {
 			limit = 100
 		}

@@ -34,7 +34,7 @@ func TestVerifyAllClearWhenDataIsClean(t *testing.T) {
 		t.Fatalf("seed transactions: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.VerifyData(context.Background())
 	if err != nil {
 		t.Fatalf("VerifyData returned error: %v", err)
@@ -67,7 +67,7 @@ func TestVerifyDetectsNegativePositions(t *testing.T) {
 		t.Fatalf("seed negative portfolio_snapshot: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.VerifyData(context.Background())
 	if err != nil {
 		t.Fatalf("VerifyData returned error: %v", err)
@@ -101,7 +101,7 @@ func TestVerifyDetectsMissingSettlementDays(t *testing.T) {
 		t.Fatalf("seed transaction: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.VerifyData(context.Background())
 	if err != nil {
 		t.Fatalf("VerifyData returned error: %v", err)
@@ -135,7 +135,7 @@ func TestVerifyDetectsSecuritiesWithoutNAV(t *testing.T) {
 		t.Fatalf("seed portfolio_snapshot: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.VerifyData(context.Background())
 	if err != nil {
 		t.Fatalf("VerifyData returned error: %v", err)
@@ -160,7 +160,7 @@ func TestVerifyDecisionBoundaryIsFactsOnly(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.VerifyData(context.Background())
 	if err != nil {
 		t.Fatalf("VerifyData returned error: %v", err)

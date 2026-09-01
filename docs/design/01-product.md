@@ -72,7 +72,7 @@
 ### `/transactions`
 - 全量台账（TanStack Table：虚拟滚动、多列排序、类型/方向/标的过滤、全文搜索）
 - 行内编辑 + 新增表单（买/卖/分红，金额/份额/手续费）+ 删除二次确认
-- 持仓份额调整（adjust_position）与标的入册/编辑/删除——**依赖 W4 新增 SessionAuth REST 端点**（现状为 MCP-only 工具）
+- 持仓份额调整（adjust_position）与标的入册/编辑/删除——**W4 已交付 SessionAuth REST 端点**
 - 导入（JSON 批量，幂等）+ 导出（CSV 客户端生成：表头/方向标签随 i18n、带 BOM 头兼容 Excel——继承旧 transactionsToCsv 语义；XLSX 走 `/api/export/transactions-xlsx`）
 
 ### `/analysis/*`
@@ -84,7 +84,7 @@
 ### `/dca`
 - 计划列表（标的/金额/频率/下次执行/累计执行/状态）+ 创建/编辑/停用
 - 执行历史台账（dca_plan_executions）+ 手动触发 preview（DryRun）
-- 依赖 W4 新增 SessionAuth REST 端点：upsert/disable/run 现状为 MCP-only
+- W4 已交付 SessionAuth REST 端点：upsert/disable/run
 
 ### `/market`
 - 指数看板（8 默认符号，CN/HK/US 市场开盘状态着色）
@@ -95,17 +95,17 @@
 - **组合级投资支架卡**（harness 快照：跨标的信号、数据质量评分、推荐动作——字段对齐 MCP `get_investment_harness_snapshot`）
 - 来源事件流（已读/有用标记、按标的过滤）+ 告警扫描结果（日涨跌/回撤/陈旧/定投命中四档）
 - 数据新鲜度面板（缺失 NAV、陈旧清单、可行动建议）
-- 依赖 W6 新增 SessionAuth REST 端点：check_alerts 现状为 MCP-only
+- W6 已交付 SessionAuth REST 端点：check_alerts
 
 ### `/reports`
-- 生成组合报告（`generate_report`，JSON v1）→ 富渲染视图 + 下载 JSON——依赖 W6 新增 SessionAuth REST 端点（现状为 MCP-only）
+- 生成组合报告（`generate_report`，JSON v1）→ 富渲染视图 + 下载 JSON——W6 已交付 SessionAuth REST 端点
 - PDF 导出列入 backlog（后端无 PDF 能力，前端 print 样式先行）
 
 ### `/settings`
 - 账户安全：修改密码、活动会话列表（设备/IP/最后活跃）、逐条/全部登出
 - 偏好：主题（暗/亮/跟随系统）、**涨跌色约定（中式涨红跌绿 / 西式涨绿跌红）**、密度（舒适/紧凑）、语言（中/英）
 - 数据：新鲜度、完整性校验（verify）、DB 体检、备份状态
-- Agent 面：44 个 MCP 工具只读清单（scope/权限/确认要求）+ 最近确认与审计事件摘要——依赖 W6 将 `/api/agent/tools*` 只读面开放 SessionAuth
+- Agent 面：44 个 MCP 工具只读清单（scope/权限/确认要求）+ 最近确认与审计事件摘要——W6 已开放 `/api/system/agent` 只读面（SessionAuth）
 - 系统：版本、运行状态、API 连通性自检
 
 ## 5. 旧前端功能对等表

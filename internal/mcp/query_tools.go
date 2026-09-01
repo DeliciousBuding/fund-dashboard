@@ -13,7 +13,7 @@ func (s *Server) callFundDetail(ctx context.Context, args map[string]any) (map[s
 	portfolioID := intArgMax(args, "portfolio_id", 1, 1000)
 	detail, err := s.portfolio.GetFundDetail(ctx, code, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	if detail == nil {
 		return textJSONResult(map[string]any{"error": "security_not_found", "code": code})
@@ -53,7 +53,7 @@ func (s *Server) callFundDetail(ctx context.Context, args map[string]any) (map[s
 func (s *Server) callNavHistory(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	report, err := s.portfolio.GetNavHistory(ctx, adminsvc.NormalizeSecurityCode(firstNonEmpty(stringArg(args, "code"), stringArg(args, "fund_code"))), intArgMax(args, "limit", 200, 2000))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -63,7 +63,7 @@ func (s *Server) callFundXIRR(ctx context.Context, args map[string]any) (map[str
 	portfolioID := intArgMax(args, "portfolio_id", 1, 1000)
 	report, err := s.portfolio.GetFundXIRR(ctx, code, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -71,7 +71,7 @@ func (s *Server) callFundXIRR(ctx context.Context, args map[string]any) (map[str
 func (s *Server) callPortfolioXIRR(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	report, err := s.portfolio.GetPortfolioXIRR(ctx, intArgMax(args, "portfolio_id", 1, 1000))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -79,7 +79,7 @@ func (s *Server) callPortfolioXIRR(ctx context.Context, args map[string]any) (ma
 func (s *Server) callSearchFunds(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	results, err := s.portfolio.SearchFunds(ctx, stringArg(args, "query"))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(results)
 }
@@ -91,7 +91,7 @@ func (s *Server) callSearchStocks(ctx context.Context, args map[string]any) (map
 		Limit:  intArgMax(args, "limit", 15, 50),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -103,7 +103,7 @@ func (s *Server) callUSStock(ctx context.Context, args map[string]any) (map[stri
 		IncludeHistory: boolArg(args, "include_history", true),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -111,7 +111,7 @@ func (s *Server) callUSStock(ctx context.Context, args map[string]any) (map[stri
 func (s *Server) callMarketIndices(ctx context.Context) (map[string]any, *Error) {
 	report, err := s.portfolio.GetMarketIndices(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -119,7 +119,7 @@ func (s *Server) callMarketIndices(ctx context.Context) (map[string]any, *Error)
 func (s *Server) callFundDrawdown(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	report, err := s.portfolio.GetFundDrawdown(ctx, adminsvc.NormalizeSecurityCode(firstNonEmpty(stringArg(args, "code"), stringArg(args, "fund_code"))))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	if report == nil {
 		return textJSONResult(map[string]any{"error": "no nav data"})
@@ -155,7 +155,7 @@ func (s *Server) callCompareFunds(ctx context.Context, args map[string]any) (map
 	portfolioID := intArgMax(args, "portfolio_id", 1, 1000)
 	results, err := s.portfolio.CompareFunds(ctx, codes, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"funds":             results,
@@ -172,7 +172,7 @@ func (s *Server) callComputeDCAAmount(ctx context.Context, args map[string]any) 
 		Mode:       stringArg(args, "mode"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }
@@ -191,7 +191,7 @@ func (s *Server) callRunBacktest(ctx context.Context, args map[string]any) (map[
 		RebalanceInterval: intArgMax(args, "rebalance_interval", 0, 365),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(report)
 }

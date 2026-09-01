@@ -226,7 +226,7 @@ func TestServiceGetMarketIndicesSanitizesRefreshError(t *testing.T) {
 		t.Fatal(err)
 	}
 	fetchIndexFn = func(context.Context, []string) ([]datasource.IndexQuote, error) {
-		return nil, errors.New("pq: dial tcp 1.2.3.4:5432: connect: connection refused secret=abc")
+		return nil, errors.New("pq: dial tcp 192.0.2.1:5432: connect: connection refused secret=abc")
 	}
 	t.Cleanup(func() { fetchIndexFn = datasource.FetchYahooIndexQuotes })
 

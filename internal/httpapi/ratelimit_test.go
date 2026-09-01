@@ -51,7 +51,8 @@ func TestRateLimiterSweepsIdleBuckets(t *testing.T) {
 	if _, ok := rl.Allow("idle:1"); ok {
 		t.Fatal("expected drained")
 	}
-	// 推进超过 sweep 间隔 → 已耗干的桶被删除(新 touch 的桶存活)。
+	// 推进超过 sweep 间隔:此时 idle:1 已按 2/分钟 补满到 burst(等价于全新桶)
+	// → 作为空闲桶被删除;新 touch 的桶存活。
 	now = now.Add(5*time.Minute + time.Second)
 	rl.Allow("fresh:1")
 	rl.mu.Lock()
@@ -59,13 +60,52 @@ func TestRateLimiterSweepsIdleBuckets(t *testing.T) {
 	freshExists := rl.buckets["fresh:1"] != nil
 	rl.mu.Unlock()
 	if idleExists {
-		t.Fatal("drained bucket must be swept")
+		t.Fatal("fully replenished (idle) bucket must be swept")
 	}
 	if !freshExists {
 		t.Fatal("recently touched bucket must survive the sweep")
 	}
 }
 
+func TestRateLimiterSweepKeepsPartiallyRefilledBuckets(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	rl := NewRateLimiter(1, 60) // 1 次/分钟、burst 60 → 补满需 60 分钟
+	rl.now = func() time.Time { return now }
+	for i := 0; i < 60; i++ {
+		if _, ok := rl.Allow("hot:1"); !ok {
+			t.Fatalf("burst token %d should pass", i)
+		}
+	}
+	if _, ok := rl.Allow("hot:1"); ok {
+		t.Fatal("61st request must be rejected")
+	}
+	// 推进超过 sweep 间隔:桶只补了约 5 个 token,未到 burst → 必须保留,
+	// 否则限流中的攻击者等一次 sweep 就能原地满血复活。
+	now = now.Add(5*time.Minute + time.Second)
+	if _, ok := rl.Allow("cold:1"); !ok {
+		t.Fatal("cold key must pass and trigger the sweep")
+	}
+	rl.mu.Lock()
+	_, exists := rl.buckets["hot:1"]
+	rl.mu.Unlock()
+	if !exists {
+		t.Fatal("partially refilled bucket must survive the sweep")
+	}
+	// 限流状态延续:约 5 个补充 token → 接下来只放行约 5 个,随后继续拒绝
+	// (若桶被误删重建,会一次性放行整个 60 burst)。
+	passed := 0
+	for i := 0; i < 10; i++ {
+		if _, ok := rl.Allow("hot:1"); ok {
+			passed++
+		}
+	}
+	if passed == 0 {
+		t.Fatal("refilled tokens must be usable")
+	}
+	if passed >= 10 {
+		t.Fatalf("drained bucket regained %d tokens, want ~5 after 5min at 1/min", passed)
+	}
+}
 func TestRateLimitMiddlewareReturns429WithRetryAfter(t *testing.T) {
 	rl := NewRateLimiter(1, 1) // 每分钟 1 次,burst 1;第二个请求必 429
 	handler := RateLimit(rl, func(r *http.Request) string { return "ip:1" })(

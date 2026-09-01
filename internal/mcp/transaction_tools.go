@@ -13,7 +13,7 @@ func (s *Server) callAddTransaction(ctx context.Context, args map[string]any) (m
 	item := importTransactionFromArgs(args)
 	result, err := s.admin.ImportTransactions(ctx, []adminsvc.ImportTransaction{item})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                result.OK,
@@ -38,17 +38,16 @@ func (s *Server) callImportTransactions(ctx context.Context, args map[string]any
 		return nil, jsonrpcError(-32602, "invalid_params: transactions max 5000")
 	}
 	items := make([]adminsvc.ImportTransaction, 0, len(raw))
-	for i, item := range raw {
+	for _, item := range raw {
 		obj, ok := item.(map[string]any)
 		if !ok {
 			return nil, jsonrpcError(-32602, "invalid_params: transactions item must be object")
 		}
 		items = append(items, importTransactionFromArgs(obj))
-		_ = i
 	}
 	result, err := s.admin.ImportTransactions(ctx, items)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                result.OK,
@@ -66,7 +65,7 @@ func (s *Server) callUpdateTransaction(ctx context.Context, args map[string]any)
 	}
 	result, err := s.admin.UpdateTransaction(ctx, intArg(args, "seq", 0), updateTransactionFromArgs(args))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                result.OK,
@@ -82,7 +81,7 @@ func (s *Server) callDeleteTransaction(ctx context.Context, args map[string]any)
 	}
 	result, err := s.admin.DeleteTransaction(ctx, intArg(args, "seq", 0))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                result.OK,

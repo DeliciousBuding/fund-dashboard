@@ -64,10 +64,7 @@ func TestDefaultIndexSymbolsIncludesCNHK(t *testing.T) {
 	if len(DefaultIndexSymbols) != 8 {
 		t.Errorf("DefaultIndexSymbols len = %d, want 8", len(DefaultIndexSymbols))
 	}
-	// Backward compat.
-	if len(DefaultUSIndexSymbols) != 8 {
-		t.Errorf("DefaultUSIndexSymbols len = %d, want 8 (backward compat)", len(DefaultUSIndexSymbols))
-	}
+
 }
 
 func TestDefaultIndexNamesHasCNHK(t *testing.T) {

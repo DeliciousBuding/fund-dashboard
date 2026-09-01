@@ -30,15 +30,16 @@ export function useMarketStream(enabled = true): MarketStreamState {
       source = new EventSource("/api/market/stream");
       source.addEventListener("indices", (ev) => {
         try {
-          const data = JSON.parse((ev as MessageEvent).data) as MarketIndex[];
+          const data = JSON.parse(ev.data) as MarketIndex[];
           retryRef.current = 0;
           setState({
             indices: data,
             connected: true,
             updatedAt: new Date().toISOString(),
           });
-        } catch {
+        } catch (err) {
           // 脏帧跳过，等下一帧
+          console.warn("[market-stream] invalid indices frame", err);
         }
       });
       source.onerror = () => {

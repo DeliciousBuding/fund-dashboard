@@ -11,7 +11,7 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
@@ -21,7 +21,7 @@ func TestConsumeConfirmationUnavailableNoPanic(t *testing.T) {
 	defer db.Close()
 	// Explicitly nil AgentOps (true interface nil).
 	portfolio := portfoliosvc.NewService(db)
-	admin := adminsvc.NewService(db)
+	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	server, err := NewServer(ServerDeps{Portfolio: &portfolio, Admin: &admin, AgentOps: nil, Role: agenttools.RoleOperator})
 	if err != nil {
 		t.Fatal(err)
@@ -1485,7 +1485,7 @@ func newMCPServer(t *testing.T, db *sql.DB) *Server {
 func newMCPServerWithRole(t *testing.T, db *sql.DB, role agenttools.Role) *Server {
 	t.Helper()
 	portfolio := portfoliosvc.NewService(db)
-	admin := adminsvc.NewService(db)
+	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	var confirmations confirmationConsumer
 	if role == agenttools.RoleOperator {
 		confirmations = allowConfirmationConsumer{}
@@ -1505,7 +1505,7 @@ func (allowConfirmationConsumer) ClaimConfirmation(_ context.Context, input agen
 
 func openMCPFixture(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatalf("open sqlite fixture: %v", err)
 	}

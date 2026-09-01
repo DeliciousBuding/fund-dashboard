@@ -22,3 +22,12 @@ web/dist
 *.pem
 *.crt
 deploy/ci-data/
+
+# Local runtime artifacts (working tree may hold untracked files).
+*.db
+*.exe
+bin/
+.worktrees/
+test-results/
+.tmp/
+*.log

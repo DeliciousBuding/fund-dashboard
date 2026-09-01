@@ -31,7 +31,7 @@ export const useSettings = create<SettingsState>()(
   ),
 );
 
-export function resolvedTheme(mode: ThemeMode): "dark" | "light" {
+function resolvedTheme(mode: ThemeMode): "dark" | "light" {
   if (mode !== "system") return mode;
   if (typeof window === "undefined") return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
@@ -39,7 +39,7 @@ export function resolvedTheme(mode: ThemeMode): "dark" | "light" {
 
 // applySettingsToDom 把偏好写到 <html> 数据属性（CSS 变量轴）。
 // western 约定通过交换 --up/--down 实现：涨跌色互换全站即时生效。
-export function applySettingsToDom(state: {
+function applySettingsToDom(state: {
   theme: ThemeMode;
   convention: PnlConvention;
   density: Density;

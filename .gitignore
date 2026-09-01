@@ -21,7 +21,6 @@ errors.log
 
 # Build output
 bin/
-dist/
 *.exe
 /fund-dashboard
 

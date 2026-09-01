@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"
@@ -388,6 +389,7 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 	if callErr != nil {
 		// Confirmation already claimed/burned before side-effect (safe under-commit).
 		// Prefer re-prepare over risking double-write under concurrent tools/call.
+		slog.Error("mcp tool failed", "tool", name, "code", callErr.Code, "error", callErr.Message)
 		return nil, callErr
 	}
 	return result, nil

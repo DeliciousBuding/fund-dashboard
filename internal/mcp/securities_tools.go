@@ -20,7 +20,7 @@ func (s *Server) callAddFund(ctx context.Context, args map[string]any) (map[stri
 		Source:       firstNonEmpty(stringArg(args, "source"), "mcp"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -46,7 +46,7 @@ func (s *Server) callAddSecurity(ctx context.Context, args map[string]any) (map[
 		Source:       firstNonEmpty(stringArg(args, "source"), "mcp"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -71,7 +71,7 @@ func (s *Server) callUpdateFund(ctx context.Context, args map[string]any) (map[s
 		Source:       stringArg(args, "source"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -86,7 +86,7 @@ func (s *Server) callDeleteFund(ctx context.Context, args map[string]any) (map[s
 	code := firstNonEmpty(stringArg(args, "fund_code"), stringArg(args, "code"))
 	res, err := s.portfolio.DeleteSecurity(ctx, code)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,

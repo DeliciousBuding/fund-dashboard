@@ -1,10 +1,12 @@
 // 工作台 /system —— 系统状态卡 + 调度任务（触发/最近运行）+ 告警扫描。
 // 写操作（抓取/校验）全部二次确认（06 §3）。
 
+import { SystemJobsResponseSchema, SystemStatusSchema } from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Database, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AlertList } from "../components/AlertList";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -16,32 +18,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
-
-interface SystemStatus {
-  version: string;
-  db_driver: string;
-  go_version: string;
-  uptime_sec: number;
-  db_size_bytes?: number;
-  freshness?: { health?: string };
-}
-
-interface JobStatus {
-  name: string;
-  schedule: string;
-  last_run?: number;
-  last_error?: string;
-  next_run: number;
-}
-
-interface AlertsResult {
-  ok: boolean;
-  count: number;
-  alerts: { kind: string; code: string; name?: string; severity: string; message: string }[];
-}
+import { fetchValidated, useAlerts } from "../lib/queries";
 
 function fmtTs(ts?: number): string {
   if (!ts) return "—";
@@ -81,19 +62,15 @@ const ACTIONS: { key: ActionKey; label: string; description: string }[] = [
 export function SystemPage() {
   const status = useQuery({
     queryKey: ["system-status"],
-    queryFn: ({ signal }) => api<SystemStatus>("/api/system/status", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/system/status", SystemStatusSchema, signal),
     refetchInterval: 30_000,
   });
   const jobs = useQuery({
     queryKey: ["system-jobs"],
-    queryFn: ({ signal }) => api<{ jobs: JobStatus[] }>("/api/system/jobs", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/system/jobs", SystemJobsResponseSchema, signal),
     refetchInterval: 30_000,
   });
-  const alerts = useQuery({
-    queryKey: ["system-alerts"],
-    queryFn: ({ signal }) => api<AlertsResult>("/api/alerts", { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const alerts = useAlerts();
 
   const [confirmAction, setConfirmAction] = useState<ActionKey | null>(null);
   const queryClient = useQueryClient();
@@ -109,6 +86,27 @@ export function SystemPage() {
       toast.error("触发失败", { description: e instanceof ApiError ? e.code : String(e) }),
   });
 
+  if (status.isError || jobs.isError) {
+    return (
+      <div className="space-y-4">
+        <EmptyState
+          title="系统状态加载失败"
+          description="无法读取系统状态或调度任务，请重试。"
+          action={
+            <Button
+              size="sm"
+              onClick={() => {
+                void status.refetch();
+                void jobs.refetch();
+              }}
+            >
+              重试
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
   const s = status.data;
   const health = HEALTH_BADGE[s?.freshness?.health ?? ""] ?? HEALTH_BADGE.neutral;
 
@@ -246,29 +244,7 @@ export function SystemPage() {
               当前无告警——涨跌、回撤、陈旧、定投命中四档扫描均正常。
             </p>
           ) : (
-            <ul className="space-y-2">
-              {(alerts.data?.alerts ?? []).map((a) => (
-                <li
-                  key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
-                  className="flex items-center gap-3 text-sm"
-                >
-                  <Badge
-                    tone={
-                      a.severity === "critical"
-                        ? "danger"
-                        : a.severity === "warn"
-                          ? "warn"
-                          : "neutral"
-                    }
-                  >
-                    {a.kind}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate text-fg-2">
-                    {a.name || a.code} · {a.message}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <AlertList alerts={alerts.data?.alerts ?? []} />
           )}
         </CardContent>
       </Card>
