@@ -25,3 +25,13 @@ func TestParseHoldingsApidata(t *testing.T) {
 		t.Fatalf("second=%+v", holdings[1])
 	}
 }
+
+func TestParseHoldingsApidataRejectsDirtyWeight(t *testing.T) {
+	sample := `var apidata={ content:"<div class='box'><h4><font class='px12'>2025-12-31</font></h4><table><tbody>` +
+		`<tr><td>1</td><td class='toc'><a href='//quote.eastmoney.com/unify/r/105.NVDA' >NVDA</a></td>` +
+		`<td class='toc'><a>英伟达</a></td><td>--</td><td>--</td><td>25.08</td><td>32875.08</td></tr>` +
+		`</tbody></table></div>", arryear:[2025,2024], curyear:2025};`
+	if _, err := parseHoldingsApidata(sample); err == nil {
+		t.Fatal("expected error for dirty weight cell, got nil")
+	}
+}
