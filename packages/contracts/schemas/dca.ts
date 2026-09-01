@@ -43,3 +43,34 @@ export const DcaComputeResultSchema = z.object({
   message: z.string().optional(),
 });
 export type DcaComputeResult = z.infer<typeof DcaComputeResultSchema>;
+export const DcaPlansResponseSchema = z.object({ plans: z.array(DcaPlanSchema) });
+export type DcaPlansResponse = z.infer<typeof DcaPlansResponseSchema>;
+
+export const DcaExecutionItemSchema = z.object({
+  plan_id: z.number(),
+  fund_code: z.string(),
+  fund_name: z.string().optional(),
+  amount: z.number(),
+  shares: z.number().nullable().optional(),
+  nav: z.number().nullable().optional(),
+  order_id: z.string(),
+  status: z.string(),
+  message: z.string().optional(),
+  trade_type: z.string().optional(),
+  portfolio_id: z.number(),
+  weekday_mask: z.string().optional(),
+});
+export type DcaExecutionItem = z.infer<typeof DcaExecutionItemSchema>;
+
+export const DcaRunResultSchema = z.object({
+  ok: z.boolean(),
+  as_of: z.string(),
+  dry_run: z.boolean(),
+  executed: z.number(),
+  skipped: z.number(),
+  previewed: z.number(),
+  items: z.array(DcaExecutionItemSchema),
+  decision_boundary: z.string(),
+  side_effects: z.string(),
+});
+export type DcaRunResult = z.infer<typeof DcaRunResultSchema>;

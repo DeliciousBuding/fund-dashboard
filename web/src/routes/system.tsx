@@ -1,7 +1,11 @@
 // 工作台 /system —— 系统状态卡 + 调度任务（触发/最近运行）+ 告警扫描。
 // 写操作（抓取/校验）全部二次确认（06 §3）。
 
-import { SystemJobsResponseSchema, SystemStatusSchema } from "@fund-dashboard/contracts";
+import {
+  CheckAlertsResponseSchema,
+  SystemJobsResponseSchema,
+  SystemStatusSchema,
+} from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Database, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -20,13 +24,7 @@ import {
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
-import { type AlertItem, fetchValidated } from "../lib/queries";
-
-interface AlertsResult {
-  ok: boolean;
-  count: number;
-  alerts: AlertItem[];
-}
+import { fetchValidated } from "../lib/queries";
 
 function fmtTs(ts?: number): string {
   if (!ts) return "—";
@@ -76,7 +74,7 @@ export function SystemPage() {
   });
   const alerts = useQuery({
     queryKey: ["system-alerts"],
-    queryFn: ({ signal }) => api<AlertsResult>("/api/alerts", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/alerts", CheckAlertsResponseSchema, signal),
     staleTime: 5 * 60 * 1000,
   });
 

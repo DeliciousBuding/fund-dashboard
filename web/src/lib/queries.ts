@@ -2,9 +2,10 @@
 // 每个 hook 对应一个后端端点；401 由 api client 统一跳登录。
 
 import {
+  CheckAlertsResponseSchema,
   CompareResultSchema,
   type DcaComputeResult,
-  type DcaPlan,
+  DcaPlansResponseSchema,
   DrawdownResultSchema,
   FundDetailSchema,
   IndexHistorySchema,
@@ -16,6 +17,8 @@ import {
   PortfolioSchema,
   SecurityInfoSchema,
   SourceEventsResponseSchema,
+  type TransactionsListItemSchema,
+  TransactionsResponseSchema,
   XirrResultSchema,
 } from "@fund-dashboard/contracts";
 import { useQuery } from "@tanstack/react-query";
@@ -265,27 +268,8 @@ export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
 
 // ── W4 台账 / DCA ────────────────────────────────────────────────────
 
-export interface TransactionListItem {
-  seq: number;
-  trade_time: string | null;
-  confirm_date: string | null;
-  direction: string | null;
-  trade_type: string | null;
-  fund_code: string;
-  fund_name: string | null;
-  amount: number | null;
-  shares: number | null;
-  fee: number | null;
-  order_id: string | null;
-  anomaly: string | null;
-  settlement_days: number | null;
-  portfolio_id: number | null;
-}
-
-export interface TransactionsResponse {
-  transactions: TransactionListItem[];
-  total: number;
-}
+export type TransactionListItem = z.infer<typeof TransactionsListItemSchema>;
+export type TransactionsResponse = z.infer<typeof TransactionsResponseSchema>;
 
 export interface TransactionsFilter {
   fundCode?: string;
@@ -308,7 +292,8 @@ export function useTransactions(filter: TransactionsFilter) {
   const qs = params.toString();
   return useQuery({
     queryKey: ["transactions", qs],
-    queryFn: ({ signal }) => api<TransactionsResponse>(`/api/transactions?${qs}`, { signal }),
+    queryFn: ({ signal }) =>
+      fetchValidated(`/api/transactions?${qs}`, TransactionsResponseSchema, signal),
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
   });
@@ -322,29 +307,19 @@ export function useDcaPlans(activeOnly = false, portfolioId?: number) {
   return useQuery({
     queryKey: ["dca-plans", qs],
     queryFn: ({ signal }) =>
-      api<{ plans: DcaPlan[] }>(`/api/dca/plans${qs ? `?${qs}` : ""}`, { signal }),
+      fetchValidated(`/api/dca/plans${qs ? `?${qs}` : ""}`, DcaPlansResponseSchema, signal),
     staleTime: 60 * 1000,
   });
 }
 
 // ── W6 告警 ──────────────────────────────────────────────────────────
 
-export interface AlertItem {
-  kind: string;
-  code: string;
-  name?: string;
-  severity: string;
-  message: string;
-  value?: number;
-  threshold?: number;
-  as_of?: string;
-}
+export type AlertItem = z.infer<typeof CheckAlertsResponseSchema>["alerts"][number];
 
 export function useAlerts() {
   return useQuery({
     queryKey: ["alerts"],
-    queryFn: ({ signal }) =>
-      api<{ ok: boolean; count: number; alerts: AlertItem[] }>("/api/alerts", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/alerts", CheckAlertsResponseSchema, signal),
     staleTime: 5 * 60 * 1000,
   });
 }
