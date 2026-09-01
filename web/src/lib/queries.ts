@@ -280,7 +280,7 @@ export function useFreshness() {
 
 export type TransactionListItem = z.infer<typeof TransactionsListItemSchema>;
 
-export interface TransactionsFilter {
+interface TransactionsFilter {
   fundCode?: string;
   direction?: string;
   search?: string;

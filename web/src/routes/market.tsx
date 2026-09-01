@@ -65,15 +65,11 @@ function IndicesBoard() {
             )}
           </div>
           <div className="mt-1.5 text-xl font-medium tabular-nums text-fg">
-            {idx.price != null
-              ? idx.price.toLocaleString("zh-CN", { maximumFractionDigits: 2 })
-              : "—"}
+            {idx.price.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}
           </div>
-          {idx.change_pct != null && (
-            <div className={cn("text-xs tabular-nums", toneClass[pnlTone(idx.change_pct)])}>
-              {fmtSignedPct(idx.change_pct)}
-            </div>
-          )}
+          <div className={cn("text-xs tabular-nums", toneClass[pnlTone(idx.change_pct)])}>
+            {fmtSignedPct(idx.change_pct)}
+          </div>
         </Card>
       ))}
     </div>
@@ -122,8 +118,11 @@ function NasdaqPanel() {
         <CardTitle className="flex items-center gap-2">
           纳斯达克100 透视
           <span className="text-xs font-normal text-fg-3">
-            买 {stats.buyCount} 笔 {fmtCNY(stats.buyAmount)} · 卖 {stats.sellCount} 笔{" "}
-            {fmtCNY(stats.sellAmount)}
+            {txs.isPending
+              ? "交易统计加载中…"
+              : txs.isError
+                ? "交易统计加载失败"
+                : `买 ${stats.buyCount} 笔 ${fmtCNY(stats.buyAmount)} · 卖 ${stats.sellCount} 笔 ${fmtCNY(stats.sellAmount)}`}
           </span>
         </CardTitle>
         <Segmented id="ndx-range" value={range} onChange={setRange} options={RANGES} size="sm" />
@@ -131,12 +130,15 @@ function NasdaqPanel() {
       <CardContent>
         <Chart
           height={340}
-          loading={history.isPending}
+          loading={history.isPending || (txs.isPending && points.length === 0)}
           empty={!history.isPending && points.length === 0}
           emptyText="NDX 历史数据不可用"
-          error={history.isError}
-          errorText="NDX 历史加载失败"
-          onRetry={() => void history.refetch()}
+          error={history.isError || txs.isError}
+          errorText={history.isError ? "NDX 历史加载失败" : "交易数据加载失败"}
+          onRetry={() => {
+            void history.refetch();
+            void txs.refetch();
+          }}
           deps={[points, scatter]}
           option={(t) => ({
             ...baseChartOption(t),
