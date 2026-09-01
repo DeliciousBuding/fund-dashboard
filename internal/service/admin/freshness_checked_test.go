@@ -93,3 +93,20 @@ func readAdminSource(t *testing.T, name string) string {
 	}
 	return string(raw)
 }
+
+// NewServiceWithDriver must stay a fail-closed shell over the checked
+// constructor: any reintroduction of the old silent SQLite fallback is a
+// data-integrity hazard (wrong dialect SQL against PG).
+func TestNewServiceWithDriverRoutesThroughChecked(t *testing.T) {
+	raw, err := os.ReadFile("freshness.go")
+	if err != nil {
+		t.Fatalf("read freshness.go: %v", err)
+	}
+	src := string(raw)
+	if !strings.Contains(src, "func NewServiceWithDriver(db *sql.DB, driver string) Service {\n\tsvc, err := NewServiceWithDriverChecked(db, driver)") {
+		t.Fatal("NewServiceWithDriver must delegate to NewServiceWithDriverChecked")
+	}
+	if strings.Contains(src, "return Service{db: db}") && strings.Contains(src, "dialect.MustNew") {
+		t.Fatal("legacy unchecked dialect construction resurfaced")
+	}
+}
