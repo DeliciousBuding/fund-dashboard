@@ -214,14 +214,17 @@ func TestRevokeByIDPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
-	sessions, err := svc.ListSessions(ctx, token)
-	if err != nil || len(sessions) != 1 || !sessions[0].Current {
-		t.Fatalf("ListSessions = %#v, %v", sessions, err)
+	list, err := svc.ListSessions(ctx, token)
+	if err != nil || len(list.Items) != 1 || !list.Items[0].Current {
+		t.Fatalf("ListSessions = %#v, %v", list, err)
+	}
+	if list.Total != 1 || list.Truncated {
+		t.Fatalf("ListSessions signals = total %d truncated %v; want 1/false", list.Total, list.Truncated)
 	}
 	if err := svc.RevokeByIDPrefix(ctx, "short"); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("short prefix = %v, want ErrSessionNotFound", err)
 	}
-	if err := svc.RevokeByIDPrefix(ctx, sessions[0].IDPrefix); err != nil {
+	if err := svc.RevokeByIDPrefix(ctx, list.Items[0].IDPrefix); err != nil {
 		t.Fatalf("RevokeByIDPrefix: %v", err)
 	}
 	if sess, _ := svc.Authenticate(ctx, token); sess != nil {
@@ -409,10 +412,13 @@ func TestRevokeByIDPrefixBeyondListSessionsLimit(t *testing.T) {
 
 	// Sanity: the target sits outside the capped list.
 	listed, err := svc.ListSessions(ctx, "")
-	if err != nil || len(listed) != 200 {
-		t.Fatalf("ListSessions = %d rows, %v; want capped 200", len(listed), err)
+	if err != nil || len(listed.Items) != 200 {
+		t.Fatalf("ListSessions = %d rows, %v; want capped 200", len(listed.Items), err)
 	}
-	for _, s := range listed {
+	if listed.Total != total || !listed.Truncated {
+		t.Fatalf("ListSessions signals = total %d truncated %v; want %d/true", listed.Total, listed.Truncated, total)
+	}
+	for _, s := range listed.Items {
 		if s.IDPrefix == targetPrefix {
 			t.Fatalf("target unexpectedly visible in capped list: %#v", s)
 		}
@@ -439,8 +445,8 @@ func TestRevokeByIDPrefixRejectsWildcardChars(t *testing.T) {
 	if err := svc.RevokeByIDPrefix(ctx, "abcdef%_gh"); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("wildcard prefix = %v, want ErrSessionNotFound", err)
 	}
-	sessions, err := svc.ListSessions(ctx, token)
-	if err != nil || len(sessions) != 1 {
-		t.Fatalf("ListSessions after wildcard attempt = %#v, %v", sessions, err)
+	list, err := svc.ListSessions(ctx, token)
+	if err != nil || len(list.Items) != 1 {
+		t.Fatalf("ListSessions after wildcard attempt = %#v, %v", list, err)
 	}
 }

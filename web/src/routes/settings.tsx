@@ -187,34 +187,41 @@ function SessionsCard() {
         ) : (sessions.data?.sessions ?? []).length === 0 ? (
           <p className="text-sm text-fg-3">暂无活动会话</p>
         ) : (
-          (sessions.data?.sessions ?? []).map((s) => (
-            <div
-              key={s.id_prefix}
-              className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-sm text-fg">
-                  <span className="max-w-72 truncate">{s.user_agent || "未知设备"}</span>
-                  {s.current && <Badge tone="accent">当前</Badge>}
+          <>
+            {(sessions.data?.sessions ?? []).map((s) => (
+              <div
+                key={s.id_prefix}
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-sm text-fg">
+                    <span className="max-w-72 truncate">{s.user_agent || "未知设备"}</span>
+                    {s.current && <Badge tone="accent">当前</Badge>}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-fg-3 tabular-nums">
+                    {s.ip || "未知 IP"} · 最近活跃 {fmtTs(s.last_seen_at)} · 过期{" "}
+                    {fmtTs(s.expires_at)}
+                  </div>
                 </div>
-                <div className="mt-0.5 text-[11px] text-fg-3 tabular-nums">
-                  {s.ip || "未知 IP"} · 最近活跃 {fmtTs(s.last_seen_at)} · 过期{" "}
-                  {fmtTs(s.expires_at)}
-                </div>
+                {!s.current && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => revoke.mutate(s.id_prefix)}
+                    disabled={revoke.isPending}
+                  >
+                    <LogOut className="size-3.5" />
+                    撤销
+                  </Button>
+                )}
               </div>
-              {!s.current && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => revoke.mutate(s.id_prefix)}
-                  disabled={revoke.isPending}
-                >
-                  <LogOut className="size-3.5" />
-                  撤销
-                </Button>
-              )}
-            </div>
-          ))
+            ))}
+            {sessions.data?.truncated && (
+              <p className="pt-1 text-xs text-fg-3">
+                仅显示最近 200 条会话（共 {sessions.data.total} 条）
+              </p>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

@@ -13,6 +13,8 @@ func TestEnvironMap(t *testing.T) {
 		{"empty value", []string{"EMPTY="}, map[string]string{"EMPTY": ""}},
 		{"malformed entry skipped", []string{"NO_EQUALS"}, map[string]string{}},
 		{"last duplicate wins", []string{"K=first", "K=second"}, map[string]string{"K": "second"}},
+		{"lowercase key normalized to uppercase", []string{"fund_env=production", "port=8765"}, map[string]string{"FUND_ENV": "production", "PORT": "8765"}},
+		{"mixed case dedupes to uppercase, last wins", []string{"fund_env=first", "FUND_ENV=second"}, map[string]string{"FUND_ENV": "second"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

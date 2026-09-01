@@ -18,9 +18,14 @@ export const SessionInfoSchema = z.object({
 export type SessionInfo = z.infer<typeof SessionInfoSchema>;
 
 // Go handler already normalizes a nil slice to [] before marshal, so the wire
-// is always an array; the schema documents that invariant.
+// is always an array; the schema documents that invariant. total is the full
+// auth_sessions row count and truncated is true when the store LIMIT 200 soft
+// ceiling cut older rows — both are always emitted so the settings UI can
+// surface the cut instead of silently showing an incomplete list.
 export const AuthSessionsResponseSchema = z.object({
   sessions: z.array(SessionInfoSchema),
+  total: z.number().int().nonnegative(),
+  truncated: z.boolean(),
 });
 export type AuthSessionsResponse = z.infer<typeof AuthSessionsResponseSchema>;
 

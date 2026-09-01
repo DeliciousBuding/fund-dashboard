@@ -202,15 +202,19 @@ func handleAuthSessions(svc *auth.Service) http.HandlerFunc {
 		if cookie, err := r.Cookie(sessionCookieName); err == nil {
 			current = cookie.Value
 		}
-		sessions, err := svc.ListSessions(r.Context(), current)
+		list, err := svc.ListSessions(r.Context(), current)
 		if err != nil {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
-		if sessions == nil {
-			sessions = []auth.SessionInfo{}
+		if list.Items == nil {
+			list.Items = []auth.SessionInfo{}
 		}
-		WriteJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+		WriteJSON(w, http.StatusOK, map[string]any{
+			"sessions":  list.Items,
+			"total":     list.Total,
+			"truncated": list.Truncated,
+		})
 	}
 }
 
