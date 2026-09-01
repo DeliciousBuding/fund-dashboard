@@ -5,7 +5,6 @@
 import {
   flexRender,
   getCoreRowModel,
-  getSortedRowModel,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
@@ -42,6 +41,7 @@ export function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const activeSort = sorting[0];
 
   const filter = useMemo(
     () => ({
@@ -51,8 +51,10 @@ export function TransactionsPage() {
       search: search || undefined,
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
+      sortBy: activeSort?.id,
+      sortDesc: activeSort?.desc === true,
     }),
-    [portfolioId, direction, fundCode, search, page],
+    [portfolioId, direction, fundCode, search, page, activeSort],
   );
   const data = useTransactions(filter);
 
@@ -60,7 +62,12 @@ export function TransactionsPage() {
   const [formInitial, setFormInitial] = useState<TxFormState>(EMPTY_FORM);
   const [deleteSeq, setDeleteSeq] = useState<number | null>(null);
 
-  const { exportCsv, exportXlsx } = useExportMutations({ direction, fundCode, search });
+  const { exportCsv, exportXlsx } = useExportMutations({
+    portfolioId,
+    direction,
+    fundCode,
+    search,
+  });
 
   const openEdit = useCallback((tx: TransactionListItem) => {
     setFormInitial({
@@ -86,10 +93,13 @@ export function TransactionsPage() {
     data: data.data?.transactions ?? [],
     columns,
     state: { sorting },
-    onSortingChange: setSorting,
+    onSortingChange: (updater) => {
+      setSorting(updater);
+      setPage(0);
+    },
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
     manualPagination: true,
+    manualSorting: true,
   });
 
   const total = data.data?.total ?? 0;

@@ -4,20 +4,42 @@ import { api } from "../../lib/api";
 import { downloadText, transactionsToCsv } from "../../lib/csv";
 import type { TransactionListItem } from "../../lib/queries";
 
-export function useExportMutations(args: { direction: string; fundCode: string; search: string }) {
-  const { direction, fundCode, search } = args;
+function filteredTxParams(args: {
+  portfolioId?: number;
+  direction?: string;
+  fundCode?: string;
+  search?: string;
+}) {
+  const params = new URLSearchParams();
+  if (args.direction) params.set("direction", args.direction);
+  if (args.fundCode) params.set("fund_code", args.fundCode);
+  if (args.search) params.set("search", args.search);
+  if (args.portfolioId && args.portfolioId > 1)
+    params.set("portfolio_id", String(args.portfolioId));
+  params.set("limit", "5000");
+  return params;
+}
+
+export function useExportMutations(args: {
+  portfolioId?: number;
+  direction: string;
+  fundCode: string;
+  search: string;
+}) {
+  const { portfolioId, direction, fundCode, search } = args;
+
+  const fetchAll = async () => {
+    const params = filteredTxParams({ portfolioId, direction, fundCode, search });
+    const all = await api<{ transactions: TransactionListItem[] }>(`/api/transactions?${params}`);
+    return all.transactions;
+  };
+
   const exportCsv = useMutation({
     mutationFn: async () => {
-      // 导出当前过滤条件的全量（上限 5000，后端硬顶）
-      const params = new URLSearchParams();
-      if (direction) params.set("direction", direction);
-      if (fundCode) params.set("fund_code", fundCode);
-      if (search) params.set("search", search);
-      params.set("limit", "5000");
-      const all = await api<{ transactions: TransactionListItem[] }>(`/api/transactions?${params}`);
+      const rows = await fetchAll();
       downloadText(
         `transactions-${new Date().toISOString().slice(0, 10)}.csv`,
-        transactionsToCsv(all.transactions),
+        transactionsToCsv(rows),
       );
     },
     onSuccess: () => toast.success("CSV 已导出"),
@@ -26,7 +48,27 @@ export function useExportMutations(args: { direction: string; fundCode: string; 
 
   const exportXlsx = useMutation({
     mutationFn: async () => {
-      const blob = await api<Blob>("/api/export/transactions-xlsx", { responseType: "blob" });
+      const rows = await fetchAll();
+      const blob = await api<Blob>("/api/export/transactions-xlsx", {
+        method: "POST",
+        responseType: "blob",
+        body: {
+          fundName: "transactions",
+          transactions: rows.map((tx) => ({
+            trade_time: tx.trade_time ?? "",
+            confirm_date: tx.confirm_date ?? "",
+            direction: tx.direction ?? "",
+            type: tx.trade_type ?? "",
+            amount: tx.amount ?? 0,
+            shares: tx.shares ?? 0,
+            nav: null,
+            inferred_nav: null,
+            fee: tx.fee ?? 0,
+            settlement_days: tx.settlement_days,
+            trade_day_type: "",
+          })),
+        },
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -41,5 +83,6 @@ export function useExportMutations(args: { direction: string; fundCode: string; 
     onSuccess: () => toast.success("XLSX 已导出"),
     onError: () => toast.error("XLSX 导出失败"),
   });
+
   return { exportCsv, exportXlsx };
 }

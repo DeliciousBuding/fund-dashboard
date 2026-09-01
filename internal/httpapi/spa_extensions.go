@@ -45,6 +45,8 @@ func handleListTransactions(service *portfoliosvc.Service) http.HandlerFunc {
 			Search:      q.Get("search"),
 			Limit:       limit,
 			Offset:      offset,
+			SortBy:      q.Get("sort"),
+			SortDesc:    q.Get("sort_dir") == "desc",
 		})
 		if err != nil {
 			writeSafeError(w, r, http.StatusInternalServerError, err)

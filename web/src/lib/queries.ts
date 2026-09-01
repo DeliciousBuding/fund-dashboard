@@ -278,6 +278,8 @@ export interface TransactionsFilter {
   limit?: number;
   offset?: number;
   portfolioId?: number;
+  sortBy?: string;
+  sortDesc?: boolean;
 }
 
 export function useTransactions(filter: TransactionsFilter) {
@@ -289,6 +291,8 @@ export function useTransactions(filter: TransactionsFilter) {
   params.set("offset", String(filter.offset ?? 0));
   if (filter.portfolioId && filter.portfolioId > 1)
     params.set("portfolio_id", String(filter.portfolioId));
+  if (filter.sortBy) params.set("sort", filter.sortBy);
+  if (filter.sortBy) params.set("sort_dir", filter.sortDesc ? "desc" : "asc");
   const qs = params.toString();
   return useQuery({
     queryKey: ["transactions", qs],

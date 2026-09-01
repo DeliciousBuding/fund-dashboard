@@ -14,6 +14,7 @@ import { useIndexHistory, useIndices, useTransactions } from "../lib/queries";
 import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { isUSMarketOpen } from "../services/marketTime";
+import { useUi } from "../stores/ui";
 
 const RANGES = [
   { value: "3mo", label: "3月" },
@@ -66,10 +67,11 @@ function IndicesBoard() {
 }
 
 function NasdaqPanel() {
+  const portfolioId = useUi((s) => s.portfolioId);
   const [range, setRange] = useState("1y");
   const history = useIndexHistory("^NDX", range);
-  // 全部交易散点叠加在 NDX 线上（继承旧 NasdaqOverview 语义）
-  const txs = useTransactions({ limit: 5000 });
+  // 全部交易散点叠加在 NDX 线上（继承旧 NasdaqOverview 语义，按当前组合隔离）
+  const txs = useTransactions({ limit: 5000, portfolioId });
 
   const scatter = useMemo(() => {
     const points = history.data?.data ?? [];
