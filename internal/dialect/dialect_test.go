@@ -3,6 +3,8 @@ package dialect
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -30,6 +32,41 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewChecked(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr bool
+	}{
+		{"sqlite", "sqlite", NameSQLite, false},
+		{"pg", "pg", NamePostgres, false},
+		{"pg-upper", "PG", NamePostgres, false},
+		{"mixed case", "Pg", NamePostgres, false},
+		{"empty defaults to sqlite", "", NameSQLite, false},
+		{"whitespace defaults to sqlite", "  ", NameSQLite, false},
+		{"unknown fails", "mysql", "", true},
+		{"unknown with spaces fails", " mysql ", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := NewChecked(c.in, nil)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("NewChecked(%q) = %v, want error", c.in, d.Name())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewChecked(%q): %v", c.in, err)
+			}
+			if d.Name() != c.want {
+				t.Fatalf("NewChecked(%q).Name() = %q, want %q", c.in, d.Name(), c.want)
+			}
+		})
+	}
+}
+
 func TestDaysSinceExpr(t *testing.T) {
 	col := "MAX(nh.date)"
 
@@ -41,8 +78,32 @@ func TestDaysSinceExpr(t *testing.T) {
 
 	pg := New(NamePostgres, nil)
 	got = pg.DaysSinceExpr(col)
-	if got != "CAST(EXTRACT(EPOCH FROM NOW()) / 86400 - EXTRACT(EPOCH FROM MAX(nh.date)::timestamp) / 86400 AS INTEGER)" {
+	if got != "CAST(TRUNC((EXTRACT(EPOCH FROM NOW()) - EXTRACT(EPOCH FROM (MAX(nh.date)::timestamp AT TIME ZONE 'UTC'))) / 86400, 0) AS INTEGER)" {
 		t.Fatalf("pg DaysSinceExpr = %q", got)
+	}
+}
+
+func TestIsMissingTableError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"sqlite", errors.New("SQL logic error: no such table: crawl_log (1)"), true},
+		{"postgres", errors.New(`pq: relation "agent_confirmations" does not exist`), true},
+		{"legacy", errors.New("undefined_table"), true},
+		{"wrapped", fmt.Errorf("list events: %w", errors.New(`pq: relation "agent_audit_events" does not exist`)), true},
+		{"case-insensitive", errors.New("NO SUCH TABLE: crawl_log"), true},
+		{"locked", errors.New("database is locked"), false},
+		{"constraint", errors.New("UNIQUE constraint failed"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsMissingTableError(tc.err); got != tc.want {
+				t.Fatalf("IsMissingTableError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 

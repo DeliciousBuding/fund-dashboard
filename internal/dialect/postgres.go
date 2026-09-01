@@ -17,8 +17,12 @@ func (d *Postgres) Name() string     { return NamePostgres }
 func (d *Postgres) IsPostgres() bool { return true }
 
 func (d *Postgres) DaysSinceExpr(dateColumn string) string {
+	// NOW() is a timestamptz whose epoch is already absolute; the date column
+	// is interpreted as UTC via AT TIME ZONE 'UTC' so the day count cannot
+	// drift with the server timezone. TRUNC(..., 0) mirrors SQLite's
+	// CAST(... AS INTEGER) truncation-toward-zero of the julianday difference.
 	return fmt.Sprintf(
-		"CAST(EXTRACT(EPOCH FROM NOW()) / 86400 - EXTRACT(EPOCH FROM %s::timestamp) / 86400 AS INTEGER)",
+		"CAST(TRUNC((EXTRACT(EPOCH FROM NOW()) - EXTRACT(EPOCH FROM (%s::timestamp AT TIME ZONE 'UTC'))) / 86400, 0) AS INTEGER)",
 		dateColumn,
 	)
 }
@@ -29,6 +33,7 @@ func (d *Postgres) HasColumn(ctx context.Context, table, column string) (bool, e
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.columns
 			WHERE table_name = ? AND column_name = ?
+			  AND table_schema = 'public'
 		)`, table, column).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("inspect %s columns: %w", table, err)

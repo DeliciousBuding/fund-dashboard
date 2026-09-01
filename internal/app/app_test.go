@@ -140,3 +140,16 @@ func TestResolveDriver(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildRejectsUnknownDriver(t *testing.T) {
+	_, err := Build(context.Background(), config.Config{
+		DBDriver: "mysql",
+		DBPath:   filepath.Join(t.TempDir(), "fund.db"),
+	})
+	if err == nil {
+		t.Fatal("Build with unknown driver = nil error, want fail-closed dialect resolution")
+	}
+	if !strings.Contains(err.Error(), "mysql") {
+		t.Fatalf("Build error = %q, want unsupported driver name", err)
+	}
+}

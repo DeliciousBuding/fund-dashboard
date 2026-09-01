@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"strings"
 	"time"
@@ -205,9 +206,8 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 				SELECT COUNT(1) FROM dca_plan_executions
 				WHERE plan_id = ? AND trade_date = ? AND status IN ('executed','success','ok')
 			`, p.id, asOf).Scan(&exists); err != nil {
-				msg := strings.ToLower(err.Error())
 				// Missing ledger table on older SQLite fixtures — treat as no prior execution.
-				if strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table") {
+				if dialect.IsMissingTableError(err) {
 					exists = 0
 				} else {
 					return result, fmt.Errorf("check dca_plan_executions plan=%d date=%s: %w", p.id, asOf, err)
@@ -327,8 +327,7 @@ func (s Service) recordDCAPlanExecutionTx(ctx context.Context, ex dcaExecer, pla
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, planID, fundCode, tradeDate, amount, status, orderID, tradeDate, nav, nullIfEmpty(message), now, now)
 	if err != nil {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table") {
+		if dialect.IsMissingTableError(err) {
 			return nil
 		}
 	}

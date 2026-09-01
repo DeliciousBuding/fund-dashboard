@@ -17,6 +17,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
 	"github.com/DeliciousBuding/fund-dashboard/internal/confirmations"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	"github.com/DeliciousBuding/fund-dashboard/internal/httpapi"
 	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/agentstate"
@@ -46,6 +47,11 @@ func resolveDriver(cfg config.Config) string {
 
 func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	driver := resolveDriver(cfg)
+	// Fail closed on unknown drivers instead of relying on any downstream
+	// SQLite fallback: the checked contract matches db.Open's rejection.
+	if _, err := dialect.NewChecked(driver, nil); err != nil {
+		return nil, fmt.Errorf("resolve dialect: %w", err)
+	}
 	dbase, err := db.Open(ctx, db.Options{
 		Driver:     driver,
 		SQLitePath: cfg.DBPath,
