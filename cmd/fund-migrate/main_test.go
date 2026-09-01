@@ -251,6 +251,44 @@ func TestNonEmptyTargetTables(t *testing.T) {
 	}
 }
 
+func TestCoerceForTargetBooleanMapping(t *testing.T) {
+	tests := []struct {
+		name    string
+		driver  string
+		colType string
+		in      any
+		want    any
+		wantErr bool
+	}{
+		{"int zero", dialect.NamePostgres, "boolean", int64(0), false, false},
+		{"int one", dialect.NamePostgres, "boolean", int64(1), true, false},
+		{"bool passthrough", dialect.NamePostgres, "boolean", true, true, false},
+		{"nil passthrough", dialect.NamePostgres, "boolean", nil, nil, false},
+		{"bad integer", dialect.NamePostgres, "boolean", int64(2), nil, true},
+		{"bad type", dialect.NamePostgres, "boolean", "yes", nil, true},
+		{"non-boolean passthrough", dialect.NamePostgres, "bigint", int64(7), int64(7), false},
+		{"sqlite passthrough", dialect.NameSQLite, "boolean", int64(1), int64(1), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := coerceForTarget(tc.driver, tc.colType, tc.in)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("coerceForTarget(%q, %q, %v) = %v, want error", tc.driver, tc.colType, tc.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("coerceForTarget(%q, %q, %v) error: %v", tc.driver, tc.colType, tc.in, err)
+			}
+			if got != tc.want {
+				t.Fatalf("coerceForTarget(%q, %q, %v) = %v (%T), want %v (%T)",
+					tc.driver, tc.colType, tc.in, got, got, tc.want, tc.want)
+			}
+		})
+	}
+}
+
 func TestTargetColumnsUnknownDriverErrors(t *testing.T) {
 	ctx := context.Background()
 	src, dst := openTestDBs(t)

@@ -106,6 +106,9 @@ func FetchYahooIndexQuotes(ctx context.Context, symbols []string) ([]IndexQuote,
 	out := make([]IndexQuote, 0, len(symbols))
 	var firstErr error
 	for _, symbol := range symbols {
+		if strings.TrimSpace(symbol) == "" {
+			continue // caller batch may contain blank entries; treat as non-fatal
+		}
 		if err := ctx.Err(); err != nil {
 			if len(out) > 0 {
 				return out, nil
@@ -245,6 +248,11 @@ func fetchOneYahooIndex(ctx context.Context, client *http.Client, template, symb
 	}
 	meta := payload.Chart.Result[0].Meta
 	price := meta.RegularMarketPrice
+	if price <= 0 {
+		// Missing/zero quote must not be reported as a successful zero-price
+		// snapshot (zero-value vs missing-field confusion).
+		return IndexQuote{}, fmt.Errorf("no price for %s", symbol)
+	}
 	prev := meta.ChartPreviousClose
 	if prev <= 0 {
 		prev = meta.PreviousClose

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/audit"
 )
@@ -36,6 +37,13 @@ func (r AuditEventRepository) EnsureSchema(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("ensure agent_audit_events schema: %w", err)
+	}
+	// SQLite parity with the PG index set (schema_pg.go). Best-effort so a
+	// legacy table with a different shape can never block boot.
+	if _, err := r.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_agent_audit_events_tool ON agent_audit_events(tool)
+	`); err != nil {
+		slog.Warn("agent_audit_events tool index skipped", "error", err)
 	}
 	return nil
 }

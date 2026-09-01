@@ -156,6 +156,31 @@ func TestAuditEventRepositoryDoesNotStoreRawSensitiveArgs(t *testing.T) {
 	}
 }
 
+// TestAuditEventRepositoryEnsureSchemaCreatesToolIndex locks SQLite parity with
+// the PG schema index set and proves EnsureSchema is idempotent.
+func TestAuditEventRepositoryEnsureSchemaCreatesToolIndex(t *testing.T) {
+	ctx := context.Background()
+	db := openAgentStateFixture(t)
+	defer db.Close()
+
+	repo := NewAuditEventRepository(db)
+	for i := 0; i < 2; i++ {
+		if err := repo.EnsureSchema(ctx); err != nil {
+			t.Fatalf("EnsureSchema run %d: %v", i, err)
+		}
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'index' AND name = 'idx_agent_audit_events_tool'
+	`).Scan(&n); err != nil {
+		t.Fatalf("query index: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("idx_agent_audit_events_tool present=%d, want 1", n)
+	}
+}
+
 func TestAuditEventRepositoryGetMissingReturnsNil(t *testing.T) {
 	ctx := context.Background()
 	db := openAgentStateFixture(t)

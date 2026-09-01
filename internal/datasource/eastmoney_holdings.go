@@ -41,10 +41,11 @@ func NewEastmoneyHoldings() *EastmoneyHoldings {
 // FetchHoldings scrapes the latest available top-N holdings for a fund code.
 // year may be empty to let the endpoint choose; when empty we try current and previous year.
 func (s *EastmoneyHoldings) FetchHoldings(ctx context.Context, code string, topline int) ([]FundHolding, error) {
-	code = normalizeFundCode(code)
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return nil, fmt.Errorf("fund code is required")
 	}
+	code = normalizeFundCode(code)
 	if topline <= 0 {
 		topline = 10
 	}

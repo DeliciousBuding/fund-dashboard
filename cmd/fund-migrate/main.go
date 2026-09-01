@@ -160,6 +160,15 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, targetDriver, table str
 		log.Printf("  %-28s 跳过（目标无此表）", table)
 		return nil
 	}
+	// PG 目标需要列类型以做类型适配：SQLite 无 BOOLEAN（following 存 0/1），
+	// 直接把 int64 发给 PG 会以 int8 绑定而报「column is of type boolean」。
+	var pgTypes map[string]string
+	if targetDriver == dialect.NamePostgres {
+		pgTypes, err = pgColumnTypes(ctx, dst, table)
+		if err != nil {
+			return fmt.Errorf("target column types: %w", err)
+		}
+	}
 
 	// 交集（源序）
 	var cols []string
@@ -233,6 +242,14 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, targetDriver, table str
 			default:
 				args[i] = v
 			}
+			if targetDriver == dialect.NamePostgres && pgTypes != nil {
+				coerced, err := coerceForTarget(targetDriver, pgTypes[cols[i]], args[i])
+				if err != nil {
+					_ = tx.Rollback()
+					return fmt.Errorf("coerce %s.%s row %d: %w", table, cols[i], count, err)
+				}
+				args[i] = coerced
+			}
 		}
 		if _, err := stmt.ExecContext(ctx, args...); err != nil {
 			_ = tx.Rollback()
@@ -303,6 +320,50 @@ func targetColumns(ctx context.Context, db *sql.DB, targetDriver, table string) 
 	default:
 		return nil, fmt.Errorf("unsupported target driver %q", targetDriver)
 	}
+}
+
+// coerceForTarget adapts SQLite-scanned values to the PG column type before
+// binding. The known mismatch is SQLite INTEGER 0/1 → PG BOOLEAN; everything
+// else passes through unchanged.
+func coerceForTarget(targetDriver, colType string, v any) (any, error) {
+	if targetDriver != dialect.NamePostgres || v == nil || colType != "boolean" {
+		return v, nil
+	}
+	switch n := v.(type) {
+	case bool:
+		return n, nil
+	case int64:
+		switch n {
+		case 0:
+			return false, nil
+		case 1:
+			return true, nil
+		default:
+			return nil, fmt.Errorf("boolean column got integer %d", n)
+		}
+	default:
+		return nil, fmt.Errorf("boolean column got unsupported scanned type %T", v)
+	}
+}
+
+// pgColumnTypes returns column name → data_type for one PG table.
+func pgColumnTypes(ctx context.Context, db *sql.DB, table string) (map[string]string, error) {
+	out := map[string]string{}
+	rows, err := db.QueryContext(ctx, `
+		SELECT column_name, data_type FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = ?`, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name, typ string
+		if err := rows.Scan(&name, &typ); err != nil {
+			return nil, err
+		}
+		out[name] = typ
+	}
+	return out, rows.Err()
 }
 
 func pgColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
