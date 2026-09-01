@@ -2,8 +2,9 @@
 // 设计纪律（03 §5）：SSE 推送的 ticker 更新无动画，防视觉噪音。
 // 服务端有 max-lifetime，断线自动重连（指数退避上限 30s）。
 
-import type { MarketIndex } from "@fund-dashboard/contracts";
+import { type MarketIndex, MarketIndexSchema } from "@fund-dashboard/contracts";
 import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
 
 export interface MarketStreamState {
   indices: MarketIndex[];
@@ -30,7 +31,8 @@ export function useMarketStream(enabled = true): MarketStreamState {
       source = new EventSource("/api/market/stream");
       source.addEventListener("indices", (ev) => {
         try {
-          const data = JSON.parse(ev.data) as MarketIndex[];
+          // 与 /api/market/indices 同一线型：zod 校验后脏帧整体跳过。
+          const data = z.array(MarketIndexSchema).parse(JSON.parse(ev.data) as unknown);
           retryRef.current = 0;
           setState({
             indices: data,

@@ -3,7 +3,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { PortfolioAllocationSchema, PortfolioSchema } from "./portfolio.ts";
+import {
+  PortfolioAllocationSchema,
+  PortfolioDefinitionSchema,
+  PortfolioSchema,
+  TimelinePointSchema,
+} from "./portfolio.ts";
 
 const allocationBase = {
   total_value: 12345.67,
@@ -57,4 +62,47 @@ test("PortfolioSchema parses a full summary (CI smoke shape)", () => {
   });
   assert.equal(parsed.total_tx, 12);
   assert.equal(parsed.top_gainer, null);
+});
+
+// ── /api/portfolio/portfolios + /api/portfolio/timeline ─────────────
+
+const definitionWire = {
+  id: 1,
+  name: "默认组合",
+  description: "主账户持仓",
+};
+
+test("PortfolioDefinitionSchema parses the real definition shape", () => {
+  const parsed = PortfolioDefinitionSchema.parse(definitionWire);
+  assert.equal(parsed.id, 1);
+  assert.equal(parsed.description, "主账户持仓");
+});
+
+test("PortfolioDefinitionSchema requires the COALESCE'd description field", () => {
+  assert.throws(() => PortfolioDefinitionSchema.parse({ id: 1, name: "默认组合" }));
+});
+
+const timelineWire = {
+  date: "2026-08-29",
+  total_value: 12345.67,
+  total_cost: 10000,
+  pnl: 2345.67,
+  pnl_pct: 23.46,
+};
+
+test("TimelinePointSchema parses the real timeline point shape", () => {
+  const parsed = TimelinePointSchema.parse(timelineWire);
+  assert.equal(parsed.total_value, 12345.67);
+  assert.equal(parsed.pnl_pct, 23.46);
+});
+
+test("TimelinePointSchema rejects a point missing pnl_pct", () => {
+  assert.throws(() =>
+    TimelinePointSchema.parse({
+      date: "2026-08-29",
+      total_value: 12345.67,
+      total_cost: 10000,
+      pnl: 2345.67,
+    }),
+  );
 });

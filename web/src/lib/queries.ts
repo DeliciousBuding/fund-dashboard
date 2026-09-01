@@ -15,9 +15,11 @@ import {
   NavPointSchema,
   PenetrationResultSchema,
   PortfolioAllocationSchema,
+  PortfolioDefinitionSchema,
   PortfolioSchema,
   SecurityInfoSchema,
   SourceEventsResponseSchema,
+  TimelinePointSchema,
   type TransactionsListItemSchema,
   TransactionsResponseSchema,
   XirrResultSchema,
@@ -52,33 +54,24 @@ export function usePortfolio(portfolioId?: number) {
   });
 }
 
-export interface PortfolioDefinition {
-  id: number;
-  name: string;
-  description?: string;
-}
-
 export function usePortfolios() {
   return useQuery({
     queryKey: ["portfolio-definitions"],
-    queryFn: ({ signal }) => api<PortfolioDefinition[]>("/api/portfolio/portfolios", { signal }),
+    queryFn: ({ signal }) =>
+      fetchValidated("/api/portfolio/portfolios", z.array(PortfolioDefinitionSchema), signal),
     staleTime: Infinity,
   });
-}
-
-export interface TimelinePoint {
-  date: string;
-  total_value: number;
-  total_cost: number;
-  pnl: number;
-  pnl_pct: number;
 }
 
 export function useTimeline(portfolioId?: number) {
   return useQuery({
     queryKey: ["portfolio-timeline", portfolioId ?? 1],
     queryFn: ({ signal }) =>
-      api<TimelinePoint[]>(withPortfolio("/api/portfolio/timeline", portfolioId), { signal }),
+      fetchValidated(
+        withPortfolio("/api/portfolio/timeline", portfolioId),
+        z.array(TimelinePointSchema),
+        signal,
+      ),
     staleTime: FIVE_MIN,
   });
 }

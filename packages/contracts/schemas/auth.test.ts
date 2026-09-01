@@ -7,7 +7,9 @@ import { test } from "node:test";
 import {
   AuthEventSchema,
   AuthEventsResponseSchema,
+  AuthOkResponseSchema,
   AuthSessionsResponseSchema,
+  AuthStatusSchema,
   SessionInfoSchema,
 } from "./auth.ts";
 
@@ -70,4 +72,43 @@ test("AuthEventsResponseSchema passes arrays through", () => {
 
 test("AuthSessionsResponseSchema rejects a missing required field", () => {
   assert.throws(() => SessionInfoSchema.parse({ id_prefix: "x" }));
+});
+
+// ── /api/auth/status ────────────────────────────────────────────────
+
+const statusWire = {
+  initialized: true,
+  env_managed: false,
+  authenticated: true,
+  session_expires_at: 1756086400,
+};
+
+test("AuthStatusSchema parses the authenticated handler payload", () => {
+  const parsed = AuthStatusSchema.parse(statusWire);
+  assert.equal(parsed.initialized, true);
+  assert.equal(parsed.session_expires_at, 1756086400);
+});
+
+test("AuthStatusSchema accepts unauthenticated payload (no session_expires_at)", () => {
+  // handleAuthStatus only adds session_expires_at when a session authenticates.
+  const parsed = AuthStatusSchema.parse({
+    initialized: true,
+    env_managed: false,
+    authenticated: false,
+  });
+  assert.equal(parsed.session_expires_at, undefined);
+});
+
+test("AuthStatusSchema rejects a missing required flag", () => {
+  assert.throws(() => AuthStatusSchema.parse({ initialized: true }));
+});
+
+// ── /api/auth/setup|login|logout ok envelope ────────────────────────
+
+test("AuthOkResponseSchema passes the {ok:true} success envelope", () => {
+  assert.deepEqual(AuthOkResponseSchema.parse({ ok: true }), { ok: true });
+});
+
+test("AuthOkResponseSchema rejects ok:false", () => {
+  assert.throws(() => AuthOkResponseSchema.parse({ ok: false }));
 });

@@ -1,6 +1,12 @@
 // 定投 /dca —— 计划管理（新建/编辑/停用）+ 手动执行（dry-run 预览 → 确认执行）。
 // 写路径：POST /api/dca/plans、/disable、/run（session + CSRF）。
 
+import {
+  DcaPlanDisableResponseSchema,
+  DcaPlanUpsertResponseSchema,
+  type DcaRunResult,
+  DcaRunResultSchema,
+} from "@fund-dashboard/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CircleStop, Pencil, Play, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -72,7 +78,7 @@ function PlanFormDialog(props: {
       if (!form.fund_code.trim()) throw new Error("请填写标的代码");
       if (!Number.isFinite(amount) || amount <= 0) throw new Error("金额必须为正数");
       if (form.weekday_mask.length === 0) throw new Error("至少选一个扣款日");
-      await api<{ ok: boolean }>("/api/dca/plans", {
+      const data = await api<unknown>("/api/dca/plans", {
         method: "POST",
         body: {
           id: form.id ?? 0,
@@ -84,6 +90,8 @@ function PlanFormDialog(props: {
           start_date: form.start_date,
         },
       });
+      // 后端回显 {ok, plan}（UpsertDCAPlanResult），按契约校验。
+      return DcaPlanUpsertResponseSchema.parse(data);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["dca-plans"] });
@@ -193,30 +201,18 @@ function PlanFormDialog(props: {
 
 // ── 手动执行（dry-run 预览 → 确认）───────────────────────────────────
 
-interface DcaRunItem {
-  plan_id: number;
-  fund_code: string;
-  fund_name?: string;
-  amount: number;
-  status: string;
-  message?: string;
-}
-interface DcaRunResult {
-  ok: boolean;
-  dry_run: boolean;
-  executed: number;
-  skipped: number;
-  previewed: number;
-  items: DcaRunItem[];
-}
-
 function RunDialog(props: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [preview, setPreview] = useState<DcaRunResult | null>(null);
   const queryClient = useQueryClient();
 
   const run = useMutation({
-    mutationFn: (dryRun: boolean) =>
-      api<DcaRunResult>("/api/dca/run", { method: "POST", body: { dry_run: dryRun } }),
+    mutationFn: async (dryRun: boolean) => {
+      const data = await api<unknown>("/api/dca/run", {
+        method: "POST",
+        body: { dry_run: dryRun },
+      });
+      return DcaRunResultSchema.parse(data);
+    },
     onSuccess: async (result, dryRun) => {
       if (dryRun) {
         setPreview(result);
@@ -333,7 +329,10 @@ export function DcaPage() {
   });
 
   const disable = useMutation({
-    mutationFn: (id: number) => api(`/api/dca/plans/${id}/disable`, { method: "POST" }),
+    mutationFn: async (id: number) => {
+      const data = await api<unknown>(`/api/dca/plans/${id}/disable`, { method: "POST" });
+      return DcaPlanDisableResponseSchema.parse(data);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["dca-plans"] });
       toast.success("计划已停用");

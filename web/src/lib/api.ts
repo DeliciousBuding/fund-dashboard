@@ -1,6 +1,7 @@
 // API client: cookie-session based, CSRF header on mutations.
-// 响应边界校验在查询层（lib/queries.ts fetchValidated + contracts zod）；
-// 少数未入 contracts 的端点用类型化泛型直连（见 docs 与 REPORT 记录）。
+// 响应边界校验在调用侧：查询走 lib/queries.ts fetchValidated，写路径在
+// mutation 中 parse contracts zod；本 client 只负责 HTTP/CSRF/401 与错误映射。
+// 例外：responseType:"blob"（XLSX 导出）返回原始字节，不做 JSON 校验。
 export class ApiError extends Error {
   constructor(
     public status: number,

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Chart } from "../components/charts/Chart";
 import { baseChartOption } from "../components/charts/theme";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Segmented } from "../components/ui/segmented";
@@ -34,6 +35,19 @@ function IndicesBoard() {
           <Skeleton key={k} className="h-20" />
         ))}
       </div>
+    );
+  }
+  if (indices.isError) {
+    return (
+      <EmptyState
+        title="指数加载失败"
+        description="无法读取指数行情，请重试。"
+        action={
+          <Button size="sm" onClick={() => void indices.refetch()}>
+            重试
+          </Button>
+        }
+      />
     );
   }
   const list = indices.data ?? [];

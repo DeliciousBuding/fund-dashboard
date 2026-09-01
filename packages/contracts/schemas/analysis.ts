@@ -1,5 +1,6 @@
 // analysis.ts — XIRR, drawdown, fund comparison
-// v3.0 contracts SSOT — migrated verbatim from web/src/api/types.ts
+// v3.0 contracts SSOT — derived from internal/httpapi/funds.go (xirrResponse /
+// drawdownResponse) and internal/httpapi/spa_transactions.go (handleCompareFunds).
 import { z } from "zod";
 
 export const XirrResultSchema = z.object({

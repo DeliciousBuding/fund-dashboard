@@ -39,3 +39,21 @@ export const AuthEventsResponseSchema = z.object({
   events: z.array(AuthEventSchema),
 });
 export type AuthEventsResponse = z.infer<typeof AuthEventsResponseSchema>;
+
+// AuthStatus is GET /api/auth/status (internal/httpapi/auth.go handleAuthStatus).
+// initialized/env_managed/authenticated are always emitted; session_expires_at is
+// added only when a valid session cookie authenticates the request, so it is
+// optional (unix seconds, session TTL).
+export const AuthStatusSchema = z.object({
+  initialized: z.boolean(),
+  env_managed: z.boolean(),
+  authenticated: z.boolean(),
+  session_expires_at: z.number().optional(),
+});
+export type AuthStatus = z.infer<typeof AuthStatusSchema>;
+
+// setup/login/logout all write {"ok":true} on success (map[string]any in Go).
+export const AuthOkResponseSchema = z.object({
+  ok: z.literal(true),
+});
+export type AuthOkResponse = z.infer<typeof AuthOkResponseSchema>;

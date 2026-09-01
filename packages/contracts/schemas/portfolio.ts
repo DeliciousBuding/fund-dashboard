@@ -2,6 +2,30 @@
 // v3.0 contracts SSOT. Fixes G1 (PortfolioSchema missing unique_stocks/by_security_type).
 import { z } from "zod";
 
+// ═══════ Portfolio definitions / timeline ═══════
+
+// GET /api/portfolio/portfolios → bare array of PortfolioDefinition
+// (internal/service/portfolio/definitions.go). description is COALESCE'd to ""
+// in SQL and has no omitempty, so it is always emitted — required, never omitted.
+export const PortfolioDefinitionSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string(),
+});
+export type PortfolioDefinition = z.infer<typeof PortfolioDefinitionSchema>;
+
+// GET /api/portfolio/timeline → bare array of TimelineEntry
+// (internal/service/portfolio/timeline.go). All five fields are plain values,
+// no pointers/omitempty.
+export const TimelinePointSchema = z.object({
+  date: z.string(),
+  total_value: z.number(),
+  total_cost: z.number(),
+  pnl: z.number(),
+  pnl_pct: z.number(),
+});
+export type TimelinePoint = z.infer<typeof TimelinePointSchema>;
+
 // ═══════ Allocation ═══════
 
 export const AllocationBucketSchema = z.object({

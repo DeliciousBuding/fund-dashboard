@@ -1,5 +1,6 @@
 // funds.ts — securities (fund/stock/etf/index), transactions, nav
-// v3.0 contracts SSOT — migrated verbatim from web/src/api/types.ts (2026-06-21)
+// v3.0 contracts SSOT — derived from internal/service/portfolio (detail_types.go,
+// securities.go, transactions_list.go) and internal/httpapi/fund_response.go.
 import { z } from "zod";
 
 // ═══════ Fund / Security types ═══════
@@ -65,7 +66,11 @@ export type FundDetail = z.infer<typeof FundDetailSchema>;
 export const NavPointSchema = z.object({
   date: z.string(),
   unit_nav: z.number(),
-  daily_change_pct: z.number().nullable().optional(),
+  // Go NavHistoryPoint.DailyChangePct has no omitempty: the field is always
+  // emitted and is null when the row has no change (never absent).
+  daily_change_pct: z.number().nullable(),
+  // Go COALESCE(security_type,'fund') in GetNavHistory: always a string.
+  security_type: z.string(),
 });
 export type NavPoint = z.infer<typeof NavPointSchema>;
 
