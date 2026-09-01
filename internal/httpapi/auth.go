@@ -71,10 +71,9 @@ func handleAuthStatus(svc *auth.Service) http.HandlerFunc {
 func handleAuthSetup(svc *auth.Service, secureCookie bool, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r, trusted)
-		if retryAfter, ok := svc.Limiter.Allow("setup:" + ip); !ok {
-			rateLimited(w, retryAfter)
-			return
-		}
+		// No limiter bucket here: setup has no guessable credential (one-shot
+		// first-run password init); failures are 409/403, not brute-force
+		// material. The old "setup:" Allow-only bucket could never lock.
 		var req authCredentialsRequest
 		if !decodeAuthBody(w, r, &req) {
 			return
@@ -106,9 +105,9 @@ func handleAuthLogin(svc *auth.Service, secureCookie bool, trusted []*net.IPNet)
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r, trusted)
 		if retryAfter, ok := svc.Limiter.Allow("login:" + ip); !ok {
-			// Escalating lockout tripped: record it (design 06 §2.2 audit matrix).
-			svc.RecordAuthEvent(r.Context(), "lockout", ip, truncatedUserAgent(r),
-				fmt.Sprintf("retry_after=%ds", int(retryAfter.Seconds())+1))
+			// Lockout audit happens once, when the lock trips (see
+			// recordLoginFailure) — not on every rejected retry, so an ongoing
+			// brute force cannot flood auth_events with one row per 429.
 			rateLimited(w, retryAfter)
 			return
 		}
@@ -120,13 +119,11 @@ func handleAuthLogin(svc *auth.Service, secureCookie bool, trusted []*net.IPNet)
 		switch {
 		case errors.Is(err, auth.ErrNotInitialized):
 			// Same response as bad credentials: no extra oracle beyond /status.
-			svc.Limiter.Failure("login:" + ip)
-			svc.RecordAuthEvent(r.Context(), "login_fail", ip, truncatedUserAgent(r), "not_initialized")
+			recordLoginFailure(r, svc, ip, "not_initialized")
 			writeError(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		case errors.Is(err, auth.ErrInvalidCredentials):
-			svc.Limiter.Failure("login:" + ip)
-			svc.RecordAuthEvent(r.Context(), "login_fail", ip, truncatedUserAgent(r), "invalid_credentials")
+			recordLoginFailure(r, svc, ip, "invalid_credentials")
 			writeError(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		case err != nil:
@@ -176,7 +173,10 @@ func handleAuthPassword(svc *auth.Service, trusted []*net.IPNet) http.HandlerFun
 			writeError(w, http.StatusForbidden, "auth_env_managed")
 			return
 		case errors.Is(err, auth.ErrInvalidCredentials):
-			svc.Limiter.Failure("password:" + ip)
+			if tripped, lock := svc.Limiter.Failure("password:" + ip); tripped {
+				svc.RecordAuthEvent(r.Context(), "lockout", ip, truncatedUserAgent(r),
+					fmt.Sprintf("retry_after=%ds", int(lock.Seconds())+1))
+			}
 			writeError(w, http.StatusUnauthorized, "invalid_credentials")
 			return
 		case errors.Is(err, auth.ErrWeakPassword):
@@ -215,6 +215,11 @@ func handleAuthSessions(svc *auth.Service) http.HandlerFunc {
 func handleAuthSessionRevoke(svc *auth.Service, trusted []*net.IPNet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		prefix := chi.URLParam(r, "id")
+		// Bound the path parameter before it can reach the audit detail column.
+		if len(prefix) > 64 {
+			writeError(w, http.StatusBadRequest, "bad_request")
+			return
+		}
 		err := svc.RevokeByIDPrefix(r.Context(), prefix)
 		switch {
 		case errors.Is(err, auth.ErrSessionNotFound):
@@ -257,6 +262,19 @@ func handleAuthEvents(svc *auth.Service) http.HandlerFunc {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────
+
+// recordLoginFailure counts the failed attempt and emits exactly one lockout
+// audit event when the failure trips the escalating lock (design 06 §2.2).
+// Recording on trip — not on every rejected retry — keeps an ongoing brute
+// force from writing one auth_events row per 429.
+func recordLoginFailure(r *http.Request, svc *auth.Service, ip, reason string) {
+	tripped, lock := svc.Limiter.Failure("login:" + ip)
+	if tripped {
+		svc.RecordAuthEvent(r.Context(), "lockout", ip, truncatedUserAgent(r),
+			fmt.Sprintf("retry_after=%ds", int(lock.Seconds())+1))
+	}
+	svc.RecordAuthEvent(r.Context(), "login_fail", ip, truncatedUserAgent(r), reason)
+}
 
 func decodeAuthBody(w http.ResponseWriter, r *http.Request, out any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)

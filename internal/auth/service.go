@@ -73,9 +73,8 @@ func NewService(store *Store, opts Options) *Service {
 	}
 }
 
-// SessionTTL / SessionMaxAge expose the configured windows for cookie Max-Age.
-func (s *Service) SessionTTL() time.Duration    { return s.ttl }
-func (s *Service) SessionMaxAge() time.Duration { return s.maxAge }
+// SessionTTL exposes the configured sliding window for cookie Max-Age.
+func (s *Service) SessionTTL() time.Duration { return s.ttl }
 
 // Status is the unauthenticated discovery payload for the SPA.
 type Status struct {
@@ -269,7 +268,10 @@ func (s *Service) RevokeByIDPrefix(ctx context.Context, prefix string) error {
 	return ErrSessionNotFound
 }
 
-// SweepExpired deletes expired sessions; called daily from the scheduler.
+// SweepExpired deletes expired sessions and returns how many rows were
+// removed. Wired into the daily 03:00 scheduler window via
+// jobs.AuthSessionSweeper (internal/app wires it); the bare-SQL path in
+// internal/jobs remains only as a legacy fallback.
 func (s *Service) SweepExpired(ctx context.Context) (int64, error) {
 	return s.store.DeleteExpiredSessions(ctx, s.now())
 }

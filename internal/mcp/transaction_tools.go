@@ -38,13 +38,12 @@ func (s *Server) callImportTransactions(ctx context.Context, args map[string]any
 		return nil, jsonrpcError(-32602, "invalid_params: transactions max 5000")
 	}
 	items := make([]adminsvc.ImportTransaction, 0, len(raw))
-	for i, item := range raw {
+	for _, item := range raw {
 		obj, ok := item.(map[string]any)
 		if !ok {
 			return nil, jsonrpcError(-32602, "invalid_params: transactions item must be object")
 		}
 		items = append(items, importTransactionFromArgs(obj))
-		_ = i
 	}
 	result, err := s.admin.ImportTransactions(ctx, items)
 	if err != nil {

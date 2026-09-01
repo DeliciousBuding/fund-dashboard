@@ -78,15 +78,24 @@ func (rl *RateLimiter) Allow(key string) (retryAfter time.Duration, ok bool) {
 	return time.Duration(wait * float64(time.Second)), false
 }
 
-// sweep deletes buckets that have drained to zero tokens (idle keys). Runs at
-// most every sweepInterval; called under rl.mu.
+// sweep deletes idle buckets — ones that have fully replenished to burst and
+// therefore behave exactly like a brand-new bucket. Runs at most every
+// sweepInterval; called under rl.mu. Drained or partially-refilled buckets
+// are kept: deleting them would respawn them with full burst and silently
+// reset an in-progress rate limit.
 func (rl *RateLimiter) sweep(now time.Time) {
 	if now.Sub(rl.lastSweep) < sweepInterval {
 		return
 	}
 	rl.lastSweep = now
 	for key, b := range rl.buckets {
-		if b.tokens <= 0 {
+		// Account for refill accrued since the bucket was last touched before
+		// judging it idle.
+		tokens := b.tokens
+		if d := now.Sub(b.last).Seconds(); d > 0 {
+			tokens = math.Min(rl.burst, tokens+d*rl.rate)
+		}
+		if tokens >= rl.burst {
 			delete(rl.buckets, key)
 		}
 	}

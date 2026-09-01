@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"time"
 
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
@@ -205,14 +206,42 @@ func jsonrpcError(code int, message string) *Error {
 	return &Error{Code: code, Message: message}
 }
 
-// internalToolError preserves the underlying error for operator debuggability
-// while bounding message length to avoid dumping oversized internals.
+// internalToolError converts a service error into a JSON-RPC tool error.
+// The full error is logged server-side; the caller only receives a short,
+// sanitized message. PUBLIC_MCP_KEY holders (Analyst) are authenticated but
+// must not receive SQL/driver/network internals, so technical errors degrade
+// to a stable "internal_error" (parity with httpapi.writeSafeError).
 func internalToolError(err error) *Error {
-	msg := err.Error()
-	if len(msg) > 500 {
-		msg = msg[:500]
+	raw := err.Error()
+	msg := sanitizedToolErrorMessage(raw)
+	if msg != raw {
+		slog.Error("mcp tool internal error", "error", raw)
 	}
 	return jsonrpcError(-32000, "tool_error: "+msg)
+}
+
+// sanitizedToolErrorMessage passes short, agent-actionable validation
+// messages through and redacts anything that looks like storage/driver or
+// network internals.
+func sanitizedToolErrorMessage(msg string) string {
+	m := strings.TrimSpace(msg)
+	if m == "" || len(m) > 120 {
+		return "internal_error"
+	}
+	low := strings.ToLower(m)
+	for _, marker := range []string{
+		"sql:", "pq:", "sqlite", "postgres", "driver:", "stack", "panic",
+		"no such table", "syntax error", "constraint", "connection refused",
+		"connection reset", "dial ", "unmarshal", "certificate",
+	} {
+		if strings.Contains(low, marker) {
+			return "internal_error"
+		}
+	}
+	if strings.ContainsAny(m, "{}[]") {
+		return "internal_error"
+	}
+	return m
 }
 
 func nowUTC() time.Time {
