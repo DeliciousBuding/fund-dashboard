@@ -40,9 +40,6 @@ type IndexHistory struct {
 // DefaultIndexSymbols are all MarketTicker indices including CN/HK (#100).
 var DefaultIndexSymbols = []string{"^NDX", "^GSPC", "^DJI", "^IXIC", "^HSI", "000001.SS", "399001.SZ", "399006.SZ"}
 
-// DefaultUSIndexSymbols is kept for backward compatibility.
-var DefaultUSIndexSymbols = DefaultIndexSymbols
-
 // defaultIndexNames is the Yahoo shortName fallback when meta is empty (#164).
 // English Yahoo-style labels — SPA MarketTicker display uses market.index.* i18n.
 var defaultIndexNames = map[string]string{

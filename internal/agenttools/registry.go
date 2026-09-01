@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 )
 
 //go:embed default_registry.json
@@ -117,14 +116,6 @@ func WithDisabledBoundaries() LoadOption {
 	return func(opts *loadOptions) {
 		opts.disabledBoundaries = true
 	}
-}
-
-func LoadFile(path string, options ...LoadOption) (*Registry, error) {
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read tool registry: %w", err)
-	}
-	return LoadJSON(payload, options...)
 }
 
 func DefaultRegistry() (*Registry, error) {

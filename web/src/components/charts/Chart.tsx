@@ -16,7 +16,6 @@ interface ChartProps {
   className?: string;
   /** Accessible name for the rendered chart (role="img"). */
   ariaLabel?: string;
-  onClick?: (params: unknown) => void;
 }
 
 export function Chart({

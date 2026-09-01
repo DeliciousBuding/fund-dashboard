@@ -175,10 +175,3 @@ func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (Ad
 		DeltaShares: delta,
 	}, nil
 }
-
-func nullIfZero(v float64) any {
-	if v == 0 {
-		return nil
-	}
-	return v
-}

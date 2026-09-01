@@ -17,7 +17,7 @@ function nextTabIndex(current: number, key: string, length: number): number {
 }
 
 // Segmented — 分段选择器（时间区间/视角切换），motion layoutId 滑动指示器。
-export interface SegmentedOption<T extends string> {
+interface SegmentedOption<T extends string> {
   value: T;
   label: string;
 }
