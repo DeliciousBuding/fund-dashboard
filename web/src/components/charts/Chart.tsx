@@ -1,6 +1,7 @@
 // Chart — 图表容器壳：统一高度、loading 骨架、empty 占位、主题感知重渲染。
 import { useMemo } from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { readChartTheme } from "./theme";
 import { useEChart } from "./useEChart";
 
@@ -16,6 +17,9 @@ interface ChartProps {
   className?: string;
   /** Accessible name for the rendered chart (role="img"). */
   ariaLabel?: string;
+  error?: boolean;
+  errorText?: string;
+  onRetry?: () => void;
 }
 
 export function Chart({
@@ -27,15 +31,18 @@ export function Chart({
   emptyText = "暂无数据",
   className,
   ariaLabel,
+  error,
+  errorText = "加载失败",
+  onRetry,
 }: ChartProps) {
   // 主题快照：dataset.theme 变化时 deps 里的 themeKey 驱动重渲染。
   const themeKey =
     typeof document === "undefined" ? "dark" : (document.documentElement.dataset.theme ?? "dark");
   // biome-ignore lint/correctness/useExhaustiveDependencies: themeKey 变化必须重建 option
   const built = useMemo(() => {
-    if (loading || empty) return null;
+    if (loading || empty || error) return null;
     return option(readChartTheme());
-  }, [loading, empty, themeKey, ...deps]);
+  }, [loading, empty, error, themeKey, ...deps]);
 
   const ref = useEChart(built, [built]);
 
@@ -46,6 +53,24 @@ export function Chart({
         style={{ height }}
         aria-busy="true"
       />
+    );
+  }
+  if (error) {
+    return (
+      <div
+        className={cn(
+          "grid place-items-center gap-2 rounded-lg bg-surface-1 text-sm text-fg-3",
+          className,
+        )}
+        style={{ height }}
+      >
+        <span>{errorText}</span>
+        {onRetry ? (
+          <Button size="sm" variant="secondary" onClick={onRetry}>
+            重试
+          </Button>
+        ) : null}
+      </div>
     );
   }
   if (empty) {

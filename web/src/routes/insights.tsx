@@ -33,6 +33,19 @@ function HarnessCard() {
   const harness = useHarness(portfolioId);
 
   if (harness.isPending) return <Skeleton className="h-48" />;
+  if (harness.isError) {
+    return (
+      <EmptyState
+        title="支架快照加载失败"
+        description="无法读取投资支架，请重试。"
+        action={
+          <Button size="sm" onClick={() => void harness.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const h = harness.data;
   if (!h) return null;
 
@@ -119,6 +132,19 @@ function HarnessCard() {
 function AlertsCard() {
   const alerts = useAlerts();
   if (alerts.isPending) return <Skeleton className="h-32" />;
+  if (alerts.isError) {
+    return (
+      <EmptyState
+        title="告警扫描加载失败"
+        description="无法读取告警，请重试。"
+        action={
+          <Button size="sm" onClick={() => void alerts.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const list = alerts.data?.alerts ?? [];
   return (
     <Card>
@@ -197,6 +223,16 @@ function EventsCard() {
       <CardContent>
         {events.isPending ? (
           <Skeleton className="h-32" />
+        ) : events.isError ? (
+          <EmptyState
+            title="来源事件加载失败"
+            description="无法读取来源事件，请重试。"
+            action={
+              <Button size="sm" onClick={() => void events.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : list.length === 0 ? (
           <EmptyState title="暂无事件" description="Agent 抓取的相关资讯会出现在这里。" />
         ) : (

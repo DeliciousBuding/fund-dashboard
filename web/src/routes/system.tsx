@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
@@ -92,6 +93,27 @@ export function SystemPage() {
       toast.error("触发失败", { description: e instanceof ApiError ? e.code : String(e) }),
   });
 
+  if (status.isError || jobs.isError) {
+    return (
+      <div className="space-y-4">
+        <EmptyState
+          title="系统状态加载失败"
+          description="无法读取系统状态或调度任务，请重试。"
+          action={
+            <Button
+              size="sm"
+              onClick={() => {
+                void status.refetch();
+                void jobs.refetch();
+              }}
+            >
+              重试
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
   const s = status.data;
   const health = HEALTH_BADGE[s?.freshness?.health ?? ""] ?? HEALTH_BADGE.neutral;
 

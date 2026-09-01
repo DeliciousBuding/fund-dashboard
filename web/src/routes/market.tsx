@@ -120,6 +120,9 @@ function NasdaqPanel() {
           loading={history.isPending}
           empty={!history.isPending && points.length === 0}
           emptyText="NDX 历史数据不可用"
+          error={history.isError}
+          errorText="NDX 历史加载失败"
+          onRetry={() => void history.refetch()}
           deps={[points, scatter]}
           option={(t) => ({
             ...baseChartOption(t),

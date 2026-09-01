@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { EmptyState } from "../components/ui/empty-state";
 import { Input, Label } from "../components/ui/input";
 import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
@@ -183,6 +184,16 @@ function SessionsCard() {
       <CardContent className="space-y-2">
         {sessions.isPending ? (
           <Skeleton className="h-24" />
+        ) : sessions.isError ? (
+          <EmptyState
+            title="会话加载失败"
+            description="无法读取活动会话，请重试。"
+            action={
+              <Button size="sm" onClick={() => void sessions.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : (
           (sessions.data?.sessions ?? []).map((s) => (
             <div
@@ -234,6 +245,16 @@ function AuthEventsCard() {
       <CardContent>
         {events.isPending ? (
           <Skeleton className="h-24" />
+        ) : events.isError ? (
+          <EmptyState
+            title="登录事件加载失败"
+            description="无法读取登录事件，请重试。"
+            action={
+              <Button size="sm" onClick={() => void events.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : (events.data?.events ?? []).length === 0 ? (
           <p className="text-sm text-fg-3">暂无记录</p>
         ) : (
@@ -395,6 +416,19 @@ function AgentTab() {
   });
 
   if (info.isPending) return <Skeleton className="h-48 max-w-2xl" />;
+  if (info.isError) {
+    return (
+      <EmptyState
+        title="Agent 信息加载失败"
+        description="无法读取 MCP 端点与密钥掩码，请重试。"
+        action={
+          <Button size="sm" onClick={() => void info.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const d = info.data;
 
   return (
