@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { Chart } from "../components/charts/Chart";
 import { baseChartOption } from "../components/charts/theme";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
@@ -59,6 +60,12 @@ function TrendTab({ code }: { code: string }) {
       loading={nav.isPending || detail.isPending}
       empty={!nav.isPending && (nav.data ?? []).length === 0}
       emptyText="暂无净值历史"
+      error={nav.isError || detail.isError}
+      errorText="净值历史加载失败"
+      onRetry={() => {
+        void nav.refetch();
+        void detail.refetch();
+      }}
       deps={[nav.data, markers, avgCost]}
       option={(t) => ({
         ...baseChartOption(t),
@@ -158,6 +165,16 @@ function DcaTab({ code }: { code: string }) {
 
       {sim.isPending && baseAmount > 0 ? (
         <Skeleton className="h-24" />
+      ) : sim.isError ? (
+        <EmptyState
+          title="模拟计算失败"
+          description="无法计算建议金额，请重试。"
+          action={
+            <Button size="sm" onClick={() => void sim.refetch()}>
+              重试
+            </Button>
+          }
+        />
       ) : sim.data && !sim.data.error ? (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-6 py-5">
@@ -195,6 +212,19 @@ function OverviewTab({ code }: { code: string }) {
   const drawdown = useDrawdown(code);
 
   if (detail.isPending) return <Skeleton className="h-40" />;
+  if (detail.isError) {
+    return (
+      <EmptyState
+        title="标的信息加载失败"
+        description="无法读取标的详情，请重试。"
+        action={
+          <Button size="sm" onClick={() => void detail.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
   const d = detail.data;
   if (!d) return <EmptyState title="标的不存在或已被删除" />;
 
@@ -273,6 +303,19 @@ function TransactionsTab({ code }: { code: string }) {
   }, [detail.data, query, source]);
 
   if (detail.isPending) return <Skeleton className="h-64" />;
+  if (detail.isError) {
+    return (
+      <EmptyState
+        title="交易流水加载失败"
+        description="无法读取交易明细，请重试。"
+        action={
+          <Button size="sm" onClick={() => void detail.refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <div className="space-y-3">
