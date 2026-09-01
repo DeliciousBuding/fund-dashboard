@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 	"golang.org/x/sync/singleflight"
 )
@@ -115,9 +116,9 @@ func (s Service) RefreshMarketIndices(ctx context.Context) (int, error) {
 	}
 	n := 0
 	for _, q := range quotes {
-		updated := q.UpdatedAt.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
+		updated := q.UpdatedAt.In(chinatime.Loc).Format("2006-01-02 15:04:05")
 		if q.UpdatedAt.IsZero() {
-			updated = indicesNowFn().In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
+			updated = indicesNowFn().In(chinatime.Loc).Format("2006-01-02 15:04:05")
 		}
 		_, err := s.db.ExecContext(ctx, `
 			INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at)
@@ -232,7 +233,7 @@ func parseIndexUpdatedAt(raw string) time.Time {
 		"2006-01-02",
 	}
 	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, raw, time.FixedZone("CST", 8*3600)); err == nil {
+		if t, err := time.ParseInLocation(layout, raw, chinatime.Loc); err == nil {
 			return t
 		}
 		if t, err := time.Parse(layout, raw); err == nil {

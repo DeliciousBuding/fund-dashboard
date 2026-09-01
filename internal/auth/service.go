@@ -264,21 +264,34 @@ func (s *Service) ListSessions(ctx context.Context, currentToken string) ([]Sess
 }
 
 // RevokeByIDPrefix deletes the session whose ID starts with prefix (min 8
-// chars). Revoking the current session is allowed (acts as logout).
+// chars, lowercase hex). Revoking the current session is allowed (acts as
+// logout). Prefix matching is pushed down to the store so revocation is not
+// bounded by the ListSessions LIMIT 200 soft ceiling.
 func (s *Service) RevokeByIDPrefix(ctx context.Context, prefix string) error {
-	if len(prefix) < 8 {
+	if len(prefix) < 8 || !isLowerHex(prefix) {
 		return ErrSessionNotFound
 	}
-	sessions, err := s.store.ListSessions(ctx)
+	deleted, err := s.store.DeleteSessionByPrefix(ctx, prefix)
 	if err != nil {
 		return err
 	}
-	for _, sess := range sessions {
-		if strings.HasPrefix(sess.ID, prefix) {
-			return s.store.DeleteSession(ctx, sess.ID)
+	if deleted == 0 {
+		return ErrSessionNotFound
+	}
+	return nil
+}
+
+// isLowerHex reports whether s contains only lowercase hex digits. Session IDs
+// are sha256 hex, so requiring the exact ID alphabet keeps the LIKE prefix
+// query immune to wildcard characters in caller-controlled input.
+func isLowerHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
 		}
 	}
-	return ErrSessionNotFound
+	return true
 }
 
 // SweepExpired deletes expired sessions and returns how many rows were

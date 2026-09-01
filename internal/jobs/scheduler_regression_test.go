@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 )
 
 func TestIsMissingTableErr(t *testing.T) {
@@ -33,10 +35,10 @@ func TestNextRunEpochIndependentOfInputZone(t *testing.T) {
 	// calendar math is anchored to the CST fund calendar, not the input zone or
 	// the runner's local timezone.
 	utc := time.Date(2026, 7, 15, 12, 30, 0, 0, time.UTC)
-	inCST := utc.In(cst)
+	inCST := utc.In(chinatime.Loc)
 	for _, job := range []string{"price_dca", "holdings", "wal"} {
 		if got, want := nextRunEpoch(job, utc), nextRunEpoch(job, inCST); got != want {
-			t.Fatalf("%s nextRunEpoch(utc)=%d nextRunEpoch(cst)=%d", job, got, want)
+			t.Fatalf("%s nextRunEpoch(utc)=%d nextRunEpoch(chinatime.Loc)=%d", job, got, want)
 		}
 	}
 }
@@ -44,12 +46,12 @@ func TestNextRunEpochIndependentOfInputZone(t *testing.T) {
 func TestNextRunEpochUsesCSTBoundaries(t *testing.T) {
 	// 19:59 CST is before the 20:00 window; 20:00 CST itself belongs to the
 	// next day. Both must resolve in CST regardless of what the local clock says.
-	before := time.Date(2026, 7, 15, 19, 59, 0, 0, cst)
-	after := time.Date(2026, 7, 15, 20, 0, 0, 0, cst)
-	if got := time.Unix(nextRunEpoch("price_dca", before), 0).In(cst); got.Format("2006-01-02 15:04") != "2026-07-15 20:00" {
+	before := time.Date(2026, 7, 15, 19, 59, 0, 0, chinatime.Loc)
+	after := time.Date(2026, 7, 15, 20, 0, 0, 0, chinatime.Loc)
+	if got := time.Unix(nextRunEpoch("price_dca", before), 0).In(chinatime.Loc); got.Format("2006-01-02 15:04") != "2026-07-15 20:00" {
 		t.Fatalf("next price_dca at 19:59 = %s, want 2026-07-15 20:00 CST", got.Format("2006-01-02 15:04"))
 	}
-	if got := time.Unix(nextRunEpoch("price_dca", after), 0).In(cst); got.Format("2006-01-02 15:04") != "2026-07-16 20:00" {
+	if got := time.Unix(nextRunEpoch("price_dca", after), 0).In(chinatime.Loc); got.Format("2006-01-02 15:04") != "2026-07-16 20:00" {
 		t.Fatalf("next price_dca at 20:00 = %s, want 2026-07-16 20:00 CST", got.Format("2006-01-02 15:04"))
 	}
 }

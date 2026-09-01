@@ -33,35 +33,52 @@ test("PortfolioAllocationSchema passes risk_flags arrays through", () => {
   assert.deepEqual(parsed.risk_flags, ["Stock weight above 80%"]);
 });
 
+const summaryWire = {
+  total_tx: 12,
+  unique_funds: 3,
+  unique_stocks: 0,
+  held_funds: 3,
+  total_buy: 1000,
+  total_sell: 100,
+  total_fee: 1.5,
+  unrealized_pnl: 20.5,
+  invested_cost: 900,
+  current_value: 920.5,
+  pnl_pct: 2.28,
+  top_gainer: null,
+  top_loser: null,
+  stale_nav_days: null,
+  auto_tx: 8,
+  manual_tx: 4,
+  auto_amount: 800,
+  manual_amount: 200,
+  first_trade: "2024-01-02",
+  last_trade: "2026-08-29",
+  last_nav_date: "2026-08-29",
+  settlement_distribution: { "2": 10 },
+  trade_type_breakdown: { buy: 11, sell: 1 },
+  by_security_type: [{ security_type: "fund", count: 3, total_value: 920.5, total_pnl: 20.5 }],
+};
+
 test("PortfolioSchema parses a full summary (CI smoke shape)", () => {
-  const parsed = PortfolioSchema.parse({
-    total_tx: 12,
-    unique_funds: 3,
-    unique_stocks: 0,
-    held_funds: 3,
-    total_buy: 1000,
-    total_sell: 100,
-    total_fee: 1.5,
-    unrealized_pnl: 20.5,
-    invested_cost: 900,
-    current_value: 920.5,
-    pnl_pct: 2.28,
-    top_gainer: null,
-    top_loser: null,
-    stale_nav_days: null,
-    auto_tx: 8,
-    manual_tx: 4,
-    auto_amount: 800,
-    manual_amount: 200,
-    first_trade: "2024-01-02",
-    last_trade: "2026-08-29",
-    last_nav_date: "2026-08-29",
-    settlement_distribution: { "2": 10 },
-    trade_type_breakdown: { buy: 11, sell: 1 },
-    by_security_type: [{ security_type: "fund", count: 3, total_value: 920.5, total_pnl: 20.5 }],
-  });
+  const parsed = PortfolioSchema.parse(summaryWire);
   assert.equal(parsed.total_tx, 12);
   assert.equal(parsed.top_gainer, null);
+});
+
+test("PortfolioSchema requires invested_cost (Go always emits it)", () => {
+  const { invested_cost, ...rest } = summaryWire;
+  assert.throws(() => PortfolioSchema.parse(rest));
+});
+
+test("PortfolioSchema requires current_value (Go always emits it)", () => {
+  const { current_value, ...rest } = summaryWire;
+  assert.throws(() => PortfolioSchema.parse(rest));
+});
+
+test("PortfolioSchema requires pnl_pct (Go always emits it)", () => {
+  const { pnl_pct, ...rest } = summaryWire;
+  assert.throws(() => PortfolioSchema.parse(rest));
 });
 
 // ── /api/portfolio/portfolios + /api/portfolio/timeline ─────────────

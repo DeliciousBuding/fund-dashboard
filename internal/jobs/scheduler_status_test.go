@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	_ "modernc.org/sqlite"
 )
 
@@ -34,7 +35,7 @@ func TestStatusSnapshotRecordsLastRun(t *testing.T) {
 	s := NewScheduler(NewPriceRefresher(db), db).
 		WithDCARunner(stub).
 		WithMarketIndicesRefresher(func(context.Context) (int, error) { return 0, nil })
-	now := time.Date(2026, 7, 15, 20, 3, 0, 0, cst) // Wednesday
+	now := time.Date(2026, 7, 15, 20, 3, 0, 0, chinatime.Loc) // Wednesday
 	s.tick(now)
 
 	snap := s.StatusSnapshot()
@@ -66,7 +67,7 @@ func TestStatusSnapshotRecordsLastRun(t *testing.T) {
 	if price.NextRun <= price.LastRun {
 		t.Fatalf("price_dca next_run = %d, want later than last_run %d", price.NextRun, price.LastRun)
 	}
-	nextTime := time.Unix(price.NextRun, 0).In(cst)
+	nextTime := time.Unix(price.NextRun, 0).In(chinatime.Loc)
 	if nextTime.Hour() != 20 {
 		t.Fatalf("price_dca next_run hour = %d, want 20 CST", nextTime.Hour())
 	}
@@ -80,7 +81,7 @@ func TestStatusSnapshotRecordsLastErrorOnFailure(t *testing.T) {
 	defer db.Close()
 	// 无 fund 表 → 真实 Refresher 会返回错误,被记录为 last_error。
 	s := NewScheduler(NewPriceRefresher(db), db)
-	now := time.Date(2026, 7, 15, 20, 3, 0, 0, cst)
+	now := time.Date(2026, 7, 15, 20, 3, 0, 0, chinatime.Loc)
 	s.tick(now)
 
 	snap := s.StatusSnapshot()

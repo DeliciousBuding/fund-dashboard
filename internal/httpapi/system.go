@@ -144,7 +144,7 @@ func handleSystemAudit(deps *routerDeps) http.HandlerFunc {
 		}
 		// agent_audit_events 可能不存在（旧库/未建表 fixture）——忽略并继续。
 		agentEvents, err := agentstate.NewAuditEventRepository(deps.db).List(r.Context(), limit)
-		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such table") {
+		if err != nil && !isMissingTableErr(err) {
 			writeSafeError(w, r, http.StatusInternalServerError, err)
 			return
 		}
@@ -167,6 +167,20 @@ func handleSystemAudit(deps *routerDeps) http.HandlerFunc {
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{"events": out})
 	}
+}
+
+// isMissingTableErr reports a schema-absence error across SQLite ("no such
+// table"), PostgreSQL ("does not exist"), and legacy drivers ("undefined_table").
+// It mirrors internal/jobs.isMissingTableErr, which is unexported and outside
+// this package's change scope, so the equivalent check lives here.
+func isMissingTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "undefined_table")
 }
 
 // eventTS parses agent audit created_at (UTC RFC3339Nano) to unix seconds.

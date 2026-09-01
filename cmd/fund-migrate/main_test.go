@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
@@ -55,10 +56,10 @@ func TestMigrateTableIntersectsColumnsAndCounts(t *testing.T) {
 	defer src.Close()
 	defer dst.Close()
 
-	if err := migrateTable(ctx, src, dst, "t1"); err != nil {
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t1", false); err != nil {
 		t.Fatalf("migrate t1: %v", err)
 	}
-	if err := migrateTable(ctx, src, dst, "t2"); err != nil {
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t2", false); err != nil {
 		t.Fatalf("migrate t2: %v", err)
 	}
 
@@ -78,6 +79,7 @@ func TestMigrateTableIntersectsColumnsAndCounts(t *testing.T) {
 	}
 }
 
+// 非 force 导入不清空目标；重复运行靠 ON CONFLICT DO NOTHING 保持幂等。
 func TestMigrateTableIdempotentCanRerun(t *testing.T) {
 	ctx := context.Background()
 	src, dst := openTestDBs(t)
@@ -85,7 +87,7 @@ func TestMigrateTableIdempotentCanRerun(t *testing.T) {
 	defer dst.Close()
 
 	for i := 0; i < 2; i++ {
-		if err := migrateTable(ctx, src, dst, "t1"); err != nil {
+		if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t1", false); err != nil {
 			t.Fatalf("run %d: %v", i, err)
 		}
 	}
@@ -93,6 +95,170 @@ func TestMigrateTableIdempotentCanRerun(t *testing.T) {
 	_ = dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM t1`).Scan(&rows)
 	if rows != 2 {
 		t.Fatalf("idempotent rerun rows = %d, want 2", rows)
+	}
+}
+
+// 回归：目标缺表必须按「无此表跳过」处理，而不是落入错误的分流分支报错。
+func TestMigrateTableMissingTargetTableSkipsWithoutError(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	src, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "src.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "dst.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+
+	if _, err := src.ExecContext(ctx, `CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.ExecContext(ctx, `INSERT INTO t1 (id, name) VALUES (1, 'a')`); err != nil {
+		t.Fatal(err)
+	}
+	// dst 完全不建 t1：迁移应静默跳过而非报「no such table: information_schema.columns」。
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t1", false); err != nil {
+		t.Fatalf("missing target table should skip, got: %v", err)
+	}
+	var n int
+	if err := dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='t1'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("target t1 unexpectedly created (n=%d)", n)
+	}
+}
+
+// --force 覆盖路径：先清空再导入，结果应为源表的完整镜像。
+func TestMigrateTableReplaceOverwritesTarget(t *testing.T) {
+	ctx := context.Background()
+	src, dst := openTestDBs(t)
+	defer src.Close()
+	defer dst.Close()
+
+	if _, err := dst.ExecContext(ctx, `INSERT INTO t1 (id, name) VALUES (99, 'old')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t1", true); err != nil {
+		t.Fatalf("replace migrate: %v", err)
+	}
+
+	var rows, old int
+	if err := dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM t1`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 {
+		t.Fatalf("after replace rows = %d, want 2", rows)
+	}
+	if err := dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM t1 WHERE id = 99`).Scan(&old); err != nil {
+		t.Fatal(err)
+	}
+	if old != 0 {
+		t.Fatalf("stale target row survived replace (id=99 count=%d)", old)
+	}
+}
+
+// 回归：--force 的 DELETE 与导入同事务；插入失败回滚后目标保留迁移前数据。
+func TestMigrateTableReplaceRollsBackOnInsertError(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	src, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "src.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "dst.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT)`,
+		`INSERT INTO t1 (id, name) VALUES (1, 'a'), (2, 'bad')`,
+	} {
+		if _, err := src.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed source: %v", err)
+		}
+	}
+	for _, stmt := range []string{
+		`CREATE TABLE t1 (id INTEGER PRIMARY KEY, name TEXT CHECK (name <> 'bad'))`,
+		`INSERT INTO t1 (id, name) VALUES (99, 'keep')`,
+	} {
+		if _, err := dst.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed target: %v", err)
+		}
+	}
+
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "t1", true); err == nil {
+		t.Fatal("want insert error (CHECK violation)")
+	}
+
+	// DELETE 在事务内 → 回滚必须恢复迁移前的行，而不是留下空表/半表。
+	var rows int
+	if err := dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM t1`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("rollback rows = %d, want 1 (original 'keep' row preserved)", rows)
+	}
+	var name string
+	if err := dst.QueryRowContext(ctx, `SELECT name FROM t1 WHERE id = 99`).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name != "keep" {
+		t.Fatalf("original row name = %q, want keep", name)
+	}
+}
+
+func TestNonEmptyTargetTables(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dst, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "dst.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE t_empty (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE t_full (id INTEGER PRIMARY KEY, name TEXT)`,
+		`INSERT INTO t_full (id, name) VALUES (1, 'x')`,
+	} {
+		if _, err := dst.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// t_missing 目标无此表：预检必须跳过而不是报错。
+	nonEmpty, err := nonEmptyTargetTables(ctx, dst, dialect.NameSQLite, []string{"t_empty", "t_full", "t_missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nonEmpty) != 1 || nonEmpty[0] != "t_full" {
+		t.Fatalf("nonEmpty = %v, want [t_full]", nonEmpty)
+	}
+
+	empty, err := nonEmptyTargetTables(ctx, dst, dialect.NameSQLite, []string{"t_empty", "t_missing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty preflight = %v, want []", empty)
+	}
+}
+
+func TestTargetColumnsUnknownDriverErrors(t *testing.T) {
+	ctx := context.Background()
+	src, dst := openTestDBs(t)
+	defer src.Close()
+	defer dst.Close()
+
+	if _, err := targetColumns(ctx, dst, "mysql", "t1"); err == nil {
+		t.Fatal("want error for unsupported target driver")
 	}
 }
 
@@ -148,7 +314,7 @@ func TestMigrateTableQuotesReservedAndQuotedIdentifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := migrateTable(ctx, src, dst, "order"); err != nil {
+	if err := migrateTable(ctx, src, dst, dialect.NameSQLite, "order", false); err != nil {
 		t.Fatalf("migrate reserved-identifier table: %v", err)
 	}
 	var n int

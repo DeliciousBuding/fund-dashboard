@@ -1,7 +1,8 @@
 // harness.ts — Agent harness, source brief, source events
 // v3.0 contracts SSOT. Fixes G2 (data_quality.holdings_coverage_pct), G3 (SourceEvent.created_at).
+
+import { PortfolioAllocationSchema } from "@fund-dashboard/contracts/schemas/portfolio";
 import { z } from "zod";
-import { PortfolioAllocationSchema } from "./portfolio";
 
 export const InvestmentHarnessHoldingSignalSchema = z.object({
   code: z.string(),
@@ -107,6 +108,8 @@ export type InvestmentSourceBrief = z.infer<typeof InvestmentSourceBriefSchema>;
 
 // ═══════ Source Events (V4) ═══════
 
+// Mirrors httpapi sourceEventJSON: all 12 keys are always emitted (no omitempty);
+// pointer fields are null when absent. strict() rejects unknown keys.
 export const SourceEventSchema = z
   .object({
     id: z.number(),
@@ -122,7 +125,7 @@ export const SourceEventSchema = z
     fetched_at: z.string(),
     created_at: z.string(), // G3 fix (query was already present)
   })
-  .passthrough();
+  .strict();
 export type SourceEvent = z.infer<typeof SourceEventSchema>;
 
 /**

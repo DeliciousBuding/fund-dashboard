@@ -33,28 +33,28 @@ type DeleteSecurityResult struct {
 func (s Service) UpsertSecurity(ctx context.Context, in UpsertSecurityInput) (UpsertSecurityResult, error) {
 	code := strings.TrimSpace(in.Code)
 	if code == "" {
-		return UpsertSecurityResult{}, fmt.Errorf("fund_code is required")
+		return UpsertSecurityResult{}, NewValidationError("fund_code is required")
 	}
 	if len(code) > 32 {
-		return UpsertSecurityResult{}, fmt.Errorf("fund_code max 32 chars")
+		return UpsertSecurityResult{}, NewValidationError("fund_code max 32 chars")
 	}
 	name := strings.TrimSpace(in.Name)
 	if len(name) > 200 {
-		return UpsertSecurityResult{}, fmt.Errorf("fund_name max 200 chars")
+		return UpsertSecurityResult{}, NewValidationError("fund_name max 200 chars")
 	}
 	secType := strings.TrimSpace(in.SecurityType)
 	if secType == "" {
 		secType = "fund"
 	}
 	if secType != "fund" && secType != "stock" {
-		return UpsertSecurityResult{}, fmt.Errorf("security_type must be fund or stock")
+		return UpsertSecurityResult{}, NewValidationError("security_type must be fund or stock")
 	}
 	market := strings.TrimSpace(in.Market)
 	if market == "" {
 		if secType == "fund" {
 			market = "CN"
 		} else {
-			return UpsertSecurityResult{}, fmt.Errorf("market is required for stock")
+			return UpsertSecurityResult{}, NewValidationError("market is required for stock")
 		}
 	}
 	currency := strings.TrimSpace(in.Currency)
@@ -68,19 +68,19 @@ func (s Service) UpsertSecurity(ctx context.Context, in UpsertSecurityInput) (Up
 	}
 	fundType := strings.TrimSpace(in.FundType)
 	if len(market) > 16 {
-		return UpsertSecurityResult{}, fmt.Errorf("market max 16 chars")
+		return UpsertSecurityResult{}, NewValidationError("market max 16 chars")
 	}
 	if len(currency) > 16 {
-		return UpsertSecurityResult{}, fmt.Errorf("currency max 16 chars")
+		return UpsertSecurityResult{}, NewValidationError("currency max 16 chars")
 	}
 	if len(exchange) > 32 {
-		return UpsertSecurityResult{}, fmt.Errorf("exchange max 32 chars")
+		return UpsertSecurityResult{}, NewValidationError("exchange max 32 chars")
 	}
 	if len(source) > 64 {
-		return UpsertSecurityResult{}, fmt.Errorf("source max 64 chars")
+		return UpsertSecurityResult{}, NewValidationError("source max 64 chars")
 	}
 	if len(fundType) > 64 {
-		return UpsertSecurityResult{}, fmt.Errorf("fund_type max 64 chars")
+		return UpsertSecurityResult{}, NewValidationError("fund_type max 64 chars")
 	}
 
 	var exists int
@@ -89,7 +89,7 @@ func (s Service) UpsertSecurity(ctx context.Context, in UpsertSecurityInput) (Up
 	}
 	created := exists == 0
 	if created && name == "" {
-		return UpsertSecurityResult{}, fmt.Errorf("fund_name is required when creating")
+		return UpsertSecurityResult{}, NewValidationError("fund_name is required when creating")
 	}
 
 	if created {
@@ -139,10 +139,10 @@ func (s Service) UpsertSecurity(ctx context.Context, in UpsertSecurityInput) (Up
 func (s Service) DeleteSecurity(ctx context.Context, code string) (DeleteSecurityResult, error) {
 	code = strings.TrimSpace(code)
 	if code == "" {
-		return DeleteSecurityResult{}, fmt.Errorf("fund_code is required")
+		return DeleteSecurityResult{}, NewValidationError("fund_code is required")
 	}
 	if len(code) > 32 {
-		return DeleteSecurityResult{}, fmt.Errorf("fund_code too long")
+		return DeleteSecurityResult{}, NewValidationError("fund_code too long")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

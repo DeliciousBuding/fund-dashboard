@@ -80,9 +80,10 @@ export const PortfolioSchema = z.object({
   total_sell: z.number(),
   total_fee: z.number(),
   unrealized_pnl: z.number(),
-  invested_cost: z.number().optional().default(0),
-  current_value: z.number().optional().default(0),
-  pnl_pct: z.number().optional().default(0),
+  // Go portfolioSummaryJSON always emits these three (no omitempty): required.
+  invested_cost: z.number(),
+  current_value: z.number(),
+  pnl_pct: z.number(),
   top_gainer: HoldingContributorSchema.nullable().optional(),
   top_loser: HoldingContributorSchema.nullable().optional(),
   stale_nav_days: z.number().nullable().optional(),

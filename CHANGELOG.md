@@ -19,6 +19,15 @@
 
 ## [Unreleased]
 
+- **修复** 迁移工具数据安全：`fund-migrate` 默认拒绝非空目标（预检即退出，未动任何数据），显式 `--force` 时 DELETE 移入每表事务（中途失败即回滚，不再出现清空到一半）；列探测按目标驱动分流。
+- **改进** `fund-hash-password` 密码输入改环境变量/stdin 优先，argv 降为兼容手段并告警（进程列表泄露面收口）。
+- **修复** 服务校验错误类型化：`writeServiceResult` 不再把数据库故障误报 400，校验错误（`ValidationError`）→400、内部故障→500 `internal_error`。
+- **修复** 会话数超过 200 时按前缀撤销会话误报 `not_found`（过滤下推 store），并拒绝含 LIKE 通配符的前缀输入。
+- **修复** 系统审计缺表判定兼容 PG 方言（原只认 SQLite `no such table`）。
+- **重构** 中国市场时区收敛为单一来源包 `internal/chinatime`（删除三处重复定义与全部 `FixedZone` 散点，现代日期行为等价）。
+- **重构** 前端契约三处 `.passthrough()` 收紧为 `.strict()`（Transaction/FundDetail/SourceEvent），`PortfolioSchema` 三字段改严格必填；未知字段漂移不再被静默吞掉。
+
+
 - **修复** 调度器优雅停机补全：关停等待启动补跑任务（最长 45 分钟）结束，不再在进程退出后残留跑在已关闭数据库上；空指数刷新器不再在 20:00 窗口 panic。
 - **修复** PG 部署 NAV 回填 upsert 的 ON CONFLICT 目标列与主键列序不匹配（报 42P10）；缺表判定兼容 PG `relation does not exist`，清扫不再误报失败。
 - **修复** 批量 NAV/持仓刷新在全员失败时不再谎报 `complete`；持仓回填日期按中国市场日历，不再受 runner 本地时区影响。

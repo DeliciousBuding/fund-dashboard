@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 )
 
@@ -152,7 +153,7 @@ func (s Service) upsertUSStockSnapshot(ctx context.Context, snap datasource.Stoc
 		return 0, err
 	}
 	has := func(name string) bool { _, ok := cols[name]; return ok }
-	updated := snap.MarketTime.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
+	updated := snap.MarketTime.In(chinatime.Loc).Format("2006-01-02 15:04:05")
 	// Prefer rich Bun-era columns when present; else minimal production shape.
 	if has("market") && has("open") && has("high") && has("low") {
 		_, err = s.db.ExecContext(ctx, `

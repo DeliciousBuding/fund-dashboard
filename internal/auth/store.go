@@ -152,6 +152,18 @@ func (s *Store) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteSessionByPrefix removes every session whose ID starts with prefix and
+// returns the number of rows removed. It is a direct prefix query, so revocation
+// is not bounded by the ListSessions LIMIT 200 soft ceiling and still finds
+// sessions beyond the first page.
+func (s *Store) DeleteSessionByPrefix(ctx context.Context, prefix string) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM auth_sessions WHERE id LIKE ?`, prefix+"%")
+	if err != nil {
+		return 0, fmt.Errorf("delete sessions by prefix: %w", err)
+	}
+	return res.RowsAffected()
+}
+
 // DeleteOtherSessions revokes every session except keepID (password change).
 func (s *Store) DeleteOtherSessions(ctx context.Context, keepID string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM auth_sessions WHERE id != ?`, keepID); err != nil {

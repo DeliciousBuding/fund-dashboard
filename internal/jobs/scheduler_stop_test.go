@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	_ "modernc.org/sqlite"
 )
@@ -40,7 +41,7 @@ func TestSchedulerStopCancelsStartupCatchUp(t *testing.T) {
 	s.Stop()
 	// A late tick must not run the catch-up: Stop canceled the context and
 	// joined the startup goroutine before returning.
-	ticks <- time.Now().In(cst)
+	ticks <- time.Now().In(chinatime.Loc)
 	time.Sleep(100 * time.Millisecond)
 	if ran.Load() {
 		t.Fatal("startup catch-up ran after Stop")
@@ -52,7 +53,7 @@ func TestStopWaitsForInFlightStartupCatchUp(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
 	ticks := make(chan time.Time, 1)
-	ticks <- time.Now().In(cst)
+	ticks <- time.Now().In(chinatime.Loc)
 
 	s.mu.Lock()
 	s.stopCh = make(chan struct{})
@@ -140,7 +141,7 @@ func TestStopWaitsForInFlightLoopToExit(t *testing.T) {
 		WithMarketIndicesRefresher(func(context.Context) (int, error) { return 0, nil })
 
 	ticks := make(chan time.Time, 1)
-	ticks <- time.Date(2026, 7, 15, 20, 0, 0, 0, cst) // Wednesday 20:00 -> DCA window
+	ticks <- time.Date(2026, 7, 15, 20, 0, 0, 0, chinatime.Loc) // Wednesday 20:00 -> DCA window
 	s.mu.Lock()
 	s.stopCh = make(chan struct{})
 	s.done = make(chan struct{})

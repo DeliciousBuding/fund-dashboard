@@ -8,11 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
-
-// CST is Asia/Shanghai (UTC+8).
-var cst = time.FixedZone("CST", 8*60*60)
 
 // DCARunner materializes due DCA plans into the local ledger.
 // Implemented by portfolio.Service.RunDCAAutoInvest; interface keeps jobs testable.
@@ -100,9 +98,9 @@ func jobDefinitions() []jobRuntime {
 // job, or 0 when the job has no recurring window (startup_refresh runs only
 // once per process start).
 func nextRunEpoch(job string, now time.Time) int64 {
-	now = now.In(cst)
+	now = now.In(chinatime.Loc)
 	target := func(hour int, day time.Weekday) time.Time {
-		t := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, cst)
+		t := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, chinatime.Loc)
 		if day >= 0 { // weekly constraint (holdings: Saturday)
 			delta := (int(day) - int(t.Weekday()) + 7) % 7
 			t = t.AddDate(0, 0, delta)
@@ -307,7 +305,7 @@ func (s *Scheduler) loop(stopCh <-chan struct{}) {
 		case <-stopCh:
 			return
 		case t := <-s.ticker.Chan():
-			s.tick(t.In(cst))
+			s.tick(t.In(chinatime.Loc))
 		}
 	}
 }
@@ -322,7 +320,7 @@ func (s *Scheduler) startStartupCatchUp(stopCh <-chan struct{}, timer clockTimer
 		case <-stopCh:
 			return
 		case <-timer.Chan():
-			s.runStartupCatchUp(time.Now().In(cst))
+			s.runStartupCatchUp(time.Now().In(chinatime.Loc))
 		}
 	}()
 }
@@ -573,7 +571,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 	err := s.db.QueryRowContext(ctx, `SELECT latest_date FROM crawl_log WHERE fund_code = ?`, code).Scan(&existing)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			now := time.Now().In(cst).Format("2006-01-02 15:04:05")
+			now := time.Now().In(chinatime.Loc).Format("2006-01-02 15:04:05")
 			_, err = s.db.ExecContext(ctx, `
 				INSERT INTO crawl_log (fund_code, source, rows_added, latest_date, status, crawled_at)
 				VALUES (?, ?, 0, ?, 'ok', ?)
@@ -603,7 +601,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 		return false
 	}
 	// Advance claim to a new day for this job.
-	now := time.Now().In(cst).Format("2006-01-02 15:04:05")
+	now := time.Now().In(chinatime.Loc).Format("2006-01-02 15:04:05")
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE crawl_log SET source = ?, rows_added = 0, latest_date = ?, status = 'ok', crawled_at = ?
 		WHERE fund_code = ?

@@ -59,7 +59,7 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 	}
 	day, err := time.ParseInLocation("2006-01-02", asOf, time.Local)
 	if err != nil {
-		return RunDCAAutoInvestResult{}, fmt.Errorf("as_of must be YYYY-MM-DD: %w", err)
+		return RunDCAAutoInvestResult{}, NewValidationError("as_of must be YYYY-MM-DD: %v", err)
 	}
 	portfolioID := in.PortfolioID
 	portfolioID = clampPortfolioID(portfolioID)
