@@ -27,3 +27,11 @@ web/public/manifest.webmanifest text eol=lf
 *.sql text eol=lf
 *.patch text eol=lf
 *.toml text eol=lf
+
+# 无扩展名文本文件显式 LF（text=auto + autocrlf 会警告 CRLF 转换）。
+.gitattributes text eol=lf
+.dockerignore text eol=lf
+.editorconfig text eol=lf
+.gitignore text eol=lf
+LICENSE text eol=lf
+SECURITY.md text eol=lf
