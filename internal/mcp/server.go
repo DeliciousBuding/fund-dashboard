@@ -10,6 +10,7 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agentops"
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
+	"github.com/DeliciousBuding/fund-dashboard/internal/audit"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
@@ -19,14 +20,15 @@ const jsonrpcVersion = "2.0"
 var processStartedAt = time.Now()
 
 type Server struct {
-	registry  *agenttools.Registry
-	portfolio *portfoliosvc.Service
-	admin     *adminsvc.Service
-	agentOps  confirmationConsumer
-	nav       NavCrawler
-	snapshots SnapshotRecalculator
-	holdings  HoldingsCrawler
-	role      agenttools.Role
+	registry       *agenttools.Registry
+	portfolio      *portfoliosvc.Service
+	admin          *adminsvc.Service
+	agentOps       confirmationConsumer
+	nav            NavCrawler
+	snapshots      SnapshotRecalculator
+	holdings       HoldingsCrawler
+	executionAudit ExecutionAuditSink
+	role           agenttools.Role
 }
 
 // confirmationConsumer claims (verify + atomic MarkUsed) before write side-effects.
@@ -64,7 +66,12 @@ type ServerDeps struct {
 	Nav       NavCrawler
 	Snapshots SnapshotRecalculator
 	Holdings  HoldingsCrawler
-	Role      agenttools.Role
+	// ExecutionAudit optionally persists sanitized tool execution outcomes
+	// (ok/errored/panic-recovered) as a best-effort side channel. When nil,
+	// execution audit is skipped. Audit failures never affect the tools/call
+	// response.
+	ExecutionAudit ExecutionAuditSink
+	Role           agenttools.Role
 }
 
 type Request struct {
@@ -119,7 +126,7 @@ func NewServer(deps ServerDeps) (*Server, error) {
 	if role == "" {
 		role = agenttools.RoleAnalyst
 	}
-	return &Server{registry: registry, portfolio: deps.Portfolio, admin: deps.Admin, agentOps: deps.AgentOps, nav: deps.Nav, snapshots: deps.Snapshots, holdings: deps.Holdings, role: role}, nil
+	return &Server{registry: registry, portfolio: deps.Portfolio, admin: deps.Admin, agentOps: deps.AgentOps, nav: deps.Nav, snapshots: deps.Snapshots, holdings: deps.Holdings, executionAudit: deps.ExecutionAudit, role: role}, nil
 }
 
 func (s *Server) Handle(ctx context.Context, request Request) (response Response) {
@@ -281,6 +288,29 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 		args = map[string]any{}
 	}
 
+	// Execution-result audit is opt-in per tool through the registry audit
+	// policy (audit.record_result). It is a best-effort side channel: audit
+	// failures must never change the JSON-RPC outcome.
+	tool, _ := s.registry.Lookup(name)
+	recordExecution := tool.Audit.RecordResult
+	started := time.Now()
+	record := func(status audit.ExecutionStatus, category audit.ExecutionErrorCategory) {
+		if recordExecution {
+			s.recordExecution(ctx, name, status, category, started)
+		}
+	}
+	if recordExecution {
+		// A panic is recorded as panic-recovered, then re-raised so the
+		// existing Handle recovery keeps producing the same generic
+		// internal_error response.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				record(audit.ExecutionPanicRecovered, audit.ExecutionCategoryInternal)
+				panic(recovered)
+			}
+		}()
+	}
+
 	authorizeRequest := agenttools.AuthorizeRequest{
 		Tool:            name,
 		Role:            s.role,
@@ -288,19 +318,24 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 	}
 	decision := s.registry.Authorize(authorizeRequest)
 	if !decision.Allowed && decision.Reason != agenttools.DenyConfirmationRequired {
-		return nil, jsonrpcError(-32001, fmt.Sprintf("tool_denied: %s", decision.Reason))
+		denied := jsonrpcError(-32001, fmt.Sprintf("tool_denied: %s", decision.Reason))
+		record(audit.ExecutionErrored, executionErrorCategory(denied))
+		return nil, denied
 	}
 	// Claim confirmation BEFORE any write side-effect (atomic CAS on used_at IS NULL).
 	// Concurrent tools/call with the same confirmation_id+token: exactly one claimer wins.
 	if decision.RequiresConfirmation {
 		if confirmationErr := s.claimWriteConfirmation(ctx, name, args); confirmationErr != nil {
+			record(audit.ExecutionErrored, executionErrorCategory(confirmationErr))
 			return nil, confirmationErr
 		}
 		authorizeRequest.Confirmed = true
 		decision = s.registry.Authorize(authorizeRequest)
 	}
 	if !decision.Allowed {
-		return nil, jsonrpcError(-32001, fmt.Sprintf("tool_denied: %s", decision.Reason))
+		denied := jsonrpcError(-32001, fmt.Sprintf("tool_denied: %s", decision.Reason))
+		record(audit.ExecutionErrored, executionErrorCategory(denied))
+		return nil, denied
 	}
 
 	var result map[string]any
@@ -401,9 +436,11 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 	if callErr != nil {
 		// Confirmation already claimed/burned before side-effect (safe under-commit).
 		// Prefer re-prepare over risking double-write under concurrent tools/call.
+		record(audit.ExecutionErrored, executionErrorCategory(callErr))
 		slog.Error("mcp tool failed", "tool", name, "code", callErr.Code, "error", callErr.Message)
 		return nil, callErr
 	}
+	record(audit.ExecutionOK, "")
 	return result, nil
 }
 
