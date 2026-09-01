@@ -27,7 +27,7 @@ func TestDashboardNAVFreshUsesStalePriceWindowNot24h(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetDashboard(context.Background(), now.Add(-time.Hour), now)
 	if err != nil {
 		t.Fatalf("GetDashboard: %v", err)

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestCheckAlertsFindsPriceAndStale(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestCheckAlertsFindsPriceAndStale(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav, daily_change_pct) VALUES (?, ?, ?, ?)`, "019173", old, 1.0, -16.67); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	res, err := svc.CheckAlerts(context.Background(), CheckAlertsInput{PriceChangePct: 5, DrawdownPct: 10, StaleDays: 4})
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestWeekdayMaskHit(t *testing.T) {
 
 // #221: alert max drawdown must use the most recent NAV window, not the earliest.
 func TestMaxDrawdownPctUsesRecentWindow(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestMaxDrawdownPctUsesRecentWindow(t *testing.T) {
 		('019173', '2026-01-02', 1.0)`); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	dd, peak, trough, err := svc.maxDrawdownPct(context.Background(), "019173")
 	if err != nil {
 		t.Fatal(err)

@@ -3,7 +3,6 @@ package datasource
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -84,7 +83,7 @@ func (s *EastmoneyHoldings) fetchYear(ctx context.Context, code, year string, to
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("eastmoney holdings HTTP %d", res.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
+	body, err := readBodyLimited(res.Body, 2<<20)
 	if err != nil {
 		return nil, err
 	}

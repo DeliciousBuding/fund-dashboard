@@ -23,7 +23,7 @@ func TestGetStatusByCodeReportsRangeAndPosition(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetStatusByCode(context.Background(), "019173")
 	if err != nil {
 		t.Fatalf("GetStatusByCode: %v", err)
@@ -65,7 +65,7 @@ func TestGetStatusByCodeNormalizesShortNumericCode(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetStatusByCode(context.Background(), "19173")
 	if err != nil {
 		t.Fatalf("GetStatusByCode: %v", err)

@@ -18,10 +18,6 @@ type Service struct {
 	dialect dialect.Dialect
 }
 
-func NewService(db *sql.DB) Service {
-	return Service{db: db, dialect: dialect.New("", db)}
-}
-
 // NewServiceWithDriver creates a Service aware of the underlying database driver
 // so it can generate the correct SQL dialect (e.g. julianday vs EXTRACT/EPOCH).
 func NewServiceWithDriver(db *sql.DB, driver string) Service {

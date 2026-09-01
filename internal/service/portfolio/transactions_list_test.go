@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/repository/sqlitedb"
+	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 // Legacy ledger DBs (pre-PG-schema SQLite) may lack anomaly / settlement_days /
 // portfolio_id on transactions. ListTransactions must probe and adapt instead of
 // erroring — the ledger stays the SSOT and is never ALTERed by a read service.
 func TestListTransactionsAdaptsToLegacyShape(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestListTransactionsAdaptsToLegacyShape(t *testing.T) {
 }
 
 func TestListTransactionsFullShapeFilterAndPagination(t *testing.T) {
-	db, err := sqlitedb.Open(context.Background(), sqlitedb.Options{Path: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}

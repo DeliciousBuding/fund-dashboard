@@ -35,7 +35,7 @@ func TestFreshnessReportsHealthyWhenNAVDataIsRecent(t *testing.T) {
 		t.Fatalf("seed transactions: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetFreshness(context.Background())
 	if err != nil {
 		t.Fatalf("GetFreshness returned error: %v", err)
@@ -85,7 +85,7 @@ func TestFreshnessDetectsStaleNAV(t *testing.T) {
 		t.Fatalf("seed stale nav_history: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetFreshness(context.Background())
 	if err != nil {
 		t.Fatalf("GetFreshness returned error: %v", err)
@@ -124,7 +124,7 @@ func TestFreshnessDetectsMissingNAV(t *testing.T) {
 		t.Fatalf("seed missing portfolio_snapshot: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetFreshness(context.Background())
 	if err != nil {
 		t.Fatalf("GetFreshness returned error: %v", err)
@@ -148,7 +148,7 @@ func TestFreshnessDecisionBoundaryIsReadOnly(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetFreshness(context.Background())
 	if err != nil {
 		t.Fatalf("GetFreshness returned error: %v", err)
@@ -180,7 +180,7 @@ func TestFreshnessOutputContainsNoTradingRecommendations(t *testing.T) {
 		t.Fatalf("seed nav_history: %v", err)
 	}
 
-	svc := NewService(db)
+	svc := NewServiceWithDriver(db, "sqlite")
 	report, err := svc.GetFreshness(context.Background())
 	if err != nil {
 		t.Fatalf("GetFreshness returned error: %v", err)

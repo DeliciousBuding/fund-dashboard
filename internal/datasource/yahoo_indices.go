@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -164,8 +163,12 @@ func FetchYahooIndexHistory(ctx context.Context, symbol, rangeKey, interval stri
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return IndexHistory{}, fmt.Errorf("status %d", res.StatusCode)
 	}
+	body, err := readBodyLimited(res.Body, 4<<20)
+	if err != nil {
+		return IndexHistory{}, err
+	}
 	var payload yahooChartHistoryResponse
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return IndexHistory{}, err
 	}
 	if len(payload.Chart.Result) == 0 {
@@ -232,8 +235,12 @@ func fetchOneYahooIndex(ctx context.Context, client *http.Client, template, symb
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return IndexQuote{}, fmt.Errorf("status %d", res.StatusCode)
 	}
+	body, err := readBodyLimited(res.Body, 4<<20)
+	if err != nil {
+		return IndexQuote{}, err
+	}
 	var payload yahooChartResponse
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return IndexQuote{}, err
 	}
 	if len(payload.Chart.Result) == 0 {

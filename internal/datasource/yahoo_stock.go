@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,8 +58,12 @@ func FetchYahooStockSnapshot(ctx context.Context, symbol, rangeKey string, withH
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return StockSnapshot{}, fmt.Errorf("status %d", res.StatusCode)
 	}
+	body, err := readBodyLimited(res.Body, 4<<20)
+	if err != nil {
+		return StockSnapshot{}, err
+	}
 	var payload yahooStockChartResponse
-	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return StockSnapshot{}, err
 	}
 	if len(payload.Chart.Result) == 0 {

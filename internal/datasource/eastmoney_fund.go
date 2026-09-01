@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -106,7 +105,7 @@ func (s *EastmoneyFund) get(ctx context.Context, url string) (string, error) {
 		return "", fmt.Errorf("eastmoney fund HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20)) // 4 MiB
+	body, err := readBodyLimited(resp.Body, 4<<20) // 4 MiB
 	if err != nil {
 		return "", err
 	}

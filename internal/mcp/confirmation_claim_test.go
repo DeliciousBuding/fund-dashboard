@@ -77,7 +77,7 @@ func TestConcurrentToolsCallSameConfirmationClaimsOnce(t *testing.T) {
 	}
 
 	portfolio := portfoliosvc.NewService(db)
-	admin := adminsvc.NewService(db)
+	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	server, err := NewServer(ServerDeps{
 		Registry:  registry,
 		Portfolio: &portfolio,
@@ -205,7 +205,7 @@ func TestClaimFailureDoesNotExecuteWrite(t *testing.T) {
 	db := openMCPFixture(t)
 	defer db.Close()
 	portfolio := portfoliosvc.NewService(db)
-	admin := adminsvc.NewService(db)
+	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	consumer := &claimCountingConsumer{allow: false}
 	server, err := NewServer(ServerDeps{Portfolio: &portfolio, Admin: &admin, AgentOps: consumer, Role: agenttools.RoleOperator})
 	if err != nil {
