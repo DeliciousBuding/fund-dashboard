@@ -5,8 +5,8 @@ import { persist } from "zustand/middleware";
 
 export type ThemeMode = "dark" | "light" | "system";
 // convention: 中式涨红跌绿（默认）⇄ 西式涨绿跌红
-export type PnlConvention = "cn" | "western";
-export type Density = "comfortable" | "compact";
+type PnlConvention = "cn" | "western";
+type Density = "comfortable" | "compact";
 
 interface SettingsState {
   theme: ThemeMode;

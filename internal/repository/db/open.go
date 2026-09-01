@@ -175,6 +175,7 @@ var (
 	_ driver.SessionResetter   = (*rebindConn)(nil)
 	_ driver.Pinger            = (*rebindConn)(nil)
 	_ driver.NamedValueChecker = (*rebindConn)(nil)
+	_ driver.Validator         = (*rebindConn)(nil)
 )
 
 func (c *rebindConn) Prepare(query string) (driver.Stmt, error) {
@@ -244,6 +245,17 @@ func (c *rebindConn) ResetSession(ctx context.Context) error {
 		return rs.ResetSession(ctx)
 	}
 	return nil
+}
+
+// IsValid forwards the inner connection's liveness signal. Without this,
+// database/sql cannot drop a connection that pgx already marked dead after an
+// error, so the wrapper would hold broken connections in the pool until the
+// next round-trip fails.
+func (c *rebindConn) IsValid() bool {
+	if v, ok := c.inner.(driver.Validator); ok {
+		return v.IsValid()
+	}
+	return true
 }
 
 // Ping forwards health probes to the inner pgx connection. Without this,

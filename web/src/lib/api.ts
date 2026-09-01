@@ -12,6 +12,16 @@ export class ApiError extends Error {
   }
 }
 
+// 401 不整页跳 /login 的公开 auth 端点：/status 是路由守卫的未登录探测，
+// login/setup 的 401 是错误凭证或前置条件，logout 在会话过期时也无需再跳。
+// 带会话的 /api/auth/password|sessions|events 不在此列，过期 401 仍统一回登录门。
+const PUBLIC_AUTH_PATHS = new Set([
+  "/api/auth/status",
+  "/api/auth/login",
+  "/api/auth/setup",
+  "/api/auth/logout",
+]);
+
 interface ApiOptions {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
@@ -37,7 +47,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     signal: opts.signal,
   });
-  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+  if (res.status === 401 && !PUBLIC_AUTH_PATHS.has(path)) {
     // Session expired mid-flight: back through the gate.
     window.location.assign("/login");
     throw new ApiError(401, "unauthorized");

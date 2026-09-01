@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/confirmations"
@@ -33,6 +34,13 @@ func (r ConfirmationRepository) EnsureSchema(ctx context.Context) error {
 	`)
 	if err != nil {
 		return fmt.Errorf("ensure agent_confirmations schema: %w", err)
+	}
+	// SQLite parity with the PG index set (schema_pg.go). Best-effort so a
+	// legacy table with a different shape can never block boot.
+	if _, err := r.db.ExecContext(ctx, `
+		CREATE INDEX IF NOT EXISTS idx_agent_confirmations_tool ON agent_confirmations(tool)
+	`); err != nil {
+		slog.Warn("agent_confirmations tool index skipped", "error", err)
 	}
 	return nil
 }

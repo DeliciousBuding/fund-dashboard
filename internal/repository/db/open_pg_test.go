@@ -23,6 +23,7 @@ type fullStub struct {
 	pingCalls  int
 	checkErr   error
 	checkCalls int
+	isValid    bool
 }
 
 func (s *fullStub) Ping(ctx context.Context) error {
@@ -36,6 +37,8 @@ func (s *fullStub) CheckNamedValue(nv *driver.NamedValue) error {
 }
 
 func (s *fullStub) ResetSession(ctx context.Context) error { return nil }
+
+func (s *fullStub) IsValid() bool { return s.isValid }
 
 func TestRebindConnPingForwarded(t *testing.T) {
 	sentinel := errors.New("ping failed")
@@ -79,6 +82,25 @@ func TestRebindConnCheckNamedValueFallbackUsesDefaultConverter(t *testing.T) {
 	// the restrictive default converter rather than pgx's permissive checker.
 	if err := c.CheckNamedValue(&driver.NamedValue{Ordinal: 1, Value: []string{"a"}}); err == nil {
 		t.Fatal("CheckNamedValue([]string) = nil, want default-converter rejection")
+	}
+}
+
+func TestRebindConnIsValidForwarded(t *testing.T) {
+	inner := &fullStub{isValid: false}
+	c := &rebindConn{inner: inner}
+	if c.IsValid() {
+		t.Fatal("IsValid = true, want forwarded false from inner")
+	}
+	inner.isValid = true
+	if !c.IsValid() {
+		t.Fatal("IsValid = false, want forwarded true from inner")
+	}
+}
+
+func TestRebindConnIsValidFallbackWhenUnimplemented(t *testing.T) {
+	c := &rebindConn{inner: plainStub{}}
+	if !c.IsValid() {
+		t.Fatal("IsValid = false, want true fallback when inner lacks driver.Validator")
 	}
 }
 

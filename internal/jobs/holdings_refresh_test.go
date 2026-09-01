@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
@@ -62,5 +64,24 @@ func TestUpsertFundHoldings_IdempotentNoRewrite(t *testing.T) {
 	}
 	if third != 2 {
 		t.Fatalf("third added=%d want 2 after change", third)
+	}
+}
+
+// TestHoldingsCrawlTruncationObservable guards the LIMIT+1 probe and warning
+// wiring for CrawlAllHeld (same pattern as price_refresh/recalc truncation).
+func TestHoldingsCrawlTruncationObservable(t *testing.T) {
+	raw, err := os.ReadFile("holdings_refresh.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	if !strings.Contains(src, "holdingsCrawlMaxCodes+1") && !strings.Contains(src, "holdingsCrawlMaxCodes + 1") {
+		t.Fatal("expected LIMIT max+1 probe in CrawlAllHeld")
+	}
+	if !strings.Contains(src, `"holdings crawl code list truncated"`) {
+		t.Fatal("expected truncation warning log in CrawlAllHeld")
+	}
+	if !strings.Contains(src, "capCodes(codes, holdingsCrawlMaxCodes)") {
+		t.Fatal("expected capCodes applied to held fund codes")
 	}
 }

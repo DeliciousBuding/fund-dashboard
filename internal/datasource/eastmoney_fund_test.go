@@ -2,9 +2,11 @@ package datasource
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestFetchHistory_StandardFund(t *testing.T) {
@@ -141,6 +143,75 @@ func TestNormalizeFundCode(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("normalizeFundCode(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// TestFetchHistory_UsesEastmoneyTimezone locks the UTC+8 date conversion: the
+// upstream x timestamp is Beijing midnight, which is 16:00 UTC on the previous
+// day. Formatting in UTC used to store every NAV one day early.
+func TestFetchHistory_UsesEastmoneyTimezone(t *testing.T) {
+	beijingMidnight := time.Date(2026, 7, 1, 0, 0, 0, 0, time.FixedZone("Asia/Shanghai", 8*3600)).UnixMilli()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `var Data_netWorthTrend = [{"x":%d,"y":1.2345,"equityReturn":0.1}];`, beijingMidnight)
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	points, err := orig.FetchHistory(context.Background(), "019173")
+	if err != nil {
+		t.Fatalf("FetchHistory: %v", err)
+	}
+	if len(points) != 1 || points[0].Date != "2026-07-01" {
+		t.Fatalf("points=%+v, want date 2026-07-01 for Beijing-midnight timestamp", points)
+	}
+}
+
+// TestParseNetWorthTrendSkipsZeroAndNegativeTimestamps guards against
+// zero-value/missing x becoming 1970-01-01 points.
+func TestParseNetWorthTrendSkipsZeroAndNegativeTimestamps(t *testing.T) {
+	data := `var Data_netWorthTrend = [{"x":0,"y":1.1},{"x":-1,"y":1.2},{"x":1751414400000,"y":1.3}];`
+	points := parseNetWorthTrend(data)
+	if len(points) != 1 {
+		t.Fatalf("len=%d want 1 (zero/negative timestamps dropped)", len(points))
+	}
+	if points[0].Date != "2025-07-02" {
+		t.Fatalf("date=%q, want 2025-07-02 (UTC 00:00 renders as +08:00 same day)", points[0].Date)
+	}
+}
+
+// TestParseMillionCopiesIncomeSkipsBadRows covers malformed/zero-timestamp rows.
+func TestParseMillionCopiesIncomeSkipsBadRows(t *testing.T) {
+	data := `var Data_millionCopiesIncome = [[0,0.1],[1751414400000,0.22],[1751500800000]];`
+	points := parseMillionCopiesIncome(data)
+	if len(points) != 1 {
+		t.Fatalf("len=%d want 1 (zero timestamp and short row dropped)", len(points))
+	}
+	if points[0].ChangePct != 0.22 {
+		t.Fatalf("change_pct=%f want 0.22", points[0].ChangePct)
+	}
+}
+
+// TestFetchHistory_EmptyCodeRejectedBeforeNetwork ensures empty codes never
+// become the synthesized 000000 fund and hit upstream.
+func TestFetchHistory_EmptyCodeRejectedBeforeNetwork(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	for _, code := range []string{"", "   "} {
+		if _, err := orig.FetchHistory(context.Background(), code); err == nil {
+			t.Fatalf("FetchHistory(%q): expected error", code)
+		}
+		if _, err := orig.FetchMeta(context.Background(), code); err == nil {
+			t.Fatalf("FetchMeta(%q): expected error", code)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("upstream requests = %d, want 0 (empty code rejected before network)", requests)
 	}
 }
 

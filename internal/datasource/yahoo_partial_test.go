@@ -37,6 +37,42 @@ func TestFetchYahooIndexQuotesPartialSuccess(t *testing.T) {
 	}
 }
 
+func TestFetchYahooIndexQuotesZeroPriceIsFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"chart":{"result":[{"meta":{"symbol":"ZERO","regularMarketPrice":0,"chartPreviousClose":0}}],"error":null}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("FUND_YAHOO_CHART_ENDPOINT", srv.URL+"/chart/%s")
+
+	_, err := FetchYahooIndexQuotes(context.Background(), []string{"ZERO"})
+	if err == nil {
+		t.Fatal("expected error when the only quote has zero price")
+	}
+}
+
+func TestFetchYahooIndexQuotesSkipsBlankSymbols(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"chart":{"result":[{"meta":{"symbol":"OK","regularMarketPrice":100,"chartPreviousClose":99}}],"error":null}}`))
+	}))
+	defer srv.Close()
+	t.Setenv("FUND_YAHOO_CHART_ENDPOINT", srv.URL+"/chart/%s")
+
+	quotes, err := FetchYahooIndexQuotes(context.Background(), []string{"", "   ", "OK"})
+	if err != nil {
+		t.Fatalf("quotes: %v", err)
+	}
+	if len(quotes) != 1 {
+		t.Fatalf("len(quotes)=%d, want 1 (blank symbols skipped)", len(quotes))
+	}
+	if requests != 1 {
+		t.Fatalf("upstream requests = %d, want 1 (blank symbols never fetched)", requests)
+	}
+}
+
 func TestFetchYahooIndexQuotesAllFail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nope", http.StatusBadGateway)

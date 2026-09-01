@@ -71,8 +71,8 @@ func (s Service) querySecuritiesWithoutNAV(ctx context.Context) ([]string, error
 		WHERE ps.held_shares > 0.001
 		  AND fd.fund_code NOT IN (SELECT DISTINCT fund_code FROM nav_history)
 		ORDER BY fd.fund_code
-		LIMIT 5000
-	`)
+		LIMIT ?
+	`, adminListMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("verify missing NAV: %w", err)
 	}
@@ -98,8 +98,8 @@ func (s Service) queryNegativePositions(ctx context.Context) ([]NegativePosition
 		FROM portfolio_snapshot
 		WHERE held_shares < -0.001
 		ORDER BY fund_code
-		LIMIT 5000
-	`)
+		LIMIT ?
+	`, adminListMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("verify negative positions: %w", err)
 	}

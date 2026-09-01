@@ -3,6 +3,7 @@
 
 import {
   AuthEventsResponseSchema,
+  AuthOkResponseSchema,
   AuthSessionsResponseSchema,
   SystemAgentResponseSchema,
 } from "@fund-dashboard/contracts";
@@ -57,11 +58,13 @@ function ChangePasswordCard() {
           : "不足（至少 12 位且含字母+数字）";
 
   const change = useMutation({
-    mutationFn: () =>
-      api("/api/auth/password", {
+    mutationFn: async () => {
+      const data = await api<unknown>("/api/auth/password", {
         method: "POST",
         body: { current_password: oldPwd, new_password: newPwd },
-      }),
+      });
+      return AuthOkResponseSchema.parse(data);
+    },
     onSuccess: async () => {
       toast.success("密码已更新，其他会话已全部退出");
       setOldPwd("");
@@ -154,8 +157,12 @@ function SessionsCard() {
       fetchValidated("/api/auth/sessions", AuthSessionsResponseSchema, signal),
   });
   const revoke = useMutation({
-    mutationFn: (idPrefix: string) =>
-      api(`/api/auth/sessions/${idPrefix}/revoke`, { method: "POST" }),
+    mutationFn: async (idPrefix: string) => {
+      const data = await api<unknown>(`/api/auth/sessions/${idPrefix}/revoke`, {
+        method: "POST",
+      });
+      return AuthOkResponseSchema.parse(data);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
       toast.success("会话已撤销");

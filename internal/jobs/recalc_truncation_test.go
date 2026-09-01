@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestCapRecalcCodes(t *testing.T) {
+func TestCapCodes(t *testing.T) {
 	cases := []struct {
 		name  string
 		in    []string
@@ -22,9 +22,9 @@ func TestCapRecalcCodes(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			keep, dropped := capRecalcCodes(tc.in, tc.limit)
+			keep, dropped := capCodes(tc.in, tc.limit)
 			if len(keep) != tc.keep || dropped != tc.drop {
-				t.Fatalf("capRecalcCodes(len=%d, limit=%d) = (len=%d, dropped=%d), want (%d, %d)",
+				t.Fatalf("capCodes(len=%d, limit=%d) = (len=%d, dropped=%d), want (%d, %d)",
 					len(tc.in), tc.limit, len(keep), dropped, tc.keep, tc.drop)
 			}
 		})
@@ -54,7 +54,7 @@ func TestRecalcAllTruncationObservable(t *testing.T) {
 	if !strings.Contains(src, `"recalc snapshots code list truncated"`) {
 		t.Fatal("expected truncation warning log in RecalcAllSnapshots")
 	}
-	if !strings.Contains(src, "capRecalcCodes(list, recalcAllMaxCodes)") {
-		t.Fatal("expected capRecalcCodes applied to the listed codes")
+	if !strings.Contains(src, "capCodes(list, recalcAllMaxCodes)") {
+		t.Fatal("expected capCodes applied to the listed codes")
 	}
 }

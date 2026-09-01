@@ -126,6 +126,31 @@ func TestConfirmationRepositoryDoesNotStoreRawToken(t *testing.T) {
 	}
 }
 
+// TestConfirmationRepositoryEnsureSchemaCreatesToolIndex locks SQLite parity with
+// the PG schema index set and proves EnsureSchema is idempotent.
+func TestConfirmationRepositoryEnsureSchemaCreatesToolIndex(t *testing.T) {
+	ctx := context.Background()
+	db := openAgentStateFixture(t)
+	defer db.Close()
+
+	repo := NewConfirmationRepository(db)
+	for i := 0; i < 2; i++ {
+		if err := repo.EnsureSchema(ctx); err != nil {
+			t.Fatalf("EnsureSchema run %d: %v", i, err)
+		}
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sqlite_master
+		WHERE type = 'index' AND name = 'idx_agent_confirmations_tool'
+	`).Scan(&n); err != nil {
+		t.Fatalf("query index: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("idx_agent_confirmations_tool present=%d, want 1", n)
+	}
+}
+
 func TestConfirmationRepositoryGetMissingReturnsNil(t *testing.T) {
 	ctx := context.Background()
 	db := openAgentStateFixture(t)

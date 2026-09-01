@@ -187,8 +187,20 @@ func TestFetchHoldings_TriesCurrentYearAfterEmptyDefault(t *testing.T) {
 }
 
 func TestFetchHoldings_RequiresFundCode(t *testing.T) {
-	orig := NewEastmoneyHoldings()
-	if _, err := orig.FetchHoldings(context.Background(), "", 10); err == nil {
-		t.Fatal("expected error for empty fund code")
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyHoldingsForTest(server)
+	for _, code := range []string{"", "   "} {
+		if _, err := orig.FetchHoldings(context.Background(), code, 10); err == nil {
+			t.Fatalf("FetchHoldings(%q): expected error", code)
+		}
+	}
+	if requests != 0 {
+		t.Fatalf("upstream requests = %d, want 0 (empty code rejected before network)", requests)
 	}
 }

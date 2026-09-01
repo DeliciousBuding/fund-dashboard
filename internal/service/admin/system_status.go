@@ -151,8 +151,8 @@ func (s Service) querySystemAnomalies(ctx context.Context) (SystemAnomalyStats, 
 		FROM transactions
 		WHERE anomaly IS NOT NULL
 		ORDER BY seq
-		LIMIT 20
-	`)
+		LIMIT ?
+	`, maxRecentAnomalies)
 	if err != nil {
 		return SystemAnomalyStats{}, fmt.Errorf("admin system status anomalies: %w", err)
 	}

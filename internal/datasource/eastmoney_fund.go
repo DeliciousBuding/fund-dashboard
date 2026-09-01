@@ -43,6 +43,10 @@ var (
 )
 
 func (s *EastmoneyFund) FetchHistory(ctx context.Context, code string) ([]PricePoint, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, fmt.Errorf("fund code is required")
+	}
 	code = normalizeFundCode(code)
 	data, err := s.get(ctx, fmt.Sprintf(
 		"%s/pingzhongdata/%s.js", s.baseURL(), url.PathEscape(code),
@@ -67,6 +71,10 @@ func (s *EastmoneyFund) FetchHistory(ctx context.Context, code string) ([]PriceP
 }
 
 func (s *EastmoneyFund) FetchMeta(ctx context.Context, code string) (*FundMeta, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, fmt.Errorf("fund code is required")
+	}
 	code = normalizeFundCode(code)
 	data, err := s.get(ctx, fmt.Sprintf(
 		"%s/pingzhongdata/%s.js", s.baseURL(), url.PathEscape(code),
@@ -124,6 +132,18 @@ var (
 // maxNAVHistoryPoints soft-caps upstream NAV series before persist (#241).
 const maxNAVHistoryPoints = 5000
 
+// Eastmoney x fields are Unix milliseconds at Beijing midnight (UTC+8; China
+// has had no DST since 1991). Formatting them in UTC shifts every NAV date one
+// day back (2026-09-01 00:00 +08:00 == 2026-08-31T16:00Z), so date strings are
+// produced in a fixed UTC+8 zone rather than a tzdata-dependent location.
+// eastmoneyLocation is a fixed UTC+8 zone (China has had no DST since 1991),
+// hoisted so per-point formatting does not allocate a new location.
+var eastmoneyLocation = time.FixedZone("Asia/Shanghai", 8*3600)
+
+func formatEastmoneyDate(ms int64) string {
+	return time.UnixMilli(ms).In(eastmoneyLocation).Format("2006-01-02")
+}
+
 func capPricePoints(points []PricePoint) []PricePoint {
 	if len(points) <= maxNAVHistoryPoints {
 		return points
@@ -149,6 +169,9 @@ func parseNetWorthTrend(data string) []PricePoint {
 
 	points := make([]PricePoint, 0, len(raw))
 	for _, r := range raw {
+		if r.X <= 0 {
+			continue // zero/missing timestamp must not surface as 1970-01-01
+		}
 		if r.Y < 0.01 || r.Y > 100 {
 			continue // outlier
 		}
@@ -157,7 +180,7 @@ func parseNetWorthTrend(data string) []PricePoint {
 			changePct = *r.EquityReturn
 		}
 		points = append(points, PricePoint{
-			Date:      time.UnixMilli(int64(r.X)).UTC().Format("2006-01-02"),
+			Date:      formatEastmoneyDate(int64(r.X)),
 			Price:     math.Round(r.Y*1e4) / 1e4,
 			ChangePct: changePct,
 		})
@@ -178,17 +201,13 @@ func parseMillionCopiesIncome(data string) []PricePoint {
 
 	points := make([]PricePoint, 0, len(raw))
 	for _, r := range raw {
-		if len(r) < 2 {
-			continue
-		}
-		changePct := 0.0
-		if len(r) > 1 {
-			changePct = r[1]
+		if len(r) < 2 || r[0] <= 0 {
+			continue // malformed row or zero/missing timestamp
 		}
 		points = append(points, PricePoint{
-			Date:      time.UnixMilli(int64(r[0])).UTC().Format("2006-01-02"),
+			Date:      formatEastmoneyDate(int64(r[0])),
 			Price:     1.0,
-			ChangePct: changePct,
+			ChangePct: r[1],
 		})
 	}
 	return capPricePoints(points)

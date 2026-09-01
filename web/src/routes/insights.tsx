@@ -1,5 +1,6 @@
 // 信号 /insights —— 组合级投资支架卡（harness 快照）+ 来源事件流（已读/有用标记）
 // + 告警扫描。facts-only 边界：只呈现事实与推荐动作，不做决策措辞。
+import { AuthOkResponseSchema } from "@fund-dashboard/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellRing, BookOpenCheck, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
@@ -175,7 +176,7 @@ function EventsCard() {
   const events = useSourceEvents();
   const queryClient = useQueryClient();
   const mark = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       id,
       is_read,
       is_useful,
@@ -183,8 +184,13 @@ function EventsCard() {
       id: number;
       is_read?: boolean;
       is_useful?: boolean;
-    }) =>
-      api(`/api/portfolio/source-events/${id}`, { method: "PATCH", body: { is_read, is_useful } }),
+    }) => {
+      const data = await api<unknown>(`/api/portfolio/source-events/${id}`, {
+        method: "PATCH",
+        body: { is_read, is_useful },
+      });
+      return AuthOkResponseSchema.parse(data);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["source-events"] });
     },
