@@ -41,9 +41,7 @@ E2E_BASE_URL=http://127.0.0.1:8080 \
 E2E_PASSWORD=ci-smoke-password-1 \
 pnpm test:e2e
 
-# 生产热换后（`smoke-prod.sh` 位于私有运维仓，本仓不包含）
-# 在私有运维仓运行，而非本仓：
-./scripts/smoke-prod.sh
+# 生产热换后：在私有运维仓运行 fund-dashboard/scripts/smoke-prod.sh（本仓无此脚本），命令见私有仓 README。
 ```
 
 | 场景 | 跑什么 |

@@ -20,7 +20,7 @@
 ## 项目骨架
 
 - 入口：`cmd/fund-dashboard`
-- 业务：`internal/{app,httpapi,mcp,service,jobs,datasource,agenttools,agentops,repository}`
+- 业务：`internal/`（分层主干见 `docs/ARCHITECTURE.md` §2；完整包以 `go list ./internal/...` 为权威）
 - 契约：`packages/contracts`（zod，前后端共享的 API 契约 SSOT）
 - 部署：`deploy/Dockerfile`（三阶段：web 构建 → Go 静态二进制含内嵌 SPA）· `deploy/docker-compose.ci.yml`（CI smoke）
 - 文档：`docs/{ARCHITECTURE,TESTING}.md` · `CHANGELOG.md` · `CONTRIBUTING.md`

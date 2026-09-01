@@ -19,7 +19,8 @@
 
 ## [Unreleased]
 
-<!-- 当前无未发布变更；新条目在此追加扁平 `- [类型] 描述`。 -->
+- **chore** neat-freak 二轮收口：Go 三份 recalcSnapshot 收敛为 `internal/snapshot`；前端删死导出、收敛 toneClass/DIRECTION_LABEL/AlertItem/FreshnessReport 契约、修告警 severity 映射（high/medium/low/info）；Dockerfile 镜像 pin digest；CI setup-go pin `1.26.6`。
+- **文档** 归版过时事实：测绘时间限定（登录/recover/Origin 白名单）、ARCHITECTURE 历史叙事指针化、TESTING smoke-prod 死链改 prose、CHANGELOG 死文件引用标注。
 
 ## [2.0.0] - 2026-09-01
 
@@ -77,7 +78,7 @@
 - **#269** 修复：MCP 写工具缺 confirmation 时引导 prepare 端点。
 - **#268** 修复：scheduler `Stop` 取消 startup catch-up AfterFunc / job context。
 - **#267** 修复：OverviewPage `i18n` 解构，消除 formatNavDate 崩溃。
-- **chore** smoke-prod：`pybin` 提前定义；tools/list 计数改 argv 传路径（Windows native python 可读 MSYS 临时文件）。
+- **chore** smoke-prod：`pybin` 提前定义；tools/list 计数改 argv 传路径（Windows native python 可读 MSYS 临时文件）。（smoke-prod 现属私有运维仓）
 - **#266** 稳健：agent confirmation request_id/caller 长度错误稳定码；ARCHITECTURE crawl-nav 文档 stale_only。
 - **#265** 文档：SECURITY-AUDIT EdgeKey 注入范围与 #260 path-scoped 配置对齐。
 - **#264** 文档：历史 git 密钥 residual 清单 + 轮换流程（**未** live 轮换）。
@@ -88,8 +89,8 @@
 - **#259** 文档：Hermes mcp.json crawl_nav/get_data_freshness 描述对齐 stale_only / recommended_codes。
 - **#258** 测试：smoke MCP crawl_nav(stale_only=true) 端到端（healthy 时 mode=stale_only）。
 - **#257** 测试：smoke harness crawl_nav Input.stale_only + admin crawl-nav?stale_only=1。
-- **#256** 测试：smoke-prod 断言 tools/list 中 crawl_nav.inputSchema.properties.stale_only。
-- **#255** 测试：smoke-prod 校验 get_data_freshness 的 recommended_codes / recommended_maintenance_args.stale_only。
+- **#256** 测试：smoke-prod 断言 tools/list 中 crawl_nav.inputSchema.properties.stale_only。（smoke-prod 现属私有运维仓）
+- **#255** 测试：smoke-prod 校验 get_data_freshness 的 recommended_codes / recommended_maintenance_args.stale_only。（smoke-prod 现属私有运维仓）
 - **改进** 爬虫调度：startup + 工作日 20:00 CST 改为 **stale_only**；NAV upsert 增量丢弃 ≤ 本地 MAX(date)。
 - **改进** 产品：NAV 新鲜度条（severity/warn/critical）+ portfolio React Query staleTime 5m。
 - **修复** portfolioId 作用域：XIRR 终端市值优先 snapshot；compare/MCP/FE detail/DCA/harness 软过滤 source_events。
@@ -181,7 +182,7 @@
 - **#196** 修复：pg `rebindConn` 实现 `SessionResetter`；scheduler WAL 仅 SQLite probe 后执行；SECURITY-AUDIT AgentOps 已启用 SSOT。
 - **#195** 修复：SPA `useChartData`/`useNasdaqData` 走 sanitizeUserError；FundDetail noCode i18n；DCA 轴万/k；冒烟 PUBLIC 密钥路径+prepare 401；Hermes/MATRIX AgentOps 已启用 SSOT。
 - **#194** 修复：AgentOps `MarkUsed` 原子 `used_at IS NULL`（PG TOCTOU）；import 用 NOT EXISTS 幂等；scheduler claim 未知错误 fail-closed；生产已部署。
-- **#5** 新功能：AgentOps 生产启用（`FUND_AGENT_OPS_ENABLED` + confirmation secret）；smoke-prod 增加 prepare→无确认拒绝→单次消费→复用拒绝；PUBLIC prepare 401；operator tools/list 44 / PUBLIC 26 不变。
+- **#5** 新功能：AgentOps 生产启用（`FUND_AGENT_OPS_ENABLED` + confirmation secret）；smoke-prod 增加 prepare→无确认拒绝→单次消费→复用拒绝；PUBLIC prepare 401；operator tools/list 44 / PUBLIC 26 不变。（smoke-prod 现属私有运维仓）
 - **#193** 改进：Overview `first_trade`/`last_trade` 走 `formatNavDate` locale；FundDetail 图例点尺寸 token 化。
 - **#192** 改进：DcaPanel / FundDetail 残余 spacing（marginTop 微间距 + toast bottom）收口 space token。
 - **#191** 修复：penetration 空行业键 EN-primary `other`；Overview/App NAV 日期 `formatNavDate` 按 locale。
@@ -256,7 +257,7 @@
 - **#119** 改进：theme `zIndex` 海拔阶梯 + fixed 层迁移。
 - **#120** 改进：theme `fontWeight` 阶梯 + 高频字重字面量迁移。
 - **#121** 改进：AdminDashboard 分区 aria-label + 异常表 caption/aria-label。
-- **#122** 文档：DESIGN.md token 准确性对齐 #103–#118（+ #119 zIndex；glassSurfaceStyle / ChartShell / space·radius·fontSize / skeleton / critical / reduced-motion spin；G6 仍产品门控）。
+- **#122** 文档：DESIGN.md token 准确性对齐 #103–#118（+ #119 zIndex；glassSurfaceStyle / ChartShell / space·radius·fontSize / skeleton / critical / reduced-motion spin；G6 仍产品门控）。（docs/DESIGN.md 已删除）
 - **#118** 改进：theme `fontSize` 字号阶梯 + SPA 内联 fontSize 字面量迁移（raw ≈ 0）。
 - **#117** 修复：MarketTicker 刷新旋转动画改 `fd-spin`，并尊重 `prefers-reduced-motion`。
 - **#116** 改进：ChartFallback/PageFallback skeleton 加载壳（减 CLS；respect reduced-motion）。
@@ -278,7 +279,7 @@
 - **#100** 修复：MarketTicker CN/HK 指数从未填充（仅 US Yahoo）。扩展 DefaultIndexSymbols 到 8（新增 ^HSI、000001.SS、399001.SZ、399006.SZ），SPA 代码映射（sh000001→000001.SS 等），市场区域自动检测（US/CN/HK），Deploy/Dockerfile 修复 docker chmod 权限问题。
 
 - **#65** Role-aware harness/agent-context discovery: public HTTP remains least-privilege (26 tools); MCP operator restores full harness write/maintenance surface; public `agent-context` no longer leaks write tool names.
-- **#66** `scripts/smoke-prod.sh` asserts public harness/agent-context discovery filters and operator MCP harness full surface.
+- **#66** `scripts/smoke-prod.sh` asserts public harness/agent-context discovery filters and operator MCP harness full surface.（smoke-prod 现属私有运维仓）
 - **#67** `docs/ARCHITECTURE.md` accuracy: fail-closed MCP auth, PUBLIC 26, role-aware harness, adjust_position MCP vs admin HTTP.
 - **#68** residual ARCHITECTURE topology: replace legacy topology diagrams; banner ARCHITECTURE_V3 historical.
 - **#69** router EdgeAuth comments + HANDOFF/SECURITY checklist residual accuracy after public discovery wave.
@@ -350,7 +351,7 @@
 - [新功能] MCP `recalculate_snapshot` 接入 tools/list+call（#31；tools 32→33）
 - [新功能] MCP `crawl_nav` 接入 tools/list+call（#30；tools 31→32）
 - [新功能] MCP `mark_source_event` 接入 tools/list+call（#29；tools 30→31）
-- [文档] MCP registry 44 vs tools/list 矩阵（`docs/progress/MCP-TOOL-MATRIX.md`，#28）
+- [文档] MCP registry 44 vs tools/list 矩阵（`docs/progress/MCP-TOOL-MATRIX.md`，#28）。（该矩阵已迁私有运维仓）
 - [改进] 统一 skip-link：`index.html` 使用 `fd-skip-link` + token CSS（#27）
 - [安全] 工作树脱敏：nginx EdgeKey include 本机 snippet、Hermes/HANDOFF 去明文密钥（#26；未轮换）
 - [改进] 边缘 `limit_req` 挂载 `/mcp` `/api/admin` `/api/agent` `/api/`；README Go1.25 与公网读边界修正（#25）
@@ -359,11 +360,11 @@
 - [chore] CI/Release setup-go 对齐 go.mod `1.25.x`（#22）；radar 回落色走 `lightTheme.blue`
 - [chore] GHCR `build-and-push` multi-arch（linux/amd64 + linux/arm64）+ GHA cache（#21）
 - [测试] CI 可选 `e2e-full` job（workflow_dispatch `full_e2e=true`）跑全量 Playwright（#20）
-- [改进] smoke-prod 自动加载 Hermes operator key；PUBLIC 写拒绝可验
+- [改进] smoke-prod 自动加载 Hermes operator key；PUBLIC 写拒绝可验。（smoke-prod 现属私有运维仓）
 - [改进] onAccent/markerBorder tokens 替换 OfflineBanner/Sidebar/Nasdaq/Penetration 残留 `#fff`（#19）
 - [改进] sector 扩展色迁入 theme `sector*` tokens（#18）
 - [改进] PortfolioSwitcher glass tokens + a11y listbox（配合 `?portfolio=` deep-link）
-- [新功能] 组合 `?portfolio=` deep-link（`usePortfolioDeepLink`）+ `scripts/smoke-prod.sh` 生产冒烟
+- [新功能] 组合 `?portfolio=` deep-link（`usePortfolioDeepLink`）+ `scripts/smoke-prod.sh` 生产冒烟。（该脚本现属私有运维仓）
 - [新功能] 基金对比 `?codes=` deep-link 自动对比；critical CSS tokens
 - [改进] 行业色板 SECTOR_COLORS 绑定 theme accents + SECTOR_FALLBACK
 - [改进] 基金详情 `?detailTab=` deep-link；Ticker/Sidebar/OfflineBanner 去硬编码红绿
@@ -373,7 +374,7 @@
 - [改进] Admin/DCA/classify 去硬编码色；DcaPanel 改 glass Card
 - [改进] StatCard/ChartShell 磨砂玻璃表面 + theme glass tokens；StatCard 去硬编码红绿
 - [新功能] 图表 range deep-link：`useQueryRange`（FundChart/NasdaqOverview）
-- [文档] 新增 `docs/DESIGN.md`（Vercel Web Interface Guidelines + Geist-inspired tokens）
+- [文档] 新增 `docs/DESIGN.md`（Vercel Web Interface Guidelines + Geist-inspired tokens）。（该文档已删除）
 - [文档] Wave4 SDD：Issues #4–#7、`WAVE4-SDD` / `SIBLING-AUDIT` / `AGENTOPS-ENABLEMENT`
 - [改进] UI：`space`/`radius` token、skip-link、`:focus-visible`、`prefers-reduced-motion`
 - [改进] `usChangeColor` 走 theme token，去掉硬编码 hex

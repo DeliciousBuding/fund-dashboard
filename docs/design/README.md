@@ -34,10 +34,10 @@
 
 ## 关键测绘事实（设计依据摘要）
 
-- 后端约 50 条 REST 路由、44 个 MCP 工具已生产验证；**登录/session/cookie/password 设施完全不存在**（全新建设面）。
-- **无 recover 中间件、无应用层限流** —— W1 随登录一起补。
+- 后端约 50 条 REST 路由、44 个 MCP 工具已生产验证；**2026-08-29 测绘时登录/session/cookie/password 设施完全不存在**（全新建设面；W1 起已实现，现状见 `docs/ARCHITECTURE.md` §4）。
+- **2026-08-29 测绘时无 recover 中间件、无应用层限流** —— W1 随登录一起补。
 - SPA fallback 静态服务（`internal/httpapi/static.go`）已实现且可复用（8 MiB 上限、路径穿越防护、`/api`+`/mcp` JSON 404）。
 - 旧前端（已删）的纯函数服务层（montecarlo / statistics / irr）带完整 vitest 测试，**直接移植**而非重写。
 - 蒙特卡洛与相关性热力图**只在旧前端存在**，后端从未实现 —— 新前端先客户端化，后端/MCP 化入 backlog。
-- 安全细节：`edge_auth.go` 的 Origin 白名单**硬编码生产域名在公开仓库** —— W1 改为 env 配置（`FUND_ALLOWED_ORIGINS`）。
+- 安全细节（2026-08-29 测绘时）：`edge_auth.go` 的 Origin 白名单**曾硬编码生产域名在公开仓库** —— W1 起改为 env 配置（`FUND_ALLOWED_ORIGINS`）。
 - `agent_audit_events` / `agent_confirmations` 只增不减 —— W1 顺带加 TTL 清扫（挂在现有 03:00 调度）。
