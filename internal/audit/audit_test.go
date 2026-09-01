@@ -2,6 +2,7 @@ package audit
 
 import (
 	"testing"
+	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
 )
@@ -99,5 +100,54 @@ func TestNewResultEventRedactsResultSummary(t *testing.T) {
 	}
 	if event.ResultSummary["webhook"] != RedactedValue || event.ResultSummary["status"] != "sent" {
 		t.Fatalf("ResultSummary = %#v, want webhook redacted and status preserved", event.ResultSummary)
+	}
+}
+
+func TestNewAttemptEventUsesInjectedClock(t *testing.T) {
+	registry, err := agenttools.DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry returned error: %v", err)
+	}
+	tool, ok := registry.Lookup("add_transaction")
+	if !ok {
+		t.Fatalf("add_transaction not found")
+	}
+
+	// Fixed non-UTC instant: the event must carry the UTC rendering of this
+	// exact time, not the wall clock observed by the test.
+	fixed := time.Date(2026, 8, 2, 3, 4, 5, 123456789, time.FixedZone("CST", 8*3600))
+	event := NewAttemptEvent(EventInput{
+		RequestID: "req-clock",
+		Caller:    "hermes",
+		Tool:      tool,
+		Now:       func() time.Time { return fixed },
+	})
+
+	want := fixed.UTC().Format(time.RFC3339Nano)
+	if event.CreatedAt != want {
+		t.Fatalf("CreatedAt = %q, want %q", event.CreatedAt, want)
+	}
+}
+
+func TestNewResultEventDefaultsToWallClock(t *testing.T) {
+	registry, err := agenttools.DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry returned error: %v", err)
+	}
+	tool, ok := registry.Lookup("check_alerts")
+	if !ok {
+		t.Fatalf("check_alerts not found")
+	}
+
+	before := time.Now()
+	event := NewResultEvent(EventInput{RequestID: "req-wall", Tool: tool})
+	after := time.Now()
+
+	created, err := time.Parse(time.RFC3339Nano, event.CreatedAt)
+	if err != nil {
+		t.Fatalf("CreatedAt %q is not RFC3339Nano: %v", event.CreatedAt, err)
+	}
+	if created.Before(before.Add(-time.Second)) || created.After(after.Add(time.Second)) {
+		t.Fatalf("CreatedAt = %q, want within wall-clock window [%s, %s]", event.CreatedAt, before, after)
 	}
 }

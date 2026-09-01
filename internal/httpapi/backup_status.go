@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,6 +42,9 @@ func readBackupStatus(backupDir string, now time.Time) backupStatusResponse {
 	}
 	entries, err := os.ReadDir(backupDir)
 	if err != nil {
+		// Degrade to no_backups for missing and unreadable dirs alike, but leave
+		// a diagnostic trace instead of silently swallowing the failure.
+		slog.Debug("backup status read dir failed", "dir", backupDir, "error", err)
 		return response
 	}
 
