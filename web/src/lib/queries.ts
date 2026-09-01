@@ -30,7 +30,11 @@ function withPortfolio(path: string, portfolioId?: number): string {
   return `${path}${sep}portfolio_id=${portfolioId}`;
 }
 
-async function fetchValidated<S extends z.ZodType>(path: string, schema: S, signal?: AbortSignal) {
+export async function fetchValidated<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  signal?: AbortSignal,
+) {
   const data = await api<unknown>(path, { signal });
   return schema.parse(data);
 }
@@ -278,7 +282,7 @@ export interface TransactionListItem {
   portfolio_id: number | null;
 }
 
-export interface TransactionsPage {
+export interface TransactionsResponse {
   transactions: TransactionListItem[];
   total: number;
 }
@@ -304,7 +308,7 @@ export function useTransactions(filter: TransactionsFilter) {
   const qs = params.toString();
   return useQuery({
     queryKey: ["transactions", qs],
-    queryFn: ({ signal }) => api<TransactionsPage>(`/api/transactions?${qs}`, { signal }),
+    queryFn: ({ signal }) => api<TransactionsResponse>(`/api/transactions?${qs}`, { signal }),
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
   });
