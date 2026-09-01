@@ -61,7 +61,7 @@ pnpm test:e2e
 3. `test-web`：Biome + Vitest。
 4. `build-web`：TypeScript + Vite + go:embed 输出。
 5. `smoke-e2e`：seed → image → compose → API/MCP auth → Playwright Chromium。
-6. `build-and-push` 只在主分支 push 且上述门禁成功后构建双架构镜像。
+6. `build-and-push` 仅在 main push（或仅限 main 的 workflow_dispatch）且上述门禁成功后构建双架构镜像。
 
 Playwright 失败时上传 `test-results/`（trace / screenshot / video / HTML report），保留 7 天。
 
