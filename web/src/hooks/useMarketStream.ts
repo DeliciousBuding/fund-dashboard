@@ -6,7 +6,7 @@ import { type MarketIndex, MarketIndexSchema } from "@fund-dashboard/contracts";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
-export interface MarketStreamState {
+interface MarketStreamState {
   indices: MarketIndex[];
   connected: boolean;
   updatedAt: string | null;

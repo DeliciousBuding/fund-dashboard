@@ -186,9 +186,16 @@ export function Sidebar() {
                 ))}
               </div>
             )}
-            {!securities.isLoading && grouped.length === 0 && (
-              <p className="px-1 pt-2 text-xs text-fg-3">{query ? "没有匹配的标的" : "暂无持仓"}</p>
-            )}
+            {!securities.isLoading &&
+              (securities.isError ? (
+                <p className="px-1 pt-2 text-xs text-danger">持仓列表加载失败</p>
+              ) : (
+                grouped.length === 0 && (
+                  <p className="px-1 pt-2 text-xs text-fg-3">
+                    {query ? "没有匹配的标的" : "暂无持仓"}
+                  </p>
+                )
+              ))}
             {grouped.map((g) => (
               <div key={g.market || "other"} className="pt-2">
                 <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] font-medium tracking-wide text-fg-3">
