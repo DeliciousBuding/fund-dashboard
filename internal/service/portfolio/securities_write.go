@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 type UpsertSecurityInput struct {
@@ -177,7 +179,7 @@ func (s Service) DeleteSecurity(ctx context.Context, code string) (DeleteSecurit
 		res, err := tx.ExecContext(ctx, q, code)
 		if err != nil {
 			// ignore missing optional tables
-			if strings.Contains(err.Error(), "no such table") || strings.Contains(strings.ToLower(err.Error()), "does not exist") {
+			if dialect.IsMissingTableError(err) {
 				continue
 			}
 			return DeleteSecurityResult{}, fmt.Errorf("cascade delete (%s): %w", q, err)

@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
 
@@ -491,7 +491,7 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 	for _, sweep := range sweeps {
 		res, err := s.db.ExecContext(ctx, sweep.query, sweep.arg)
 		if err != nil {
-			if isMissingTableErr(err) {
+			if dialect.IsMissingTableError(err) {
 				slog.Debug("sweep skipped (table absent)", "table", sweep.table)
 				continue
 			}
@@ -518,18 +518,6 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 		}
 	}
 	return firstErr
-}
-
-// isMissingTableErr reports a schema-absence error across SQLite ("no such
-// table"), PostgreSQL ("does not exist"), and legacy drivers ("undefined_table").
-func isMissingTableErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "no such table") ||
-		strings.Contains(msg, "does not exist") ||
-		strings.Contains(msg, "undefined_table")
 }
 
 // claimWindow records a job attempt for the given window id.
@@ -577,7 +565,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 				VALUES (?, ?, 0, ?, 'ok', ?)
 			`, code, job, windowID, now)
 			if err != nil {
-				if isMissingTableErr(err) {
+				if dialect.IsMissingTableError(err) {
 					return true
 				}
 				// race: another process inserted
@@ -590,7 +578,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 			}
 			return true
 		}
-		if isMissingTableErr(err) {
+		if dialect.IsMissingTableError(err) {
 			return true
 		}
 		// Unknown lookup errors: fail closed (do not claim) to avoid duplicate job runs.

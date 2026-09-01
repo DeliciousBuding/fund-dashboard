@@ -16,6 +16,7 @@ func (d *SQLite) Name() string     { return NameSQLite }
 func (d *SQLite) IsPostgres() bool { return false }
 
 func (d *SQLite) DaysSinceExpr(dateColumn string) string {
+	// julianday('now') is UTC, which is the baseline PostgreSQL must match.
 	return fmt.Sprintf("CAST(julianday('now') - julianday(%s) AS INTEGER)", dateColumn)
 }
 

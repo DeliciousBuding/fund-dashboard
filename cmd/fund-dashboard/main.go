@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -90,7 +91,12 @@ func environMap(pairs []string) map[string]string {
 	for _, pair := range pairs {
 		for i := 0; i < len(pair); i++ {
 			if pair[i] == '=' {
-				env[pair[:i]] = pair[i+1:]
+				// Windows env vars are case-insensitive and may arrive lowercase
+				// (e.g. fund_*); config.Parse only looks up uppercase constants.
+				// Normalize every key to uppercase so those entries are not
+				// silently ignored. Uppercase-after-duplicates mirrors Windows
+				// getenv semantics (last entry in environ order wins).
+				env[strings.ToUpper(pair[:i])] = pair[i+1:]
 				break
 			}
 		}

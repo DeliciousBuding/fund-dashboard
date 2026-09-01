@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -227,13 +229,18 @@ func TestAuthSessionsListAndRevoke(t *testing.T) {
 		t.Fatalf("sessions=%d body=%s", res.Code, res.Body.String())
 	}
 	var body struct {
-		Sessions []auth.SessionInfo `json:"sessions"`
+		Sessions  []auth.SessionInfo `json:"sessions"`
+		Total     int                `json:"total"`
+		Truncated bool               `json:"truncated"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
 		t.Fatalf("sessions json: %v", err)
 	}
 	if len(body.Sessions) != 2 {
 		t.Fatalf("sessions=%d want 2: %#v", len(body.Sessions), body.Sessions)
+	}
+	if body.Total != 2 || body.Truncated {
+		t.Fatalf("sessions signals = total %d truncated %v; want 2/false", body.Total, body.Truncated)
 	}
 	var current int
 	var otherPrefix string
@@ -368,5 +375,59 @@ func TestAuthEnvManagedMode(t *testing.T) {
 	}, cookie)
 	if res.Code != http.StatusForbidden {
 		t.Fatalf("password change in env mode=%d want 403 body=%s", res.Code, res.Body.String())
+	}
+}
+
+// The settings sessions endpoint must surface the store soft ceiling: 200
+// newest sessions plus total/truncated, so the SPA can tell the user rows were
+// cut instead of silently showing an incomplete list.
+func TestAuthSessionsTruncationSignals(t *testing.T) {
+	db := openPortfolioHTTPFixture(t)
+	t.Cleanup(func() { db.Close() })
+	store := auth.NewStore(db)
+	if err := store.EnsureSchema(context.Background()); err != nil {
+		t.Fatalf("ensure auth schema: %v", err)
+	}
+	base := int64(1_700_000_000)
+	for i := 1; i <= 201; i++ {
+		id := fmt.Sprintf("%08x%056x", i, 0)
+		if err := store.CreateSession(context.Background(), auth.Session{
+			ID:         id,
+			CreatedAt:  base,
+			ExpiresAt:  base + 3600,
+			LastSeenAt: base + int64(i),
+			IP:         "192.0.2.10",
+			UserAgent:  "httpapi-test-agent",
+		}); err != nil {
+			t.Fatalf("CreateSession %d: %v", i, err)
+		}
+	}
+
+	// newAuthedRouter adds setup+login sessions on top of the seeded rows.
+	router := newAuthedRouter(t, testCfg(), db)
+	var wantTotal int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM auth_sessions`).Scan(&wantTotal); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if wantTotal <= 200 {
+		t.Fatalf("fixture under ceiling: %d sessions", wantTotal)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/sessions", nil)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("sessions=%d body=%s", res.Code, res.Body.String())
+	}
+	var body struct {
+		Sessions  []auth.SessionInfo `json:"sessions"`
+		Total     int                `json:"total"`
+		Truncated bool               `json:"truncated"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("sessions json: %v", err)
+	}
+	if len(body.Sessions) != 200 || body.Total != wantTotal || !body.Truncated {
+		t.Fatalf("sessions truncation = %d/%d/%v; want 200/%d/true", len(body.Sessions), body.Total, body.Truncated, wantTotal)
 	}
 }

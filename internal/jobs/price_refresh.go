@@ -289,6 +289,10 @@ func upsertNavHistory(ctx context.Context, db *sql.DB, driver, code, secType str
 
 	// Only count rows that are newly inserted or whose values actually change.
 	// Plain ON CONFLICT DO UPDATE makes PG RowsAffected=1 for no-op rewrites (#87).
+	conflictTarget, err := navUpsertConflictTarget(driver)
+	if err != nil {
+		return 0, err
+	}
 	insert, err := tx.PrepareContext(ctx, fmt.Sprintf(`
 		INSERT INTO nav_history (date, fund_code, unit_nav, daily_change_pct, security_type)
 		VALUES (?, ?, ?, ?, ?)
@@ -299,7 +303,7 @@ func upsertNavHistory(ctx context.Context, db *sql.DB, driver, code, secType str
 		WHERE nav_history.unit_nav IS DISTINCT FROM excluded.unit_nav
 			OR nav_history.daily_change_pct IS DISTINCT FROM excluded.daily_change_pct
 			OR COALESCE(nav_history.security_type, '') IS DISTINCT FROM COALESCE(excluded.security_type, '')
-	`, navUpsertConflictTarget(driver)))
+	`, conflictTarget))
 	if err != nil {
 		return 0, err
 	}
@@ -357,6 +361,22 @@ func (r *PriceRefresher) CrawlCode(ctx context.Context, code string) (added int,
 	return result.Added, result.Latest, nil
 }
 
+// recalcAllMaxCodes bounds one RecalcAllSnapshots batch. Production currently
+// has ~61 distinct fund codes, so 5000 is defense-in-depth rather than a
+// workload number; detection fetches limit+1 rows (see capRecalcCodes) so an
+// oversized ledger is reported instead of silently dropping codes.
+const recalcAllMaxCodes = 5000
+
+// capRecalcCodes keeps the first limit codes and reports how many rows were
+// dropped, converting silent LIMIT truncation into an observable boundary.
+// Split out so the cut point is unit-tested without a 5001-row fixture.
+func capRecalcCodes(list []string, limit int) ([]string, int) {
+	if len(list) <= limit {
+		return list, 0
+	}
+	return list[:limit], len(list) - limit
+}
+
 // RecalcSnapshot is the exported maintenance entrypoint used by MCP/admin.
 func RecalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
 	return snapshot.Recalc(ctx, db, code, snapshot.ModeFull)
@@ -366,7 +386,7 @@ func RecalcSnapshot(ctx context.Context, db *sql.DB, code string) error {
 // Soft-fails per code (logs each failure). Hard errors (list/scan) return err with failed=nil.
 // Per-code failures return err=nil and failed_codes so admin/MCP can expose status partial|error.
 func RecalcAllSnapshots(ctx context.Context, db *sql.DB) (codes int, failed []string, err error) {
-	rows, err := db.QueryContext(ctx, `SELECT DISTINCT fund_code FROM transactions WHERE fund_code IS NOT NULL AND fund_code <> '' LIMIT 5000`)
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT fund_code FROM transactions WHERE fund_code IS NOT NULL AND fund_code <> '' LIMIT ?`, recalcAllMaxCodes+1)
 	if err != nil {
 		return 0, nil, fmt.Errorf("list codes for snapshot recalc: %w", err)
 	}
@@ -381,6 +401,19 @@ func RecalcAllSnapshots(ctx context.Context, db *sql.DB) (codes int, failed []st
 	}
 	if err := rows.Err(); err != nil {
 		return 0, nil, err
+	}
+	var dropped int
+	list, dropped = capRecalcCodes(list, recalcAllMaxCodes)
+	if dropped > 0 {
+		// Silent LIMIT truncation made observable: one extra row is fetched
+		// (LIMIT max+1), so its presence proves codes were left unprocessed.
+		// Production has ~61 distinct fund codes, but a pathological ledger must
+		// never silently skip tail codes.
+		slog.Warn("recalc snapshots code list truncated",
+			"limit", recalcAllMaxCodes,
+			"processed", len(list),
+			"at_least_dropped", dropped,
+		)
 	}
 	for _, code := range list {
 		if err := ctx.Err(); err != nil {
@@ -437,11 +470,15 @@ func RecalcAllStatus(ok int, failed []string) string {
 // nav_history PRIMARY KEY for each dialect. The PK column order differs:
 // SQLite (fund_code, date) vs PostgreSQL (date, fund_code), and PostgreSQL
 // rejects a conflict target that does not match an existing unique index.
-func navUpsertConflictTarget(driver string) string {
-	if dialect.New(driver, nil).IsPostgres() {
-		return "(date, fund_code)"
+func navUpsertConflictTarget(driver string) (string, error) {
+	d, err := dialect.NewChecked(driver, nil)
+	if err != nil {
+		return "", err
 	}
-	return "(fund_code, date)"
+	if d.IsPostgres() {
+		return "(date, fund_code)", nil
+	}
+	return "(fund_code, date)", nil
 }
 
 // sleepContext waits d or returns early when ctx is canceled (#247).

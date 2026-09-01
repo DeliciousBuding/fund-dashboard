@@ -19,6 +19,16 @@
 
 ## [Unreleased]
 
+- **修复** admin 爬取三端点（单码/批量/陈旧刷新/快照重算）挂请求级超时（单码 2 分钟、批量 45 分钟），到点返回 504 `timeout`，被截断的批不再谎报 `complete`/`partial`。
+- **修复** 快照首写竞态：同一代码并发首次重算不再出现重复行/报错，改为有界 UPDATE→INSERT 重试（兼容新旧主键形态）。
+- **修复** 会话列表超过 200 条不再静默截断：接口返回 `total`/`truncated`，设置页显示“仅显示最近 200 条会话（共 N 条）”提示。
+- **修复** 小写 `FUND_*` 环境变量此前被忽略（键大小写敏感），现统一大写归一化。
+- **修复** 批量快照重算代码清单超过 5000 时改为告警日志可观测，不再静默丢尾部。
+- **重构** 缺表判定四处重复实现收敛为 `dialect.IsMissingTableError`（补齐 PG `undefined_table`）；PG `HasColumn` 限定 `public` schema；`DaysSinceExpr` 双方言统一 UTC 基准（原 PG 按容器时区解释、午夜前后与 SQLite 漂移最大 2 天）。
+- **重构** 驱动解析新增 `NewChecked` fail-closed 入口：未知驱动启动即报错，不再静默回退 SQLite（生产组装路径已迁移）。
+- **重构** 前端契约两处线型漂移收紧：`ExchangeRateSchema` 补 `source`、`USStockInfoSchema` 补 `decision_boundary`/`side_effects`/`external_fetch` 与条件 `error`/`message`（此前被默认 strip 静默丢弃），两簇改 `.strict()`。
+- **测试** 新增 admin 超时端到端 7 例、快照并发首写/注入式重试契约、会话截断全链路、线型契约形状共 20+ 用例（契约测试累计 70 例）。
+
 - **修复** 迁移工具数据安全：`fund-migrate` 默认拒绝非空目标（预检即退出，未动任何数据），显式 `--force` 时 DELETE 移入每表事务（中途失败即回滚，不再出现清空到一半）；列探测按目标驱动分流。
 - **改进** `fund-hash-password` 密码输入改环境变量/stdin 优先，argv 降为兼容手段并告警（进程列表泄露面收口）。
 - **修复** 服务校验错误类型化：`writeServiceResult` 不再把数据库故障误报 400，校验错误（`ValidationError`）→400、内部故障→500 `internal_error`。

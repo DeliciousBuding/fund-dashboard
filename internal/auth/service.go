@@ -234,14 +234,23 @@ type SessionInfo struct {
 	Current    bool   `json:"current"`
 }
 
-func (s *Service) ListSessions(ctx context.Context, currentToken string) ([]SessionInfo, error) {
-	sessions, err := s.store.ListSessions(ctx)
+// SessionList is the settings session view: redacted items (capped by the
+// store soft ceiling) plus Total/Truncated so the UI can surface the cut
+// instead of silently showing an incomplete list.
+type SessionList struct {
+	Items     []SessionInfo
+	Total     int
+	Truncated bool
+}
+
+func (s *Service) ListSessions(ctx context.Context, currentToken string) (SessionList, error) {
+	listed, err := s.store.ListSessions(ctx)
 	if err != nil {
-		return nil, err
+		return SessionList{}, err
 	}
 	currentID := tokenID(currentToken)
-	out := make([]SessionInfo, 0, len(sessions))
-	for _, sess := range sessions {
+	out := make([]SessionInfo, 0, len(listed.Sessions))
+	for _, sess := range listed.Sessions {
 		prefix := sess.ID
 		if len(prefix) > 8 {
 			prefix = prefix[:8]
@@ -260,7 +269,7 @@ func (s *Service) ListSessions(ctx context.Context, currentToken string) ([]Sess
 			Current:    sess.ID == currentID,
 		})
 	}
-	return out, nil
+	return SessionList{Items: out, Total: listed.Total, Truncated: listed.Truncated}, nil
 }
 
 // RevokeByIDPrefix deletes the session whose ID starts with prefix (min 8

@@ -172,24 +172,48 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, keepID string) error {
 	return nil
 }
 
-func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
+// sessionListLimit caps the settings session view. The ceiling stays in the
+// store as payload/DB protection; ListSessions returns the full-row Total and
+// a Truncated signal so upper layers surface the cut instead of silently
+// dropping older sessions.
+const sessionListLimit = 200
+
+// SessionPage is one capped page of sessions plus the total row count.
+type SessionPage struct {
+	Sessions  []Session
+	Total     int
+	Truncated bool
+}
+
+// ListSessions returns the most recently seen sessions, capped at
+// sessionListLimit, together with the full table count. Total comes from a
+// separate COUNT(*) pass: the count/rows pair can race a concurrent
+// create/delete, which is benign for the single-tenant settings view.
+func (s *Store) ListSessions(ctx context.Context) (SessionPage, error) {
+	var total int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_sessions`).Scan(&total); err != nil {
+		return SessionPage{}, fmt.Errorf("count sessions: %w", err)
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, created_at, expires_at, last_seen_at, COALESCE(ip, ''), COALESCE(user_agent, '')
-		FROM auth_sessions ORDER BY last_seen_at DESC LIMIT 200
-	`)
+		FROM auth_sessions ORDER BY last_seen_at DESC LIMIT ?
+	`, sessionListLimit)
 	if err != nil {
-		return nil, fmt.Errorf("list sessions: %w", err)
+		return SessionPage{}, fmt.Errorf("list sessions: %w", err)
 	}
 	defer rows.Close()
 	var out []Session
 	for rows.Next() {
 		var sess Session
 		if err := rows.Scan(&sess.ID, &sess.CreatedAt, &sess.ExpiresAt, &sess.LastSeenAt, &sess.IP, &sess.UserAgent); err != nil {
-			return nil, fmt.Errorf("scan session: %w", err)
+			return SessionPage{}, fmt.Errorf("scan session: %w", err)
 		}
 		out = append(out, sess)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return SessionPage{}, fmt.Errorf("list sessions rows: %w", err)
+	}
+	return SessionPage{Sessions: out, Total: total, Truncated: total > len(out)}, nil
 }
 
 // DeleteExpiredSessions removes sessions past expiry; returns rows deleted.

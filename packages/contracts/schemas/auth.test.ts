@@ -41,8 +41,62 @@ test("SessionInfoSchema accepts empty ip/user_agent (Go stores '' not null)", ()
 });
 
 test("AuthSessionsResponseSchema passes the handler array shape through", () => {
-  const parsed = AuthSessionsResponseSchema.parse({ sessions: [sessionWire] });
+  const parsed = AuthSessionsResponseSchema.parse({
+    sessions: [sessionWire],
+    total: 1,
+    truncated: false,
+  });
   assert.equal(parsed.sessions.length, 1);
+  assert.equal(parsed.total, 1);
+  assert.equal(parsed.truncated, false);
+});
+
+test("AuthSessionsResponseSchema passes the truncated page shape (200 of N)", () => {
+  const parsed = AuthSessionsResponseSchema.parse({
+    sessions: Array.from({ length: 200 }, (_, i) => ({
+      ...sessionWire,
+      id_prefix: `a1b2c3d${i}`,
+      current: false,
+    })),
+    total: 205,
+    truncated: true,
+  });
+  assert.equal(parsed.sessions.length, 200);
+  assert.equal(parsed.total, 205);
+  assert.equal(parsed.truncated, true);
+});
+
+test("AuthSessionsResponseSchema rejects missing total/truncated", () => {
+  assert.throws(() => AuthSessionsResponseSchema.parse({ sessions: [sessionWire] }));
+  assert.throws(() =>
+    AuthSessionsResponseSchema.parse({
+      sessions: [sessionWire],
+      total: 1,
+    }),
+  );
+  assert.throws(() =>
+    AuthSessionsResponseSchema.parse({
+      sessions: [sessionWire],
+      truncated: false,
+    }),
+  );
+});
+
+test("AuthSessionsResponseSchema rejects negative/non-integer total", () => {
+  assert.throws(() =>
+    AuthSessionsResponseSchema.parse({
+      sessions: [sessionWire],
+      total: -1,
+      truncated: true,
+    }),
+  );
+  assert.throws(() =>
+    AuthSessionsResponseSchema.parse({
+      sessions: [sessionWire],
+      total: 1.5,
+      truncated: true,
+    }),
+  );
 });
 
 test("AuthEventSchema accepts omitempty branch (only ts + event present)", () => {

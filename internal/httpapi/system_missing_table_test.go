@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 // TestIsMissingTableErr pins the dialect-independent schema-absence check used
@@ -25,7 +27,7 @@ func TestIsMissingTableErr(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isMissingTableErr(tc.err); got != tc.want {
+			if got := dialect.IsMissingTableError(tc.err); got != tc.want {
 				t.Fatalf("isMissingTableErr(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})

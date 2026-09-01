@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 )
 
 func TestIsMissingTableErr(t *testing.T) {
@@ -23,7 +24,7 @@ func TestIsMissingTableErr(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isMissingTableErr(tc.err); got != tc.want {
+			if got := dialect.IsMissingTableError(tc.err); got != tc.want {
 				t.Fatalf("isMissingTableErr(%v) = %v, want %v", tc.err, got, tc.want)
 			}
 		})

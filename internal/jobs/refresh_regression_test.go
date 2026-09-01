@@ -14,18 +14,32 @@ import (
 
 func TestNavUpsertConflictTarget(t *testing.T) {
 	cases := []struct {
-		driver string
-		want   string
+		driver  string
+		want    string
+		wantErr bool
 	}{
-		{"sqlite", "(fund_code, date)"},
-		{"", "(fund_code, date)"},
-		{"pg", "(date, fund_code)"},
-		{"PG", "(date, fund_code)"},
+		{"sqlite", "(fund_code, date)", false},
+		{"", "(fund_code, date)", false},
+		{"pg", "(date, fund_code)", false},
+		{"PG", "(date, fund_code)", false},
+		{"mysql", "", true},
 	}
 	for _, tc := range cases {
-		if got := navUpsertConflictTarget(tc.driver); got != tc.want {
-			t.Fatalf("navUpsertConflictTarget(%q) = %q, want %q", tc.driver, got, tc.want)
-		}
+		t.Run(tc.driver, func(t *testing.T) {
+			got, err := navUpsertConflictTarget(tc.driver)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("navUpsertConflictTarget(%q) = %q, want error", tc.driver, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("navUpsertConflictTarget(%q): %v", tc.driver, err)
+			}
+			if got != tc.want {
+				t.Fatalf("navUpsertConflictTarget(%q) = %q, want %q", tc.driver, got, tc.want)
+			}
+		})
 	}
 }
 
