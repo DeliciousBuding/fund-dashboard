@@ -107,8 +107,8 @@ func TestCheckAlertsPriceThresholdBoundaries(t *testing.T) {
 }
 
 func TestCheckAlertsDrawdownThresholdBoundaries(t *testing.T) {
-	d1 := time.Now().AddDate(0, 0, -2).Format("2006-01-02")
-	d2 := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	d1 := time.Now().In(chinaLoc).AddDate(0, 0, -2).Format("2006-01-02")
+	d2 := time.Now().In(chinaLoc).AddDate(0, 0, -1).Format("2006-01-02")
 	cases := []struct {
 		name   string
 		trough float64
@@ -180,7 +180,10 @@ func TestCheckAlertsStaleThresholdBoundaries(t *testing.T) {
 			db := testDB(t)
 			defer db.Close()
 			seedAlertHeldFund(t, db, "019173", "Fund", "")
-			navDate := time.Now().AddDate(0, 0, -tc.daysAgo).Format("2006-01-02")
+			// stale days are computed against the China market calendar in production;
+			// navDate must be seeded on the same clock or the test drifts by a day
+			// when the runner TZ date differs from the China date (e.g. UTC runners).
+			navDate := time.Now().In(chinaLoc).AddDate(0, 0, -tc.daysAgo).Format("2006-01-02")
 			if _, err := db.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav, daily_change_pct) VALUES ('019173', ?, 1.0, 0)`, navDate); err != nil {
 				t.Fatal(err)
 			}
