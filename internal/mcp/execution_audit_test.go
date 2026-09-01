@@ -354,3 +354,58 @@ func TestExecutionErrorCategoryIsClosedAndNeverStoresRawError(t *testing.T) {
 		}
 	}
 }
+
+func TestExecutionAuditCarriesRequestIDAndExplicitCaller(t *testing.T) {
+	db := openMCPFixture(t)
+	defer db.Close()
+	sink := &recordingExecutionSink{}
+	server := newExecutionAuditServer(t, db, agenttools.RoleOperator, sink, &fakeNavCrawler{})
+
+	ctx := WithRequestID(context.Background(), "req-mcp-1")
+	resp := server.Handle(ctx, Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`"audit-attribution"`),
+		Method:  "tools/call",
+		Params:  json.RawMessage(`{"name":"crawl_nav","arguments":{"fund_code":"019173","caller":"hermes"}}`),
+	})
+	if resp.Error != nil {
+		t.Fatalf("crawl_nav error = %#v", resp.Error)
+	}
+	if len(sink.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(sink.events))
+	}
+	event := sink.events[0]
+	if event.RequestID != "req-mcp-1" {
+		t.Fatalf("RequestID = %q, want req-mcp-1", event.RequestID)
+	}
+	if event.Caller != "hermes" {
+		t.Fatalf("Caller = %q, want explicit caller arg", event.Caller)
+	}
+	assertExecutionEventSafe(t, event)
+}
+
+func TestExecutionAuditCallerFallsBackToRole(t *testing.T) {
+	db := openMCPFixture(t)
+	defer db.Close()
+	sink := &recordingExecutionSink{}
+	server := newExecutionAuditServer(t, db, agenttools.RoleOperator, sink, &fakeNavCrawler{})
+
+	resp := server.Handle(context.Background(), Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`"audit-role"`),
+		Method:  "tools/call",
+		Params:  json.RawMessage(`{"name":"crawl_nav","arguments":{"fund_code":"019173"}}`),
+	})
+	if resp.Error != nil {
+		t.Fatalf("crawl_nav error = %#v", resp.Error)
+	}
+	if len(sink.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(sink.events))
+	}
+	if sink.events[0].Caller != string(agenttools.RoleOperator) {
+		t.Fatalf("Caller = %q, want role fallback", sink.events[0].Caller)
+	}
+	if sink.events[0].RequestID != "" {
+		t.Fatalf("RequestID = %q, want empty without WithRequestID", sink.events[0].RequestID)
+	}
+}

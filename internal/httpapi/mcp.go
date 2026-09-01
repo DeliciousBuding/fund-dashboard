@@ -41,6 +41,9 @@ func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.
 		// (makes iface==nil false and panics on method dispatch).
 		if agentOps != nil {
 			deps.AgentOps = agentOps
+			// Same service implements mcp.ExecutionAuditSink: execution
+			// outcomes persist as event_type "execution" audit rows.
+			deps.ExecutionAudit = agentOps
 		}
 		server, err := mcp.NewServer(deps)
 		if err != nil {
@@ -71,7 +74,9 @@ func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		WriteJSON(w, http.StatusOK, server.Handle(req.Context(), request))
+		// Correlate execution audit rows with the HTTP request id.
+		handleCtx := mcp.WithRequestID(req.Context(), RequestIDFromContext(req.Context()))
+		WriteJSON(w, http.StatusOK, server.Handle(handleCtx, request))
 	})
 }
 

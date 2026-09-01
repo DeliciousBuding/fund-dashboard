@@ -289,3 +289,47 @@ func mapDenyReason(reason agenttools.DenyReason) error {
 		return fmt.Errorf("tool authorization denied: %s", reason)
 	}
 }
+
+// RecordExecution persists a sanitized tool execution outcome into the audit
+// timeline as event_type "execution". It implements mcp.ExecutionAuditSink:
+// the envelope only carries closed-set status/category values plus
+// server-bounded identifiers, so raw error text can never reach the store
+// through this channel. Oversized identifiers are rejected at the same
+// boundary as prepare/consume.
+func (s *Service) RecordExecution(ctx context.Context, event audit.ExecutionEvent) error {
+	if len(event.Caller) > maxAgentIdentityLength || len(event.RequestID) > maxAgentIdentityLength {
+		return ErrIdentityTooLong
+	}
+	scope, permission, riskLevel := "", "", ""
+	if s.registry != nil {
+		if def, ok := s.registry.Lookup(event.Tool); ok {
+			scope = string(def.Capability.Scope)
+			permission = string(def.Capability.Permission)
+			riskLevel = string(def.Capability.RiskLevel)
+		}
+	}
+	summary := map[string]any{
+		"kind":             "execution",
+		"execution_status": string(event.Status),
+		"duration_ms":      event.DurationMs,
+		"recorded_at":      event.RecordedAt,
+	}
+	if event.ErrorCategory != "" {
+		summary["error_category"] = string(event.ErrorCategory)
+	}
+	if _, err := s.auditRepo.Save(ctx, audit.Event{
+		RequestID:     event.RequestID,
+		Caller:        event.Caller,
+		Tool:          event.Tool,
+		EventType:     "execution",
+		Status:        audit.StatusResult,
+		Scope:         scope,
+		Permission:    permission,
+		RiskLevel:     riskLevel,
+		ResultSummary: summary,
+		CreatedAt:     event.RecordedAt,
+	}); err != nil {
+		return fmt.Errorf("record execution audit: %w", err)
+	}
+	return nil
+}

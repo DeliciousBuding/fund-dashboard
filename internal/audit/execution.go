@@ -52,6 +52,8 @@ func (c ExecutionErrorCategory) IsValid() bool {
 // ErrorCategory are closed sets, and DurationMs is the only measurement kept.
 type ExecutionEvent struct {
 	Tool          string                 `json:"tool"`
+	RequestID     string                 `json:"request_id,omitempty"`
+	Caller        string                 `json:"caller,omitempty"`
 	Status        ExecutionStatus        `json:"status"`
 	ErrorCategory ExecutionErrorCategory `json:"error_category,omitempty"`
 	DurationMs    int64                  `json:"duration_ms"`
@@ -61,6 +63,8 @@ type ExecutionEvent struct {
 // ExecutionEventInput feeds NewExecutionEvent.
 type ExecutionEventInput struct {
 	Tool          string
+	RequestID     string
+	Caller        string
 	Status        ExecutionStatus
 	ErrorCategory ExecutionErrorCategory
 	Duration      time.Duration
@@ -94,6 +98,8 @@ func NewExecutionEvent(input ExecutionEventInput) ExecutionEvent {
 	}
 	return ExecutionEvent{
 		Tool:          input.Tool,
+		RequestID:     input.RequestID,
+		Caller:        input.Caller,
 		Status:        status,
 		ErrorCategory: category,
 		DurationMs:    durationMs,
