@@ -291,6 +291,33 @@ func intQueryMax(r *http.Request, key string, fallback, max int) int {
 	return v
 }
 
+// intQueryOpt parses an optional integer query param. Empty falls back; a
+// present-but-malformed value is a client error (writes 400, ok=false).
+func intQueryOpt(w http.ResponseWriter, r *http.Request, key string, fallback int) (int, bool) {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return fallback, true
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_query_param: "+key)
+		return 0, false
+	}
+	return v, true
+}
+
+func floatQueryOpt(w http.ResponseWriter, r *http.Request, key string, fallback float64) (float64, bool) {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return fallback, true
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_query_param: "+key)
+		return 0, false
+	}
+	return v, true
+}
 func floatQuery(r *http.Request, key string, fallback float64) float64 {
 	value, err := strconv.ParseFloat(r.URL.Query().Get(key), 64)
 	if err != nil {

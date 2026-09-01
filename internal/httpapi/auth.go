@@ -234,7 +234,10 @@ func handleAuthSessionRevoke(svc *auth.Service, trusted []*net.IPNet) http.Handl
 // first, newest auth/events up to 500; default limit 100.
 func handleAuthEvents(svc *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limit, ok := intQueryOpt(w, r, "limit", 100)
+		if !ok {
+			return
+		}
 		if limit <= 0 {
 			limit = 100
 		}

@@ -5,7 +5,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +117,10 @@ type systemAuditEntry struct {
 
 func handleSystemAudit(deps *routerDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limit, ok := intQueryOpt(w, r, "limit", 100)
+		if !ok {
+			return
+		}
 		if limit <= 0 {
 			limit = 100
 		}

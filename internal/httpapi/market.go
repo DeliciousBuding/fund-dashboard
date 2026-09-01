@@ -66,7 +66,11 @@ func handleMarketIndices(service *portfoliosvc.Service) http.HandlerFunc {
 
 func handleIndexLive(service *portfoliosvc.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		code, _ := url.PathUnescape(chi.URLParam(r, "code"))
+		code, err := url.PathUnescape(chi.URLParam(r, "code"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_code")
+			return
+		}
 		report, err := service.GetIndexLive(r.Context(), code)
 		if err != nil {
 			writeSafeError(w, r, http.StatusBadGateway, err)
@@ -78,7 +82,11 @@ func handleIndexLive(service *portfoliosvc.Service) http.HandlerFunc {
 
 func handleIndexHistory(service *portfoliosvc.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		code, _ := url.PathUnescape(chi.URLParam(r, "code"))
+		code, err := url.PathUnescape(chi.URLParam(r, "code"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_code")
+			return
+		}
 		rangeKey := r.URL.Query().Get("range")
 		interval := r.URL.Query().Get("interval")
 		report, err := service.GetIndexHistory(r.Context(), code, rangeKey, interval)

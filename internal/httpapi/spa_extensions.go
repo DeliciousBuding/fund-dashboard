@@ -36,8 +36,14 @@ func registerSPAWriteExtensions(r chi.Router, portfolio *portfoliosvc.Service) {
 func handleListTransactions(service *portfoliosvc.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		limit, _ := strconv.Atoi(q.Get("limit"))
-		offset, _ := strconv.Atoi(q.Get("offset"))
+		limit, ok := intQueryOpt(w, r, "limit", 200)
+		if !ok {
+			return
+		}
+		offset, ok := intQueryOpt(w, r, "offset", 0)
+		if !ok {
+			return
+		}
 		result, err := service.ListTransactions(r.Context(), portfoliosvc.ListTransactionsOptions{
 			PortfolioID: portfolioIDFromRequest(r),
 			FundCode:    q.Get("fund_code"),
@@ -278,10 +284,18 @@ func handleGenerateReport(service *portfoliosvc.Service) http.HandlerFunc {
 
 func handleCheckAlerts(service adminsvc.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		priceChange, _ := strconv.ParseFloat(q.Get("price_change_pct"), 64)
-		drawdown, _ := strconv.ParseFloat(q.Get("drawdown_pct"), 64)
-		staleDays, _ := strconv.Atoi(q.Get("stale_days"))
+		priceChange, ok := floatQueryOpt(w, r, "price_change_pct", 0)
+		if !ok {
+			return
+		}
+		drawdown, ok := floatQueryOpt(w, r, "drawdown_pct", 0)
+		if !ok {
+			return
+		}
+		staleDays, ok := intQueryOpt(w, r, "stale_days", 0)
+		if !ok {
+			return
+		}
 		result, err := service.CheckAlerts(r.Context(), adminsvc.CheckAlertsInput{
 			PriceChangePct: priceChange,
 			DrawdownPct:    drawdown,
