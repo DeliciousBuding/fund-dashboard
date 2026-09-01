@@ -324,11 +324,15 @@ func handleFreshness(service adminsvc.Service) http.HandlerFunc {
 }
 
 // writeServiceResult 统一 service 写结果的错误映射。
-// portfolio service 层用裸 fmt.Errorf 做校验（无 sentinel），所以这里用 400 语义：
-// 安全的短校验消息（"xxx is required" 等）透传给前端，含 SQL/内部细节的降级为 bad_request。
+// portfolio service 用 ValidationError 标记客户端输入错误（400，安全短消息透传）；
+// 其余错误按内部/DB 故障处理（500），绝不把 DB 故障误报成客户端 400。
 func writeServiceResult(w http.ResponseWriter, r *http.Request, result any, err error) {
 	if err != nil {
-		writeSafeError(w, r, http.StatusBadRequest, err)
+		status := http.StatusInternalServerError
+		if portfoliosvc.IsValidationError(err) {
+			status = http.StatusBadRequest
+		}
+		writeSafeError(w, r, status, err)
 		return
 	}
 	WriteJSON(w, http.StatusOK, result)

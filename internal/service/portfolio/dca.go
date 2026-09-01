@@ -152,37 +152,37 @@ type DisableDCAPlanResult struct {
 func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (UpsertDCAPlanResult, error) {
 	code := strings.TrimSpace(in.FundCode)
 	if code == "" {
-		return UpsertDCAPlanResult{}, fmt.Errorf("fund_code is required")
+		return UpsertDCAPlanResult{}, NewValidationError("fund_code is required")
 	}
 	if in.Amount <= 0 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("amount must be positive")
+		return UpsertDCAPlanResult{}, NewValidationError("amount must be positive")
 	}
 	if in.Amount > 1_000_000 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("amount max 1000000")
+		return UpsertDCAPlanResult{}, NewValidationError("amount max 1000000")
 	}
 	if len(code) > 32 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("fund_code max 32 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("fund_code max 32 chars")
 	}
 	freq := strings.TrimSpace(in.Frequency)
 	if freq == "" {
 		freq = "weekday"
 	}
 	if len(freq) > 32 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("frequency max 32 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("frequency max 32 chars")
 	}
 	mask := strings.TrimSpace(in.WeekdayMask)
 	if mask == "" {
 		mask = "1,2,3,4,5"
 	}
 	if len(mask) > 64 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("weekday_mask max 64 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("weekday_mask max 64 chars")
 	}
 	tradeType := strings.TrimSpace(in.TradeType)
 	if tradeType == "" {
 		tradeType = "auto"
 	}
 	if len(tradeType) > 64 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("trade_type max 64 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("trade_type max 64 chars")
 	}
 	pid := in.PortfolioID
 	if pid <= 0 {
@@ -198,7 +198,7 @@ func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (Upse
 	active := 1
 	if in.Active != nil {
 		if *in.Active != 0 && *in.Active != 1 {
-			return UpsertDCAPlanResult{}, fmt.Errorf("active must be 0 or 1")
+			return UpsertDCAPlanResult{}, NewValidationError("active must be 0 or 1")
 		}
 		active = *in.Active
 	}
@@ -207,14 +207,14 @@ func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (Upse
 		source = "mcp"
 	}
 	if len(source) > 64 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("source max 64 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("source max 64 chars")
 	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	var fundName any
 	if strings.TrimSpace(in.FundName) != "" {
 		fn := strings.TrimSpace(in.FundName)
 		if len(fn) > 200 {
-			return UpsertDCAPlanResult{}, fmt.Errorf("fund_name max 200 chars")
+			return UpsertDCAPlanResult{}, NewValidationError("fund_name max 200 chars")
 		}
 		fundName = fn
 	}
@@ -222,12 +222,12 @@ func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (Upse
 	if strings.TrimSpace(in.EndDate) != "" {
 		ed := strings.TrimSpace(in.EndDate)
 		if len(ed) > 40 {
-			return UpsertDCAPlanResult{}, fmt.Errorf("end_date max 40 chars")
+			return UpsertDCAPlanResult{}, NewValidationError("end_date max 40 chars")
 		}
 		endDate = ed
 	}
 	if len(start) > 40 {
-		return UpsertDCAPlanResult{}, fmt.Errorf("start_date max 40 chars")
+		return UpsertDCAPlanResult{}, NewValidationError("start_date max 40 chars")
 	}
 
 	if in.ID > 0 {
@@ -245,7 +245,7 @@ func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (Upse
 			return UpsertDCAPlanResult{}, fmt.Errorf("update dca plan rows affected: %w", raErr)
 		}
 		if n == 0 {
-			return UpsertDCAPlanResult{}, fmt.Errorf("dca plan id %d not found", in.ID)
+			return UpsertDCAPlanResult{}, NewValidationError("dca plan id %d not found", in.ID)
 		}
 		plan, err := s.getDCAPlanByID(ctx, in.ID)
 		if err != nil {
@@ -273,7 +273,7 @@ func (s Service) UpsertDCAPlan(ctx context.Context, in UpsertDCAPlanInput) (Upse
 
 func (s Service) DisableDCAPlan(ctx context.Context, id int) (DisableDCAPlanResult, error) {
 	if id <= 0 {
-		return DisableDCAPlanResult{}, fmt.Errorf("id is required")
+		return DisableDCAPlanResult{}, NewValidationError("id is required")
 	}
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	res, err := s.db.ExecContext(ctx, `UPDATE dca_plans SET active = 0, updated_at = ? WHERE id = ?`, now, id)

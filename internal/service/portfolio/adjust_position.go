@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 	"math"
 	"strings"
 	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 type AdjustPositionInput struct {
@@ -36,25 +37,25 @@ type AdjustPositionResult struct {
 func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (AdjustPositionResult, error) {
 	code := strings.TrimSpace(in.Code)
 	if code == "" {
-		return AdjustPositionResult{}, fmt.Errorf("fund_code is required")
+		return AdjustPositionResult{}, NewValidationError("fund_code is required")
 	}
 	if len(code) > 32 {
-		return AdjustPositionResult{}, fmt.Errorf("fund_code too long")
+		return AdjustPositionResult{}, NewValidationError("fund_code too long")
 	}
 	if math.IsNaN(in.Shares) || math.IsInf(in.Shares, 0) {
-		return AdjustPositionResult{}, fmt.Errorf("shares must be a finite number")
+		return AdjustPositionResult{}, NewValidationError("shares must be a finite number")
 	}
 	if in.Shares < 0 {
-		return AdjustPositionResult{}, fmt.Errorf("shares must be >= 0")
+		return AdjustPositionResult{}, NewValidationError("shares must be >= 0")
 	}
 	// Bound target shares to avoid absurd ledger deltas via MCP/admin (#223).
 	const maxAdjustShares = 1e9
 	if in.Shares > maxAdjustShares {
-		return AdjustPositionResult{}, fmt.Errorf("shares too large")
+		return AdjustPositionResult{}, NewValidationError("shares too large")
 	}
 	reason := strings.TrimSpace(in.Reason)
 	if len(reason) > 200 {
-		return AdjustPositionResult{}, fmt.Errorf("reason too long")
+		return AdjustPositionResult{}, NewValidationError("reason too long")
 	}
 	portfolioID := clampPortfolioID(in.PortfolioID)
 	target := in.Shares
@@ -67,7 +68,7 @@ func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (Ad
 		return AdjustPositionResult{}, fmt.Errorf("lookup security: %w", err)
 	}
 	if exists == 0 {
-		return AdjustPositionResult{}, fmt.Errorf("security not found: %s", code)
+		return AdjustPositionResult{}, NewValidationError("security not found: %s", code)
 	}
 
 	var sumShares sql.NullFloat64
@@ -106,7 +107,7 @@ func (s Service) AdjustPosition(ctx context.Context, in AdjustPositionInput) (Ad
 		fundName = clampPortfolioText(detailName.String, 200)
 	}
 
-	now := time.Now().In(time.FixedZone("CST", 8*3600))
+	now := time.Now().In(chinatime.Loc)
 	tradeTime := now.Format("2006-01-02T15:04:05-07:00")
 	confirmDate := now.Format("2006-01-02")
 	orderID := fmt.Sprintf("adj-%s-%d", code, now.UnixNano())

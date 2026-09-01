@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -370,5 +371,76 @@ func TestWeakPasswordRejected(t *testing.T) {
 	svc := newTestService(t, Options{})
 	if _, err := svc.Setup(context.Background(), "short", "", ""); !errors.Is(err, ErrWeakPassword) {
 		t.Fatalf("short password = %v, want ErrWeakPassword", err)
+	}
+}
+
+func TestRevokeByIDPrefixBeyondListSessionsLimit(t *testing.T) {
+	db := testutil.OpenTempDB(t)
+	t.Cleanup(func() { db.Close() })
+	store := NewStore(db)
+	if err := store.EnsureSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	svc := NewService(store, Options{})
+	ctx := context.Background()
+
+	// 250 sessions ordered by last_seen_at: ListSessions caps at the newest 200,
+	// so the oldest 50 must still be revocable by prefix (the pre-fix path
+	// scanned the capped list and misreported ErrSessionNotFound).
+	const total = 250
+	base := int64(1_700_000_000)
+	var targetID, targetPrefix string
+	for i := 0; i < total; i++ {
+		id := fmt.Sprintf("%08x%056x", i+1, 0)
+		if err := store.CreateSession(ctx, Session{
+			ID:         id,
+			CreatedAt:  base,
+			ExpiresAt:  base + 3600,
+			LastSeenAt: base + int64(i),
+			IP:         "192.0.2.1",
+			UserAgent:  "test-agent",
+		}); err != nil {
+			t.Fatalf("CreateSession %d: %v", i, err)
+		}
+		if i == 0 {
+			targetID, targetPrefix = id, id[:8]
+		}
+	}
+
+	// Sanity: the target sits outside the capped list.
+	listed, err := svc.ListSessions(ctx, "")
+	if err != nil || len(listed) != 200 {
+		t.Fatalf("ListSessions = %d rows, %v; want capped 200", len(listed), err)
+	}
+	for _, s := range listed {
+		if s.IDPrefix == targetPrefix {
+			t.Fatalf("target unexpectedly visible in capped list: %#v", s)
+		}
+	}
+
+	if err := svc.RevokeByIDPrefix(ctx, targetPrefix); err != nil {
+		t.Fatalf("RevokeByIDPrefix beyond page 1 = %v", err)
+	}
+	if sess, err := store.SessionByID(ctx, targetID); err != nil || sess != nil {
+		t.Fatalf("target still present after revoke: %#v, %v", sess, err)
+	}
+}
+
+func TestRevokeByIDPrefixRejectsWildcardChars(t *testing.T) {
+	svc := newTestService(t, Options{})
+	ctx := context.Background()
+	token, err := svc.Setup(ctx, "wildcard-pw-1", "", "")
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+
+	// "%" and "_" are LIKE wildcards and never appear in a sha256-hex session
+	// ID; they must be rejected instead of matching other sessions.
+	if err := svc.RevokeByIDPrefix(ctx, "abcdef%_gh"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("wildcard prefix = %v, want ErrSessionNotFound", err)
+	}
+	sessions, err := svc.ListSessions(ctx, token)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("ListSessions after wildcard attempt = %#v, %v", sessions, err)
 	}
 }
