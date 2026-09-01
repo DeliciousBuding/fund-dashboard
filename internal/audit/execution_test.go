@@ -110,3 +110,15 @@ func TestNewExecutionEventNormalizesUnsafeInput(t *testing.T) {
 		t.Fatalf("DurationMs = %d, want >= 0", errored.DurationMs)
 	}
 }
+
+func TestNewExecutionEventCarriesRequestIDAndCaller(t *testing.T) {
+	event := NewExecutionEvent(ExecutionEventInput{
+		Tool:      "crawl_nav",
+		RequestID: "req-abc",
+		Caller:    "operator",
+		Status:    ExecutionOK,
+	})
+	if event.RequestID != "req-abc" || event.Caller != "operator" {
+		t.Fatalf("event = %#v, want attribution carried through", event)
+	}
+}

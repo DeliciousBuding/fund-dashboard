@@ -21,10 +21,32 @@ type ExecutionAuditSink interface {
 	RecordExecution(ctx context.Context, event audit.ExecutionEvent) error
 }
 
+type ctxKey int
+
+const requestIDKey ctxKey = iota
+
+// WithRequestID carries the HTTP request id into the MCP handling context so
+// execution audit rows can be correlated with the request that produced them.
+// The value is generated or validated by the HTTP layer, never by tool args.
+func WithRequestID(ctx context.Context, requestID string) context.Context {
+	if requestID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, requestIDKey, requestID)
+}
+
+// RequestIDFromContext returns the request id attached via WithRequestID.
+func RequestIDFromContext(ctx context.Context) string {
+	if value, ok := ctx.Value(requestIDKey).(string); ok {
+		return value
+	}
+	return ""
+}
+
 // recordExecution is a best-effort side channel. Sink errors are logged and
 // swallowed, and sink panics are contained, so audit failures can never change
 // the tool result or abort a tools/call response.
-func (s *Server) recordExecution(ctx context.Context, tool string, status audit.ExecutionStatus, category audit.ExecutionErrorCategory, started time.Time) {
+func (s *Server) recordExecution(ctx context.Context, tool, caller string, status audit.ExecutionStatus, category audit.ExecutionErrorCategory, started time.Time) {
 	sink := s.executionAudit
 	if sink == nil {
 		return
@@ -35,6 +57,8 @@ func (s *Server) recordExecution(ctx context.Context, tool string, status audit.
 	}
 	event := audit.NewExecutionEvent(audit.ExecutionEventInput{
 		Tool:          tool,
+		RequestID:     RequestIDFromContext(ctx),
+		Caller:        caller,
 		Status:        status,
 		ErrorCategory: category,
 		Duration:      duration,

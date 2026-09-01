@@ -1,3 +1,7 @@
+import {
+  ImportTransactionsResponseSchema,
+  UpdateTransactionResponseSchema,
+} from "@fund-dashboard/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -87,7 +91,7 @@ export function TxFormDialog(props: {
       const signed = form.direction === "sell" ? -1 : 1;
       if (form.seq == null) {
         // 新增 = 单条导入（import 语义：order_id 缺省时后端生成）
-        await api("/api/transactions/import", {
+        const data = await api<unknown>("/api/transactions/import", {
           method: "POST",
           body: {
             transactions: [
@@ -108,8 +112,9 @@ export function TxFormDialog(props: {
             ],
           },
         });
+        ImportTransactionsResponseSchema.parse(data);
       } else {
-        await api(`/api/transactions/${form.seq}`, {
+        const updated = await api<unknown>(`/api/transactions/${form.seq}`, {
           method: "PUT",
           body: {
             trade_time: form.trade_time,
@@ -121,6 +126,7 @@ export function TxFormDialog(props: {
             fee,
           },
         });
+        UpdateTransactionResponseSchema.parse(updated);
       }
     },
     onSuccess: async () => {

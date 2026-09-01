@@ -294,9 +294,12 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 	tool, _ := s.registry.Lookup(name)
 	recordExecution := tool.Audit.RecordResult
 	started := time.Now()
+	// Attribution: explicit caller arg (confirmation flows) wins; otherwise the
+	// authenticated role. Both are server-bounded values, not tool output.
+	caller := firstNonEmpty(stringArg(args, "caller"), string(s.role))
 	record := func(status audit.ExecutionStatus, category audit.ExecutionErrorCategory) {
 		if recordExecution {
-			s.recordExecution(ctx, name, status, category, started)
+			s.recordExecution(ctx, name, caller, status, category, started)
 		}
 	}
 	if recordExecution {

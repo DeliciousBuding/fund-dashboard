@@ -153,3 +153,26 @@ func TestBuildRejectsUnknownDriver(t *testing.T) {
 		t.Fatalf("Build error = %q, want unsupported driver name", err)
 	}
 }
+
+// The admin service legacy entrypoint NewServiceWithDriver panics on unknown
+// drivers (fail-closed shell). The production assembly must keep validating
+// the driver with dialect.NewChecked before wiring the router, otherwise an
+// invalid FUND_DB_DRIVER could surface as a panic instead of a boot error.
+func TestBootValidatesDriverBeforeRouterWiring(t *testing.T) {
+	raw, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatalf("read app.go: %v", err)
+	}
+	src := string(raw)
+	checkedAt := strings.Index(src, "dialect.NewChecked(driver")
+	routerAt := strings.Index(src, "httpapi.NewRouter(")
+	if checkedAt < 0 {
+		t.Fatal("app.go no longer validates the driver via dialect.NewChecked")
+	}
+	if routerAt < 0 {
+		t.Fatal("app.go no longer wires httpapi.NewRouter")
+	}
+	if checkedAt > routerAt {
+		t.Fatal("driver validation must happen before router wiring")
+	}
+}

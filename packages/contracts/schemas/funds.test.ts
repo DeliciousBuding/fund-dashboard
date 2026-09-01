@@ -5,7 +5,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { FundDetailSchema, NavPointSchema, TransactionSchema } from "./funds.ts";
+import {
+  DeleteTransactionResponseSchema,
+  FundDetailSchema,
+  ImportTransactionsResponseSchema,
+  NavPointSchema,
+  TransactionSchema,
+  UpdateTransactionResponseSchema,
+} from "./funds.ts";
 
 const navWire = {
   date: "2026-08-29",
@@ -110,4 +117,69 @@ test("FundDetailSchema tolerates omitempty security_type/market being absent", (
   const parsed = FundDetailSchema.parse(minimal);
   assert.equal(parsed.security_type, undefined);
   assert.equal(parsed.market, undefined);
+});
+
+// --- 写响应契约（/api/transactions/import、PUT/DELETE /api/transactions/{seq}）---
+// Go 侧 ImportTransactionsResult/UpdateTransactionResult/DeleteTransactionResult
+// 全字段无 omitempty，恒下发。
+
+const importWire = { ok: true, imported: 3, total: 3, affected_funds: 2 };
+
+test("ImportTransactionsResponseSchema parses the real import shape", () => {
+  const parsed = ImportTransactionsResponseSchema.parse(importWire);
+  assert.equal(parsed.imported, 3);
+  assert.equal(parsed.affected_funds, 2);
+});
+
+test("ImportTransactionsResponseSchema rejects a missing always-emitted key", () => {
+  const { affected_funds, ...partial } = importWire;
+  assert.throws(() => ImportTransactionsResponseSchema.parse(partial));
+});
+
+test("ImportTransactionsResponseSchema rejects unknown fields (contract drift)", () => {
+  assert.throws(() => ImportTransactionsResponseSchema.parse({ ...importWire, extra: 1 }));
+});
+
+const updateWire = { ok: true, updated: { seq: 42, fields: ["confirm_amount", "fee"] } };
+
+test("UpdateTransactionResponseSchema parses the real update shape", () => {
+  const parsed = UpdateTransactionResponseSchema.parse(updateWire);
+  assert.equal(parsed.updated.seq, 42);
+  assert.equal(parsed.updated.fields.length, 2);
+});
+
+test("UpdateTransactionResponseSchema rejects empty fields key", () => {
+  assert.throws(() => UpdateTransactionResponseSchema.parse({ ok: true, updated: { seq: 42 } }));
+});
+
+test("UpdateTransactionResponseSchema rejects unknown nested fields", () => {
+  assert.throws(() =>
+    UpdateTransactionResponseSchema.parse({
+      ok: true,
+      updated: { seq: 42, fields: [], extra: true },
+    }),
+  );
+});
+
+const deleteWire = {
+  ok: true,
+  deleted: { seq: 42, fund_code: "161725", direction: "buy", amount: 1000 },
+};
+
+test("DeleteTransactionResponseSchema parses the real delete shape", () => {
+  const parsed = DeleteTransactionResponseSchema.parse(deleteWire);
+  assert.equal(parsed.deleted.fund_code, "161725");
+});
+
+test("DeleteTransactionResponseSchema rejects a missing deleted key", () => {
+  assert.throws(() => DeleteTransactionResponseSchema.parse({ ok: true }));
+});
+
+test("DeleteTransactionResponseSchema rejects unknown fields (contract drift)", () => {
+  assert.throws(() =>
+    DeleteTransactionResponseSchema.parse({
+      ...deleteWire,
+      deleted: { ...deleteWire.deleted, x: 1 },
+    }),
+  );
 });

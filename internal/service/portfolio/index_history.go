@@ -76,17 +76,11 @@ func (s Service) GetIndexHistory(ctx context.Context, code, rangeKey, interval s
 	// Normalize before cache key so raw query strings cannot pollute memory (#228).
 	rangeKey = datasource.NormalizeYahooRange(rangeKey)
 	interval = datasource.NormalizeYahooInterval(interval)
-	report := IndexHistoryReport{
-		Symbol:           symbol,
-		Range:            rangeKey,
-		DecisionBoundary: "facts_only",
-		SideEffects:      "none",
-		ExternalFetch:    "not_performed",
-	}
 	if symbol == "" {
-		report.Error = "no_data"
-		report.Message = "code is required"
-		return report, nil
+		// Fail-closed: blank code must never emit a facts envelope with
+		// data:null (wire contract requires an array). Handlers map
+		// ValidationError to 400.
+		return IndexHistoryReport{}, NewValidationError("code is required")
 	}
 
 	cacheKey := symbol + "|" + rangeKey + "|" + interval
@@ -118,9 +112,7 @@ func (s Service) GetIndexLive(ctx context.Context, code string) (IndexLiveReport
 		ExternalFetch:    "not_performed",
 	}
 	if symbol == "" {
-		report.Error = "no_data"
-		report.Message = "code is required"
-		return report, nil
+		return IndexLiveReport{}, NewValidationError("code is required")
 	}
 
 	// Prefer indices table after refresh-on-read path.

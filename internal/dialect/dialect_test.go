@@ -107,6 +107,31 @@ func TestIsMissingTableError(t *testing.T) {
 	}
 }
 
+func TestIsDuplicateColumnError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"sqlite", errors.New("duplicate column name: settlement_days"), true},
+		{"sqlite-legacy", errors.New("duplicate column: settlement_days"), true},
+		{"postgres", errors.New(`ERROR: column "settlement_days" of relation "nav_history" already exists (SQLSTATE 42701)`), true},
+		{"sqlstate-name", errors.New("duplicate_column"), true},
+		{"wrapped", fmt.Errorf("add column x: %w", errors.New("duplicate column name: x")), true},
+		{"case-insensitive", errors.New("DUPLICATE COLUMN NAME: x"), true},
+		{"missing-table", errors.New("no such table: nav_history"), false},
+		{"locked", errors.New("database is locked"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsDuplicateColumnError(tc.err); got != tc.want {
+				t.Fatalf("IsDuplicateColumnError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsPostgres(t *testing.T) {
 	if New(NameSQLite, nil).IsPostgres() {
 		t.Fatal("sqlite should not report postgres")
