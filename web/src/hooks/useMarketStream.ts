@@ -30,7 +30,7 @@ export function useMarketStream(enabled = true): MarketStreamState {
       source = new EventSource("/api/market/stream");
       source.addEventListener("indices", (ev) => {
         try {
-          const data = JSON.parse((ev as MessageEvent).data) as MarketIndex[];
+          const data = JSON.parse(ev.data) as MarketIndex[];
           retryRef.current = 0;
           setState({
             indices: data,

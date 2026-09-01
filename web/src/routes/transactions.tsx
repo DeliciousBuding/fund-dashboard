@@ -28,7 +28,7 @@ import { type TransactionListItem, useSecurities, useTransactions } from "../lib
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
 import { buildTransactionColumns } from "./transactions/columns";
-import { DIRECTIONS, PAGE_SIZE } from "./transactions/constants";
+import { ALL_FUNDS, DIRECTIONS, PAGE_SIZE } from "./transactions/constants";
 import { DeleteDialog } from "./transactions/DeleteDialog";
 import { useExportMutations } from "./transactions/exporters";
 import { EMPTY_FORM, TxFormDialog, type TxFormState } from "./transactions/TxForm";
@@ -121,9 +121,9 @@ export function TransactionsPage() {
         </Button>
         <div className="w-44">
           <Select
-            value={fundCode || "__all__"}
+            value={fundCode || ALL_FUNDS}
             onValueChange={(v) => {
-              setFundCode(v === "__all__" ? "" : v);
+              setFundCode(v === ALL_FUNDS ? "" : v);
               setPage(0);
             }}
           >
