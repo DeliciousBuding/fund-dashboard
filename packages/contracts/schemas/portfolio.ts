@@ -18,7 +18,11 @@ export const PortfolioAllocationSchema = z.object({
   by_security_type: z.array(AllocationBucketSchema),
   by_market: z.array(AllocationBucketSchema),
   by_fund_type: z.array(AllocationBucketSchema),
-  risk_flags: z.array(z.string()),
+  // Go 端无集中度风险提示时 nil slice 序列化为 null；归一化为空数组保持消费方类型不变。
+  risk_flags: z
+    .array(z.string())
+    .nullable()
+    .transform((v) => v ?? []),
   agent_brief: z.string(),
 });
 export type PortfolioAllocation = z.infer<typeof PortfolioAllocationSchema>;

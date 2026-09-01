@@ -73,6 +73,7 @@ func (s Service) GetNavHistory(ctx context.Context, code string, limit int) (Nav
 		SecurityType:     "fund",
 		Market:           "",
 		DecisionBoundary: "facts_only",
+		Data:             []NavHistoryPoint{}, // JSON [] not null: zod array parse on watchlist tickers without NAV
 	}
 	if identity != nil {
 		report.SecurityType = identity.SecurityType
