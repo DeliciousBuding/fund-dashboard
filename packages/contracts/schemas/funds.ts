@@ -19,6 +19,9 @@ export const FundInfoSchema = z.object({
 });
 export type FundInfo = z.infer<typeof FundInfoSchema>;
 
+// Mirrors httpapi fundTransaction JSON: confirm_date/settlement_days/order_id
+// have omitempty (optional); every other key is always emitted. strict() rejects
+// unknown keys so contract drift surfaces instead of being silently kept.
 export const TransactionSchema = z
   .object({
     seq: z.number().nullable(),
@@ -35,8 +38,10 @@ export const TransactionSchema = z
     order_id: z.string().nullable().optional(),
     anomaly: z.string().nullable(),
   })
-  .passthrough();
+  .strict();
 
+// Mirrors httpapi fundDetailJSON: security_type/market have omitempty (optional),
+// the rest are always emitted. strict() rejects unknown keys so drift is visible.
 export const FundDetailSchema = z
   .object({
     code: z.string(),
@@ -60,7 +65,7 @@ export const FundDetailSchema = z
     median_settlement: z.number(),
     transactions: z.array(TransactionSchema),
   })
-  .passthrough();
+  .strict();
 export type FundDetail = z.infer<typeof FundDetailSchema>;
 
 export const NavPointSchema = z.object({
