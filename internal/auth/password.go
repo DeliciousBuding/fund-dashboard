@@ -25,6 +25,13 @@ const (
 	argonThreads = 2
 	argonKeyLen  = 32
 	saltLen      = 16
+
+	// VerifyPassword bounds reject attacker-controlled PHC parameters before
+	// argon2.IDKey allocates memory or burns CPU on the public login path
+	// (OWASP-derived caps).
+	argonMaxTime    = 10
+	argonMaxMemory  = 1 << 20 // 1 GiB
+	argonMaxThreads = 8
 )
 
 // MinPasswordLen / MaxPasswordLen bound acceptable passwords. MinPasswordLen
@@ -102,7 +109,10 @@ func decodePHC(phc string) (salt, key []byte, timeFactor, memoryKiB uint32, thre
 			return nil, nil, 0, 0, 0, ErrMalformedPHC
 		}
 	}
-	if m == 0 || t == 0 || p == 0 || p > 255 {
+	if m == 0 || t == 0 || p == 0 || p > argonMaxThreads {
+		return nil, nil, 0, 0, 0, ErrMalformedPHC
+	}
+	if m > argonMaxMemory || t > argonMaxTime {
 		return nil, nil, 0, 0, 0, ErrMalformedPHC
 	}
 	salt, err = base64.RawStdEncoding.DecodeString(parts[4])
