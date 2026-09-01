@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -22,7 +23,14 @@ func normalizeImportTransaction(item ImportTransaction, now int64, index int) (I
 	if code == "" {
 		code = item.SecurityCode
 	}
-	code = NormalizeSecurityCode(code)
+	// Reject oversized codes before normalization: NormalizeSecurityCode truncates
+	// long codes to 32 chars, which would silently merge distinct securities on
+	// the import write path. Keep the post-normalize bound as a defensive guard.
+	trimmed := strings.TrimSpace(code)
+	if len(trimmed) > maxTxFundCodeLen {
+		return ImportTransaction{}, fmt.Errorf("%w: fund_code too long", ErrInvalidInput)
+	}
+	code = NormalizeSecurityCode(trimmed)
 	if code == "" {
 		return ImportTransaction{}, fmt.Errorf("%w: fund_code is required", ErrInvalidInput)
 	}
