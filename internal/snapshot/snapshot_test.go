@@ -215,6 +215,41 @@ func TestRecalcLightModePreservesIdentityAndLatestNAV(t *testing.T) {
 	if !closeEnough(got.HeldShares, 100) || !closeEnough(got.TotalCost, -1000) {
 		t.Fatalf("light mode shares/cost wrong: %+v", got)
 	}
+	// Preserving latest_nav without deriving the valuation from it was the bug:
+	// current_value/unrealized/pnl must stay consistent with the NAV the row
+	// actually exposes.
+	if !closeEnough(got.CurrentValue, 100*2.5) {
+		t.Fatalf("light mode current_value = %v, want %v (from preserved NAV)", got.CurrentValue, 100*2.5)
+	}
+	if !closeEnough(got.Unrealized, 250-1000) {
+		t.Fatalf("light mode unrealized_pnl = %v, want %v", got.Unrealized, 250.0-1000.0)
+	}
+	if !closeEnough(got.PnlPct, -75) {
+		t.Fatalf("light mode pnl_pct = %v, want -75", got.PnlPct)
+	}
+}
+
+func TestRecalcLightModeAbsentNAVKeepsNullAndZeroValuation(t *testing.T) {
+	db := openRecalcDB(t)
+	seedRecalc(t, db, []string{
+		`INSERT INTO portfolio_snapshot (fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
+		 VALUES ('F3', 'KeepName', 5, -50, NULL, 0, 0, 0, 'stock', 1)`,
+		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F3', 'KeepName', 100, -1000)`,
+	})
+
+	if err := RecalcForPortfolio(context.Background(), db, "F3", 1, ModeLight); err != nil {
+		t.Fatal(err)
+	}
+	got := readSnapshotRow(t, db, "F3")
+	if got.LatestNav.Valid {
+		t.Fatalf("light mode with no NAV must keep latest_nav NULL: %+v", got.LatestNav)
+	}
+	if !closeEnough(got.CurrentValue, 0) || !closeEnough(got.Unrealized, -1000) || !closeEnough(got.PnlPct, -100) {
+		t.Fatalf("light mode no-NAV valuation wrong: %+v", got)
+	}
+	if got.FundName != "KeepName" || got.SecurityType != "stock" {
+		t.Fatalf("light mode no-NAV clobbered identity: %+v", got)
+	}
 }
 
 func TestRecalcLightModeInsertResolvesIdentityWithNullNAV(t *testing.T) {

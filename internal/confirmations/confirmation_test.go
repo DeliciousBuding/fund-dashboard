@@ -79,6 +79,44 @@ func TestVerifyBindsTokenToToolPayloadExpiryAndUseState(t *testing.T) {
 	}
 }
 
+func TestIssueFallsBackToToolTokenTTL(t *testing.T) {
+	now := time.Date(2026, 7, 7, 4, 30, 0, 0, time.UTC)
+	manager := newTestManager(t, func() time.Time { return now })
+	tool := lookupTool(t, "add_transaction")
+	if tool.Confirmation.TokenTTLSeconds == nil {
+		t.Fatal("add_transaction must declare a token TTL")
+	}
+	issued, err := manager.Issue(IssueInput{Tool: tool, Payload: map[string]any{"a": 1}})
+	if err != nil {
+		t.Fatalf("Issue with zero input TTL: %v", err)
+	}
+	want := now.Add(time.Duration(*tool.Confirmation.TokenTTLSeconds) * time.Second)
+	if !issued.Record.ExpiresAt.Equal(want) {
+		t.Fatalf("ExpiresAt = %s, want %s (tool TTL fallback)", issued.Record.ExpiresAt, want)
+	}
+}
+
+func TestVerifyExpiryBoundary(t *testing.T) {
+	base := time.Date(2026, 7, 7, 4, 20, 0, 0, time.UTC)
+	now := base
+	manager := newTestManager(t, func() time.Time { return now })
+	tool := lookupTool(t, "add_transaction")
+	payload := map[string]any{"fund_code": "AAPL"}
+	issued, err := manager.Issue(IssueInput{Tool: tool, Payload: payload, TTL: time.Minute})
+	if err != nil {
+		t.Fatalf("Issue returned error: %v", err)
+	}
+
+	now = issued.Record.ExpiresAt.Add(-time.Nanosecond)
+	if err := manager.Verify(VerifyInput{Record: issued.Record, Token: issued.Token, Tool: tool, Payload: payload}); err != nil {
+		t.Fatalf("verify 1ns before expiry = %v, want nil", err)
+	}
+	now = issued.Record.ExpiresAt
+	if err := manager.Verify(VerifyInput{Record: issued.Record, Token: issued.Token, Tool: tool, Payload: payload}); !errors.Is(err, ErrExpired) {
+		t.Fatalf("verify at expiry = %v, want ErrExpired", err)
+	}
+}
+
 func TestIssueRejectsToolsThatDoNotRequireConfirmation(t *testing.T) {
 	manager := newTestManager(t, time.Now)
 	readTool := lookupTool(t, "get_portfolio_summary")
@@ -87,6 +125,16 @@ func TestIssueRejectsToolsThatDoNotRequireConfirmation(t *testing.T) {
 	if !errors.Is(err, ErrConfirmationNotRequired) {
 		t.Fatalf("Issue read-only tool error = %v, want ErrConfirmationNotRequired", err)
 	}
+}
+
+// MustPayloadHash is a test-only helper (panic on error). It lives in the test
+// build so production callers cannot accidentally reach for the panicking API.
+func (m *Manager) MustPayloadHash(payload map[string]any) string {
+	hash, err := m.PayloadHash(payload)
+	if err != nil {
+		panic(err)
+	}
+	return hash
 }
 
 func newTestManager(t *testing.T, clock func() time.Time) *Manager {

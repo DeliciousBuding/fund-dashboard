@@ -151,16 +151,6 @@ func (m *Manager) PayloadHash(payload map[string]any) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// MustPayloadHash is a test-only helper (panic on error).
-// Production callers must use PayloadHash.
-func (m *Manager) MustPayloadHash(payload map[string]any) string {
-	hash, err := m.PayloadHash(payload)
-	if err != nil {
-		panic(err)
-	}
-	return hash
-}
-
 func (m *Manager) TokenHash(token string) string {
 	mac := hmac.New(sha256.New, m.secret)
 	_, _ = mac.Write([]byte(token))
