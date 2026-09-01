@@ -1,9 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
-import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
-import { api } from "../../lib/api";
-import { useSecurities } from "../../lib/queries";
+import { navHistoryOptions, useSecurities } from "../../lib/queries";
 import { cn } from "../../lib/utils";
 import { useUi } from "../../stores/ui";
 
@@ -38,14 +36,15 @@ export function CodePicker(props: {
         {props.selected.map((code) => {
           const sec = (securities.data ?? []).find((s) => s.code === code);
           return (
-            <Badge
+            <button
               key={code}
-              tone="accent"
-              className="cursor-pointer"
+              type="button"
+              aria-label={`移除 ${sec?.name ?? code}`}
               onClick={() => props.onChange(props.selected.filter((c) => c !== code))}
+              className="inline-flex items-center gap-1 rounded-md bg-accent/15 px-1.5 py-0.5 text-xs font-medium text-accent transition-colors hover:bg-accent/25"
             >
               {sec?.name ?? code} ✕
-            </Badge>
+            </button>
           );
         })}
       </div>
@@ -80,17 +79,9 @@ export function CodePicker(props: {
   );
 }
 
-// 多标的 NAV 并行拉取
+// 多标的 NAV 并行拉取 —— 与 useNavHistory 共用 navHistoryOptions（同一缓存键 + zod 校验）。
 export function useMultiNav(codes: string[]) {
   return useQueries({
-    queries: codes.map((code) => ({
-      queryKey: ["nav", code, 2000],
-      queryFn: ({ signal }: { signal?: AbortSignal }) =>
-        api<{ date: string; unit_nav: number }[]>(
-          `/api/funds/${encodeURIComponent(code)}/nav?limit=2000`,
-          { signal },
-        ),
-      staleTime: 5 * 60 * 1000,
-    })),
+    queries: codes.map((code) => navHistoryOptions(code, 2000)),
   });
 }

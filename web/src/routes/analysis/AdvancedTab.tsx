@@ -4,6 +4,7 @@ import { baseChartOption } from "../../components/charts/theme";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
+import { Skeleton } from "../../components/ui/skeleton";
 import { simulatePath } from "../../services/montecarlo";
 import { dailyReturns, mean, pearson, sampleStd } from "../../services/statistics";
 import { CodePicker, MAX_COMPARE, useMultiNav } from "./shared";
@@ -108,6 +109,7 @@ export function AdvancedTab() {
               <EmptyState title="至少选择 2 个标的" />
             ) : (
               <Chart
+                loading={navs.some((q) => q.isPending)}
                 height={Math.max(240, codes.length * 44)}
                 deps={[correlation, codes]}
                 option={(t) => ({
@@ -151,7 +153,9 @@ export function AdvancedTab() {
             <CardTitle>蒙特卡洛扇形（250 交易日 · 500 路径 · P10/P50/P90）</CardTitle>
           </CardHeader>
           <CardContent>
-            {!mc ? (
+            {navs.some((q) => q.isPending) ? (
+              <Skeleton className="h-[300px]" />
+            ) : !mc ? (
               <EmptyState title="选择至少 1 个净值历史 ≥60 点的标的" />
             ) : (
               <Chart

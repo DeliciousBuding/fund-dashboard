@@ -175,7 +175,10 @@ function DcaTab({ code }: { code: string }) {
             </Button>
           }
         />
-      ) : sim.data && !sim.data.error ? (
+      ) : sim.data &&
+        !sim.data.error &&
+        sim.data.actual_amount !== undefined &&
+        sim.data.dca_rate !== undefined ? (
         <Card>
           <CardContent className="flex flex-wrap items-center gap-6 py-5">
             <div>
@@ -188,8 +191,10 @@ function DcaTab({ code }: { code: string }) {
               <div className="text-xs text-fg-3">倍数</div>
               <div className="mt-1 text-xl tabular-nums text-fg">×{sim.data.dca_rate}</div>
             </div>
-            <Badge tone="accent">{sim.data.signal}</Badge>
-            <p className="w-full text-xs text-fg-2">{sim.data.explanation}</p>
+            {sim.data.signal && <Badge tone="accent">{sim.data.signal}</Badge>}
+            {sim.data.explanation && (
+              <p className="w-full text-xs text-fg-2">{sim.data.explanation}</p>
+            )}
           </CardContent>
         </Card>
       ) : sim.data?.error ? (

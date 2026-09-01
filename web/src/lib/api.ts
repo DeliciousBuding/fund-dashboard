@@ -1,5 +1,6 @@
-// API client: cookie-session based, CSRF header on mutations, zod-free at the
-// boundary for now (contracts wiring lands with W3 pages).
+// API client: cookie-session based, CSRF header on mutations.
+// 响应边界校验在查询层（lib/queries.ts fetchValidated + contracts zod）；
+// 少数未入 contracts 的端点用类型化泛型直连（见 docs 与 REPORT 记录）。
 export class ApiError extends Error {
   constructor(
     public status: number,

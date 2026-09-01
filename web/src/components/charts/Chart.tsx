@@ -92,7 +92,7 @@ export function Chart({
       className={cn("w-full", className)}
       style={{ height }}
       role="img"
-      aria-label={ariaLabel ?? "chart"}
+      aria-label={ariaLabel ?? "图表"}
     />
   );
 }

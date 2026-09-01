@@ -1,8 +1,7 @@
 // 持仓 /holdings —— 持仓表格（排序/占比/盈亏/陈旧度），移动端降级卡片流（03 §8/§9）。
 // 陈旧度：/api/freshness 的 stale_securities 客户端 join。
 
-import type { FreshnessReport, SecurityInfo } from "@fund-dashboard/contracts";
-import { useQuery } from "@tanstack/react-query";
+import type { SecurityInfo } from "@fund-dashboard/contracts";
 import { Link } from "@tanstack/react-router";
 import {
   createColumnHelper,
@@ -19,19 +18,14 @@ import { Card } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
-import { api } from "../lib/api";
 import { fmtCNY, fmtPct, fmtSignedCNY, fmtSignedPct, pnlTone } from "../lib/format";
-import { useSecurities } from "../lib/queries";
+import { useFreshness, useSecurities } from "../lib/queries";
 import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
 
 function useStaleMap() {
-  const freshness = useQuery({
-    queryKey: ["freshness"],
-    queryFn: ({ signal }) => api<FreshnessReport>("/api/freshness", { signal }),
-    staleTime: 5 * 60 * 1000,
-  });
+  const freshness = useFreshness();
   return useMemo(() => {
     const map = new Map<string, number>();
     for (const s of freshness.data?.stale_securities ?? []) map.set(s.code, s.stale_days);

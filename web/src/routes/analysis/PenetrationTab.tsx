@@ -1,6 +1,7 @@
 import { Chart } from "../../components/charts/Chart";
 import { baseChartOption } from "../../components/charts/theme";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -20,6 +21,16 @@ export function PenetrationTab() {
     <div className="space-y-4">
       {penetration.isPending ? (
         <Skeleton className="h-80" />
+      ) : penetration.isError ? (
+        <EmptyState
+          title="穿透数据加载失败"
+          description="请稍后重试；若持续失败可到工作台触发持仓抓取。"
+          action={
+            <Button size="sm" onClick={() => void penetration.refetch()}>
+              重试
+            </Button>
+          }
+        />
       ) : rows.length === 0 ? (
         <EmptyState
           title="暂无穿透数据"

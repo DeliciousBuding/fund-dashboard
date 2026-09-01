@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
-import { downloadText, transactionsToCsv } from "../../lib/csv";
+import { downloadBlob, downloadText, transactionsToCsv } from "../../lib/csv";
 import type { TransactionListItem } from "../../lib/queries";
 
 function filteredTxParams(args: {
@@ -69,16 +69,7 @@ export function useExportMutations(args: {
           })),
         },
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `transactions-${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // Deferred revoke: immediate revoke races the click and cancels the
-      // download in Safari/Firefox.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBlob(`transactions-${new Date().toISOString().slice(0, 10)}.xlsx`, blob);
     },
     onSuccess: () => toast.success("XLSX 已导出"),
     onError: () => toast.error("XLSX 导出失败"),

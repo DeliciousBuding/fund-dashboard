@@ -91,7 +91,10 @@ function TimelineChart() {
         <Chart
           height={300}
           loading={timeline.isPending}
-          empty={!timeline.isPending && points.length === 0}
+          error={timeline.isError}
+          errorText="净值走势加载失败"
+          onRetry={() => void timeline.refetch()}
+          empty={!timeline.isPending && !timeline.isError && points.length === 0}
           emptyText="还没有净值历史——先同步行情"
           deps={[points]}
           option={(t) => ({

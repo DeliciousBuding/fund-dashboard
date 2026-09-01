@@ -4,9 +4,10 @@
 import {
   CheckAlertsResponseSchema,
   CompareResultSchema,
-  type DcaComputeResult,
+  DcaComputeResultSchema,
   DcaPlansResponseSchema,
   DrawdownResultSchema,
+  FreshnessReportSchema,
   FundDetailSchema,
   IndexHistorySchema,
   InvestmentHarnessSnapshotSchema,
@@ -21,7 +22,7 @@ import {
   TransactionsResponseSchema,
   XirrResultSchema,
 } from "@fund-dashboard/contracts";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "./api";
 
@@ -118,8 +119,9 @@ export function useFundDetail(code: string, portfolioId?: number) {
   });
 }
 
-export function useNavHistory(code: string, limit = 2000) {
-  return useQuery({
+/** NAV 历史 queryOptions 工厂 —— useNavHistory 与 analysis useMultiNav 共用同一缓存键。 */
+export function navHistoryOptions(code: string, limit = 2000) {
+  return queryOptions({
     queryKey: ["nav", code, limit],
     queryFn: ({ signal }) =>
       fetchValidated(
@@ -130,6 +132,10 @@ export function useNavHistory(code: string, limit = 2000) {
     staleTime: FIVE_MIN,
     enabled: code.length > 0,
   });
+}
+
+export function useNavHistory(code: string, limit = 2000) {
+  return useQuery(navHistoryOptions(code, limit));
 }
 
 export function useFundXirr(code: string, portfolioId?: number) {
@@ -164,9 +170,10 @@ export function useDcaCompute(code: string, baseAmount: number, mode: string) {
   return useQuery({
     queryKey: ["dca-compute", code, baseAmount, mode],
     queryFn: ({ signal }) =>
-      api<DcaComputeResult>(
+      fetchValidated(
         `/api/funds/${encodeURIComponent(code)}/dca?base=${baseAmount}&mode=${encodeURIComponent(mode)}`,
-        { signal },
+        DcaComputeResultSchema,
+        signal,
       ),
     staleTime: FIVE_MIN,
     enabled: code.length > 0 && baseAmount > 0,
@@ -266,10 +273,19 @@ export function useSourceEvents(opts?: { unreadOnly?: boolean }) {
   });
 }
 
+// ── 新鲜度（顶栏徽章 + 持仓陈旧度共用）────────────────────────────────
+
+export function useFreshness() {
+  return useQuery({
+    queryKey: ["freshness"],
+    queryFn: ({ signal }) => fetchValidated("/api/freshness", FreshnessReportSchema, signal),
+    staleTime: FIVE_MIN,
+  });
+}
+
 // ── W4 台账 / DCA ────────────────────────────────────────────────────
 
 export type TransactionListItem = z.infer<typeof TransactionsListItemSchema>;
-export type TransactionsResponse = z.infer<typeof TransactionsResponseSchema>;
 
 export interface TransactionsFilter {
   fundCode?: string;
@@ -317,8 +333,6 @@ export function useDcaPlans(activeOnly = false, portfolioId?: number) {
 }
 
 // ── W6 告警 ──────────────────────────────────────────────────────────
-
-export type AlertItem = z.infer<typeof CheckAlertsResponseSchema>["alerts"][number];
 
 export function useAlerts() {
   return useQuery({

@@ -51,8 +51,9 @@ export function transactionsToCsv(rows: TransactionListItem[]): string {
   return `﻿${[HEADERS.join(","), ...lines].join("\n")}`;
 }
 
-export function downloadText(filename: string, content: string, mime = "text/csv;charset=utf-8") {
-  const blob = new Blob([content], { type: mime });
+/** 触发浏览器下载并延迟回收 object URL —— 全站唯一出处。
+ * 立即 revoke 会与 click 竞态，导致 Safari/Firefox 取消下载。 */
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -60,7 +61,9 @@ export function downloadText(filename: string, content: string, mime = "text/csv
   document.body.appendChild(a);
   a.click();
   a.remove();
-  // Deferred revoke: immediate revoke races the click and cancels the
-  // download in Safari/Firefox.
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadText(filename: string, content: string, mime = "text/csv;charset=utf-8") {
+  downloadBlob(filename, new Blob([content], { type: mime }));
 }

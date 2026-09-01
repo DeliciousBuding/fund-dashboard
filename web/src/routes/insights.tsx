@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellRing, BookOpenCheck, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
+import { AlertList } from "../components/AlertList";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -161,29 +162,7 @@ function AlertsCard() {
         {list.length === 0 ? (
           <p className="text-sm text-fg-3">无告警：涨跌、回撤、陈旧、定投命中均正常。</p>
         ) : (
-          <ul className="space-y-2">
-            {list.map((a) => (
-              <li
-                key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
-                className="flex items-center gap-3 text-sm"
-              >
-                <Badge
-                  tone={
-                    a.severity === "high"
-                      ? "danger"
-                      : a.severity === "medium" || a.severity === "low"
-                        ? "warn"
-                        : "neutral"
-                  }
-                >
-                  {a.kind}
-                </Badge>
-                <span className="min-w-0 flex-1 truncate text-fg-2">
-                  {a.name || a.code} · {a.message}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <AlertList alerts={list} />
         )}
       </CardContent>
     </Card>

@@ -1,15 +1,12 @@
 // 工作台 /system —— 系统状态卡 + 调度任务（触发/最近运行）+ 告警扫描。
 // 写操作（抓取/校验）全部二次确认（06 §3）。
 
-import {
-  CheckAlertsResponseSchema,
-  SystemJobsResponseSchema,
-  SystemStatusSchema,
-} from "@fund-dashboard/contracts";
+import { SystemJobsResponseSchema, SystemStatusSchema } from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Database, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AlertList } from "../components/AlertList";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -25,7 +22,7 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
-import { fetchValidated } from "../lib/queries";
+import { fetchValidated, useAlerts } from "../lib/queries";
 
 function fmtTs(ts?: number): string {
   if (!ts) return "—";
@@ -73,11 +70,7 @@ export function SystemPage() {
     queryFn: ({ signal }) => fetchValidated("/api/system/jobs", SystemJobsResponseSchema, signal),
     refetchInterval: 30_000,
   });
-  const alerts = useQuery({
-    queryKey: ["system-alerts"],
-    queryFn: ({ signal }) => fetchValidated("/api/alerts", CheckAlertsResponseSchema, signal),
-    staleTime: 5 * 60 * 1000,
-  });
+  const alerts = useAlerts();
 
   const [confirmAction, setConfirmAction] = useState<ActionKey | null>(null);
   const queryClient = useQueryClient();
@@ -251,29 +244,7 @@ export function SystemPage() {
               当前无告警——涨跌、回撤、陈旧、定投命中四档扫描均正常。
             </p>
           ) : (
-            <ul className="space-y-2">
-              {(alerts.data?.alerts ?? []).map((a) => (
-                <li
-                  key={`${a.kind}-${a.code}-${a.severity}-${a.message}`}
-                  className="flex items-center gap-3 text-sm"
-                >
-                  <Badge
-                    tone={
-                      a.severity === "high"
-                        ? "danger"
-                        : a.severity === "medium" || a.severity === "low"
-                          ? "warn"
-                          : "neutral"
-                    }
-                  >
-                    {a.kind}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate text-fg-2">
-                    {a.name || a.code} · {a.message}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <AlertList alerts={alerts.data?.alerts ?? []} />
           )}
         </CardContent>
       </Card>
