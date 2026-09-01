@@ -108,16 +108,16 @@ scheduler 运行态：`internal/jobs/scheduler.go` 增加 `JobStatus` 记录（L
   3. 数据：导入交易（existing import 端点）、导出 XLSX/CSV、备份状态说明。
   4. Agent：MCP 端点地址、工具面统计、密钥掩码展示 + 轮换指引、confirmation 机制说明。
 
-## 4. 验收矩阵（W1.6 后端）
+## 4. 验收矩阵（W1.6 后端，已实施并有对应测试：`internal/auth` + `internal/httpapi`）
 
-- [ ] 锁定递增：连续 3 轮触发锁定 → Retry-After 递增且 ≤24h 封顶；成功后清零
-- [ ] 密码策略：11 位纯数字被拒（400 + min 提示），12 位字母+数字通过
-- [ ] auth_events：login_ok/login_fail/lockout/logout/password_change 均落表，无密码/token 泄露
-- [ ] GET /api/auth/events 需 session；limit 上限 500
-- [ ] 通用限流：突发 60 后第 61 个请求 429 + Retry-After（用小 limit 配置测试）
-- [ ] FUND_TRUSTED_PROXIES：可信网段时取 XFF 客户端位，不可信直连忽略 XFF
-- [ ] HSTS 仅在 secure-cookies 开启时下发
-- [ ] /api/system/* 全部：无 session 401；有 session 200；POST 无 CSRF 头 403
-- [ ] crawl 触发经确认后有审计/结果回执
-- [ ] 双方言：新表 PG DDL 入 schema_pg.go，SQLite EnsureSchema；race 全绿
-- [ ] 公开仓卫生：无 IP/host/密钥入码（leak-guard 门禁）
+- [x] 锁定递增：连续 3 轮触发锁定 → Retry-After 递增且 ≤24h 封顶；成功后清零
+- [x] 密码策略：11 位纯数字被拒（400 + min 提示），12 位字母+数字通过
+- [x] auth_events：login_ok/login_fail/lockout/logout/password_change 均落表，无密码/token 泄露
+- [x] GET /api/auth/events 需 session；limit 上限 500
+- [x] 通用限流：突发 60 后第 61 个请求 429 + Retry-After（用小 limit 配置测试）
+- [x] FUND_TRUSTED_PROXIES：可信网段时取 XFF 客户端位，不可信直连忽略 XFF
+- [x] HSTS 仅在 secure-cookies 开启时下发
+- [x] /api/system/* 全部：无 session 401；有 session 200；POST 无 CSRF 头 403
+- [x] crawl 触发经确认后有审计/结果回执
+- [x] 双方言：新表 PG DDL 入 schema_pg.go，SQLite EnsureSchema；race 全绿
+- [x] 公开仓卫生：无 IP/host/密钥入码（leak-guard 门禁）

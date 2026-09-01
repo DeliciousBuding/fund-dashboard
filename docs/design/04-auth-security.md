@@ -74,7 +74,7 @@ Cookie：`fund_session=<base64url(32B random)>`；`HttpOnly; Secure; SameSite=La
 三道叠加（单租户够用且正确）：
 1. Cookie `SameSite=Lax` —— 跨站 POST 天然不带 cookie；
 2. 变更类请求必须带自定义头 `X-Fund-Request: fetch`（浏览器跨站表单发不出自定义头）；
-3. `Origin`/`Sec-Fetch-Site` 校验：逻辑从 `edge_auth.go` 抽为共享中间件，白名单改读 `FUND_ALLOWED_ORIGINS`（**顺手消除公开仓库里的硬编码生产域名**），`Sec-Fetch-Site: cross-site` → 403。
+3. `Origin`/`Sec-Fetch-Site` 校验：逻辑从 `edge_auth.go`（现 `internal/httpapi/origin_check.go`）抽为共享中间件，白名单改读 `FUND_ALLOWED_ORIGINS`（**顺手消除公开仓库里的硬编码生产域名**），`Sec-Fetch-Site: cross-site` → 403。
 
 ## 6. 限流与兜底（补测绘发现的缺口）
 
