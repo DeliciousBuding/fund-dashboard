@@ -28,10 +28,17 @@ export const IndexHistorySchema = z.object({
 });
 export type IndexHistory = z.infer<typeof IndexHistorySchema>;
 
-export const ExchangeRateSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  rate: z.number(),
-  updated_at: z.string(),
-});
+// Mirrors internal/service/portfolio/exchange_rate.go ExchangeRateReport:
+// from/to/rate/updated_at are always emitted; source has omitempty (optional).
+// strict() rejects unknown keys so contract drift surfaces instead of being
+// silently stripped.
+export const ExchangeRateSchema = z
+  .object({
+    from: z.string(),
+    to: z.string(),
+    rate: z.number(),
+    updated_at: z.string(),
+    source: z.string().optional(),
+  })
+  .strict();
 export type ExchangeRate = z.infer<typeof ExchangeRateSchema>;
