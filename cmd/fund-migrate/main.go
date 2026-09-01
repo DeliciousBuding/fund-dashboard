@@ -3,9 +3,14 @@
 // 用法（在服务器上一次性运行；目标库由本工具先建 schema 再导入）：
 //
 //	fund-migrate --sqlite /path/fund.db --dsn "$FUND_PG_DSN"
+//	fund-migrate --sqlite /path/fund.db --dsn "$FUND_PG_DSN" --force
 //
 // 语义：
-//   - 目标库必须为空（全新部署）；幂等（重复运行不炸，INSERT 冲突按 DO NOTHING）。
+//   - 目标库必须为空（全新部署）。启动时预检所有待迁移表：任一目标表非空即报错
+//     退出，且不会清空/写入任何数据；显式传 --force 才允许覆盖非空目标。
+//   - --force 下每表在一个事务内先 DELETE 再导入（原子替换）：源读取或插入任一步
+//     失败即回滚，目标表保留迁移前的数据，不会出现「清空到一半」的状态。
+//   - 非 force 导入不清空目标；INSERT 冲突按 DO NOTHING 跳过，保留表级幂等语义。
 //   - 表清单取自 SQLite；只迁移业务表（排除 sqlite_* 系统表、auth_* / agent_*
 //     会话与事件——新部署从头建鉴权面）。
 //   - 按列交集导入（源列 ∩ 目标列），未知列跳过，缺列补默认值，避免 legacy 与
@@ -36,9 +41,10 @@ var excludedTables = map[string]bool{
 func main() {
 	sqlitePath := flag.String("sqlite", "", "path to source SQLite database (required)")
 	dsn := flag.String("dsn", "", "postgres DSN (required)")
+	force := flag.Bool("force", false, "allow migrating into a non-empty target (each table is atomically replaced)")
 	flag.Parse()
 	if *sqlitePath == "" || *dsn == "" {
-		log.Fatal("usage: fund-migrate --sqlite /path/fund.db --dsn postgres://...")
+		log.Fatal("usage: fund-migrate --sqlite /path/fund.db --dsn postgres://... [--force]")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -66,9 +72,23 @@ func main() {
 		log.Fatalf("list sqlite tables: %v", err)
 	}
 
+	// 3. 预检目标：非空即拒绝（全新部署语义），避免把已有数据清掉。
+	//    目标库固定是 PG；显式 --force 才走原子替换路径。
+	nonEmpty, err := nonEmptyTargetTables(ctx, dst, dialect.NamePostgres, tables)
+	if err != nil {
+		log.Fatalf("preflight target tables: %v", err)
+	}
+	if len(nonEmpty) > 0 && !*force {
+		log.Fatalf("目标库非空（%s）：按全新部署语义拒绝覆盖；确认要重跑请显式传 --force（每表原子替换）",
+			strings.Join(nonEmpty, ", "))
+	}
+	if *force {
+		log.Printf("--force：允许覆盖非空目标；每表在事务内先 DELETE 再导入，失败自动回滚")
+	}
+
 	log.Printf("迁移开始：%d 张业务表（排除 auth/agent 与系统表）", len(tables))
 	for _, table := range tables {
-		if err := migrateTable(ctx, src, dst, table); err != nil {
+		if err := migrateTable(ctx, src, dst, dialect.NamePostgres, table, *force); err != nil {
 			log.Fatalf("迁移 %s 失败: %v", table, err)
 		}
 	}
@@ -98,17 +118,46 @@ func srcTables(ctx context.Context, src *sql.DB) ([]string, error) {
 	return out, rows.Err()
 }
 
-func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
+// nonEmptyTargetTables returns the business tables that exist in the target and
+// already contain rows. Tables absent from the target schema are skipped (the
+// import loop skips them too); existing tables are probed with LIMIT 1 so huge
+// tables are not fully scanned during the preflight.
+func nonEmptyTargetTables(ctx context.Context, dst *sql.DB, targetDriver string, tables []string) ([]string, error) {
+	var nonEmpty []string
+	for _, table := range tables {
+		cols, err := targetColumns(ctx, dst, targetDriver, table)
+		if err != nil {
+			return nil, fmt.Errorf("inspect target %s: %w", table, err)
+		}
+		if len(cols) == 0 {
+			continue
+		}
+		var one int
+		err = dst.QueryRowContext(ctx,
+			fmt.Sprintf(`SELECT 1 FROM %s LIMIT 1`, dialect.QuoteIdentifier(table))).Scan(&one)
+		switch {
+		case err == sql.ErrNoRows:
+			// 空表，符合全新部署前提。
+		case err != nil:
+			return nil, fmt.Errorf("probe target %s: %w", table, err)
+		default:
+			nonEmpty = append(nonEmpty, table)
+		}
+	}
+	return nonEmpty, nil
+}
+
+func migrateTable(ctx context.Context, src, dst *sql.DB, targetDriver, table string, replace bool) error {
 	srcCols, err := sqliteColumns(ctx, src, table)
 	if err != nil {
 		return fmt.Errorf("sqlite columns: %w", err)
 	}
-	dstCols, err := pgColumns(ctx, dst, table)
+	dstCols, err := targetColumns(ctx, dst, targetDriver, table)
 	if err != nil {
-		return fmt.Errorf("pg columns: %w", err)
+		return fmt.Errorf("target columns: %w", err)
 	}
 	if len(dstCols) == 0 {
-		log.Printf("  %-28s 跳过（PG 无此表）", table)
+		log.Printf("  %-28s 跳过（目标无此表）", table)
 		return nil
 	}
 
@@ -122,10 +171,6 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 	if len(cols) == 0 {
 		log.Printf("  %-28s 跳过（无共同列）", table)
 		return nil
-	}
-
-	if _, err := dst.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, dialect.QuoteIdentifier(table))); err != nil {
-		return fmt.Errorf("clear target before import: %w", err)
 	}
 
 	// Quote identifiers against catalog names that would otherwise break or
@@ -149,6 +194,14 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 	tx, err := dst.BeginTx(ctx, nil)
 	if err != nil {
 		return err
+	}
+	// --force 覆盖路径：DELETE 与导入同一事务，源读取/插入失败时回滚，
+	// 目标表保留迁移前的数据（不会出现「清空到一半」的中间状态）。
+	if replace {
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, quotedTable)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("clear target before import: %w", err)
+		}
 	}
 	stmt, err := tx.PrepareContext(ctx, insert)
 	if err != nil {
@@ -230,29 +283,30 @@ func sqliteColumns(ctx context.Context, db *sql.DB, table string) ([]string, err
 	return cols, rows.Err()
 }
 
-func pgColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
-	out := map[string]bool{}
-	// SQLite 目标（行为 pin 测试）走 PRAGMA；生产目标固定走 PG information_schema。
-	if rows, err := db.QueryContext(ctx,
-		fmt.Sprintf(`PRAGMA table_info(%s)`, dialect.QuoteIdentifier(table))); err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var cid int
-			var name, ctype string
-			var notnull, pk int
-			var dflt sql.NullString
-			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-				return nil, err
-			}
-			out[name] = true
-		}
-		if err := rows.Err(); err != nil {
+// targetColumns returns the target table's column set, dispatching on the known
+// target driver so a missing table yields an empty set (import skips it) instead
+// of leaking into the wrong catalog branch and surfacing a bogus error.
+func targetColumns(ctx context.Context, db *sql.DB, targetDriver, table string) (map[string]bool, error) {
+	switch targetDriver {
+	case dialect.NameSQLite:
+		cols, err := sqliteColumns(ctx, db, table)
+		if err != nil {
 			return nil, err
 		}
-		if len(out) > 0 {
-			return out, nil
+		out := make(map[string]bool, len(cols))
+		for _, c := range cols {
+			out[c] = true
 		}
+		return out, nil
+	case dialect.NamePostgres:
+		return pgColumns(ctx, db, table)
+	default:
+		return nil, fmt.Errorf("unsupported target driver %q", targetDriver)
 	}
+}
+
+func pgColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, error) {
+	out := map[string]bool{}
 	rows, err := db.QueryContext(ctx, `
 		SELECT column_name FROM information_schema.columns
 		WHERE table_schema = 'public' AND table_name = ?`, table)
