@@ -93,7 +93,7 @@ func (s Service) GetInvestmentSourceBrief(ctx context.Context, options SourceBri
 			MaxQueries:        limit,
 		},
 		AgentBrief: fmt.Sprintf(
-			"Hermes source brief: %d source queries generated from %d holdings and %d underlying stocks. Search targets include Hermes WebSearch, DSA search providers, disclosure pages, and local MCP crawlers. This is search/crawl context only; investment decisions stay with the agent.",
+			"组合来源说明：共生成 %d 条来源查询，覆盖 %d 个持仓与 %d 个底层股票。搜索目标包括网页搜索、搜索服务商、官方披露页面与本地 MCP 抓取工具；本内容仅作为搜索/抓取上下文，投资决策仍由 agent 自行判断。",
 			len(finalQueries),
 			len(holdings),
 			len(underlying),
@@ -238,9 +238,9 @@ func dedupeSourceQueries(queries []InvestmentSourceQuery, limit int) []Investmen
 
 func sourceTargets() []InvestmentSourceTarget {
 	return []InvestmentSourceTarget{
-		{Kind: "web_search", Name: "Hermes WebSearch", UseFor: "新闻、公告、监管和宏观消息检索"},
-		{Kind: "web_search", Name: "DSA search providers", URLTemplate: stringPtr("dsa:search({query})"), UseFor: "复用 daily_stock_analysis 的 SerpAPI/Tavily/Brave/SearXNG 等搜索源做新闻兜底"},
-		{Kind: "market_data", Name: "DSA market context", URLTemplate: stringPtr("dsa:market-review({market})"), UseFor: "复用 daily_stock_analysis 的多市场复盘、交易日历和数据质量上下文"},
+		{Kind: "web_search", Name: "网页搜索", UseFor: "新闻、公告、监管和宏观消息检索"},
+		{Kind: "web_search", Name: "搜索服务商", URLTemplate: stringPtr("search:{query}"), UseFor: "复用 SerpAPI/Tavily/Brave/SearXNG 等搜索源做新闻兜底"},
+		{Kind: "market_data", Name: "多市场复盘上下文", URLTemplate: stringPtr("market-review:{market}"), UseFor: "多市场复盘、交易日历和数据质量上下文"},
 		{Kind: "market_data", Name: "fund-dashboard MCP", URLTemplate: stringPtr("mcp:get_fund_detail({code})"), UseFor: "本地持仓、价格、成本、交易流水事实"},
 		{Kind: "official_disclosure", Name: "Eastmoney / fundf10", URLTemplate: stringPtr("https://fundf10.eastmoney.com/ccmx_{code}.html"), UseFor: "基金季报持仓和披露核对"},
 		{Kind: "official_disclosure", Name: "Yahoo Finance", URLTemplate: stringPtr("https://finance.yahoo.com/quote/{code}"), UseFor: "美股行情、财报和公司事件入口"},

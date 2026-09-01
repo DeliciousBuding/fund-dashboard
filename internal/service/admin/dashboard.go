@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/DeliciousBuding/fund-dashboard/internal/textutil"
 	"math"
 	"runtime"
 	"strings"
@@ -293,14 +294,5 @@ func roundHundredths(value float64) float64 {
 }
 
 // clampAdminText bounds free-text admin JSON fields (#243/#244).
-func clampAdminText(s string, max int) string {
-	s = strings.TrimSpace(s)
-	if max <= 0 || len(s) <= max {
-		return s
-	}
-	runes := []rune(s)
-	if len(runes) > max {
-		return string(runes[:max])
-	}
-	return s
-}
+// Single implementation lives in internal/textutil.
+func clampAdminText(s string, max int) string { return textutil.Clamp(s, max) }

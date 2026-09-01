@@ -23,7 +23,6 @@ type PriceRefresher struct {
 	db            *sql.DB
 	driver        string // "sqlite" (default) or "pg" — freshness dialect
 	sources       map[datasource.SecurityType]datasource.PriceSource
-	clock         func() time.Time
 	navSchemaOnce sync.Once
 	navSchemaErr  error
 }
@@ -35,7 +34,6 @@ func NewPriceRefresher(db *sql.DB, opts ...PriceRefresherOption) *PriceRefresher
 		db:      db,
 		driver:  "sqlite",
 		sources: map[datasource.SecurityType]datasource.PriceSource{},
-		clock:   time.Now,
 	}
 	for _, o := range opts {
 		o(r)
@@ -59,13 +57,6 @@ func WithDBDriver(driver string) PriceRefresherOption {
 		if strings.TrimSpace(driver) != "" {
 			r.driver = strings.ToLower(strings.TrimSpace(driver))
 		}
-	}
-}
-
-// WithClock injects a clock for deterministic tests.
-func WithClock(fn func() time.Time) PriceRefresherOption {
-	return func(r *PriceRefresher) {
-		r.clock = fn
 	}
 }
 

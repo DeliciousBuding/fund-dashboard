@@ -26,6 +26,13 @@ type AuthEventSweeper interface {
 	SweepAuthEvents(ctx context.Context, cutoffEpoch int64) (int64, error)
 }
 
+// AuthSessionSweeper deletes expired web sessions (implemented by
+// auth.Service.SweepExpired — daily 03:00 window, design 06 §2.2). Keeps the
+// auth_sessions DDL owned by internal/auth instead of bare SQL in the scheduler.
+type AuthSessionSweeper interface {
+	SweepExpired(ctx context.Context) (int64, error)
+}
+
 // JobStatus is the runtime snapshot of one scheduler job, exposed via
 // StatusSnapshot to the system workspace API (design 06 §2.6). Times are unix
 // epoch seconds.
@@ -58,11 +65,13 @@ type Scheduler struct {
 	indicesRefresh func(ctx context.Context) (int, error)
 	db             *sql.DB
 	authSweep      AuthEventSweeper
+	sessionSweep   AuthSessionSweeper
 
 	mu           sync.Mutex
 	jobsMu       sync.RWMutex
 	jobs         map[string]*jobRuntime
 	stopCh       chan struct{}
+	done         chan struct{}
 	ticker       ticker
 	lastRun      map[string]string // job -> window id (usually YYYY-MM-DD CST)
 	rootCtx      context.Context
@@ -161,6 +170,13 @@ func (s *Scheduler) WithAuthEventSweeper(sweeper AuthEventSweeper) *Scheduler {
 	return s
 }
 
+// WithAuthSessionSweeper wires expired-session cleanup onto auth.Service
+// (replaces the legacy bare-SQL delete in the 03:00 window).
+func (s *Scheduler) WithAuthSessionSweeper(sweeper AuthSessionSweeper) *Scheduler {
+	s.sessionSweep = sweeper
+	return s
+}
+
 // recordJob updates the runtime record after a job attempt. now is the window
 // time (the injectable tick time in tests); a nil error clears last_error.
 func (s *Scheduler) recordJob(job string, now time.Time, err error) {
@@ -215,6 +231,7 @@ func (s *Scheduler) Start() {
 
 	s.stopped = false
 	s.stopCh = make(chan struct{})
+	s.done = make(chan struct{})
 	s.ticker = &realTicker{time.NewTicker(5 * time.Minute)}
 
 	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
@@ -223,15 +240,22 @@ func (s *Scheduler) Start() {
 		s.runStartupCatchUp(time.Now().In(cst))
 	})
 
-	go s.loop(s.stopCh)
+	stopCh, done := s.stopCh, s.done
+	go func() {
+		defer close(done)
+		s.loop(stopCh)
+	}()
 	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, daily 20:00 CST price full-refresh held + DCA weekdays, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
 }
 
-// Stop terminates periodic execution.
+// Stop terminates periodic execution and waits for the background loop to
+// exit. In-flight jobs are canceled through rootCtx; the per-start done
+// channel is closed by the loop goroutine so callers can safely release
+// resources (database, downstream workers) afterwards.
 func (s *Scheduler) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.stopCh == nil {
+		s.mu.Unlock()
 		return
 	}
 	close(s.stopCh)
@@ -245,8 +269,17 @@ func (s *Scheduler) Stop() {
 		s.rootCancel = nil
 	}
 	s.rootCtx = nil
+	done := s.done
+	s.done = nil
 	s.stopCh = nil
 	s.stopped = true
+	s.mu.Unlock()
+
+	// Wait outside s.mu: an in-flight tick may still need s.mu (claimWindow /
+	// jobContext) while it finishes canceling.
+	if done != nil {
+		<-done
+	}
 	slog.Info("scheduler stopped")
 }
 
@@ -387,20 +420,35 @@ func (s *Scheduler) tick(now time.Time) {
 
 // sweepExpiredState piggybacks the daily 03:00 window: expired web sessions,
 // agent confirmations expired >7d, audit events older than 90d, and auth
-// events older than 180d (design 06 §2.2 — auth_events retention is owned by
-// auth.Service via the AuthEventSweeper interface). Best-effort; legacy
-// databases may lack the tables. Returns the first non-nil error encountered.
+// events older than 180d (design 06 §2.2 — auth_sessions/auth_events retention
+// is owned by auth.Service via the AuthSessionSweeper/AuthEventSweeper
+// interfaces). Best-effort; legacy databases may lack the tables. Returns the
+// first non-nil error encountered.
 func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 	now := time.Now()
 	var firstErr error
-	sweeps := []struct {
+	// Expired web sessions: prefer the injected auth service so the
+	// auth_sessions DDL stays owned by internal/auth.
+	if s.sessionSweep != nil {
+		if deleted, err := s.sessionSweep.SweepExpired(ctx); err != nil {
+			slog.Warn("daily sweep failed", "table", "auth_sessions", "error", err)
+			firstErr = err
+		} else if deleted > 0 {
+			slog.Info("daily sweep", "table", "auth_sessions", "deleted", deleted)
+		}
+	}
+	type sweepSpec struct {
 		table string
 		query string
 		arg   any
-	}{
-		{"auth_sessions", `DELETE FROM auth_sessions WHERE expires_at < ?`, now.Unix()},
+	}
+	sweeps := []sweepSpec{
 		{"agent_confirmations", `DELETE FROM agent_confirmations WHERE expires_at < ?`, now.Add(-7 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)},
 		{"agent_audit_events", `DELETE FROM agent_audit_events WHERE created_at < ?`, now.Add(-90 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)},
+	}
+	if s.sessionSweep == nil {
+		// Legacy assembly without an auth service: keep the historical bare SQL.
+		sweeps = append([]sweepSpec{{"auth_sessions", `DELETE FROM auth_sessions WHERE expires_at < ?`, now.Unix()}}, sweeps...)
 	}
 	for _, sweep := range sweeps {
 		res, err := s.db.ExecContext(ctx, sweep.query, sweep.arg)

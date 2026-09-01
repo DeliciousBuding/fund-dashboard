@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/textutil"
 	"github.com/go-chi/chi/v5"
 	"github.com/xuri/excelize/v2"
 )
@@ -39,7 +40,8 @@ type exportTransactionRow struct {
 	TradeDayType   string   `json:"trade_day_type"`
 }
 
-// exportLang is a tiny label pack for XLSX headers/direction (mirrors SPA fundDetail.csv.* / dir.*).
+// exportLang is a tiny label pack for XLSX headers/direction labels so exported
+// sheets stay readable in both product locales (zh default, en via Accept-Language).
 type exportLang struct {
 	headers []string
 	dirMap  map[string]string
@@ -245,15 +247,5 @@ func sanitizeExportFilename(name string) string {
 }
 
 // clampExportCell bounds client-supplied XLSX cell strings (#232).
-func clampExportCell(s string, max int) string {
-	s = strings.TrimSpace(s)
-	if max <= 0 || len(s) <= max {
-		return s
-	}
-	// Prefer rune-safe cut for CJK fund labels.
-	runes := []rune(s)
-	if len(runes) > max {
-		return string(runes[:max])
-	}
-	return s
-}
+// Single implementation lives in internal/textutil.
+func clampExportCell(s string, max int) string { return textutil.Clamp(s, max) }

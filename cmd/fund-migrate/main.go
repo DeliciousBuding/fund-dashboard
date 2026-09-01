@@ -123,16 +123,23 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 		return nil
 	}
 
-	if _, err := dst.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, table)); err != nil {
+	if _, err := dst.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, quoteIdent(table))); err != nil {
 		return fmt.Errorf("clear target before import: %w", err)
 	}
 
-	colList := strings.Join(cols, ", ")
+	// Quote identifiers against catalog names that would otherwise break or
+	// inject SQL (reserved words, spaces, quotes in legacy schemas).
+	quotedTable := quoteIdent(table)
+	quotedCols := make([]string, len(cols))
+	for i, c := range cols {
+		quotedCols[i] = quoteIdent(c)
+	}
+	colList := strings.Join(quotedCols, ", ")
 	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ")
 	insert := fmt.Sprintf(
-		`INSERT INTO %s (%s) VALUES (%s) ON CONFLICT DO NOTHING`, table, colList, placeholders)
+		`INSERT INTO %s (%s) VALUES (%s) ON CONFLICT DO NOTHING`, quotedTable, colList, placeholders)
 
-	rows, err := src.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s`, colList, table))
+	rows, err := src.QueryContext(ctx, fmt.Sprintf(`SELECT %s FROM %s`, colList, quotedTable))
 	if err != nil {
 		return fmt.Errorf("select source: %w", err)
 	}
@@ -195,7 +202,7 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 // verify checks the destination row count matched the imported count.
 func verify(ctx context.Context, dst *sql.DB, table string, want int) {
 	var got int
-	if err := dst.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s`, table)).Scan(&got); err != nil {
+	if err := dst.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s`, quoteIdent(table))).Scan(&got); err != nil {
 		log.Printf("  %-28s 对账失败: %v", table, err)
 		return
 	}

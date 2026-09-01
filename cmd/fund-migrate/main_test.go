@@ -121,3 +121,41 @@ func TestSrcTablesExcludesAuthAndInternal(t *testing.T) {
 		t.Fatalf("tables = %v, want [fund_details]", tables)
 	}
 }
+
+func TestMigrateTableQuotesReservedAndQuotedIdentifiers(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	src, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "src.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := db.Open(ctx, db.Options{Driver: "sqlite", SQLitePath: filepath.Join(dir, "dst.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dst.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE "order" (id INTEGER PRIMARY KEY, "group" TEXT)`,
+		`INSERT INTO "order" (id, "group") VALUES (1, 'a'), (2, 'b')`,
+	} {
+		if _, err := src.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("seed source: %v", err)
+		}
+	}
+	if _, err := dst.ExecContext(ctx, `CREATE TABLE "order" (id INTEGER PRIMARY KEY, "group" TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrateTable(ctx, src, dst, "order"); err != nil {
+		t.Fatalf("migrate reserved-identifier table: %v", err)
+	}
+	var n int
+	if err := dst.QueryRowContext(ctx, `SELECT COUNT(*) FROM "order"`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("rows = %d, want 2", n)
+	}
+}

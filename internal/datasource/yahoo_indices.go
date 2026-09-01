@@ -102,7 +102,7 @@ func FetchYahooIndexQuotes(ctx context.Context, symbols []string) ([]IndexQuote,
 	if template == "" {
 		template = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=5d&interval=1d"
 	}
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := yahooQuoteClient
 	out := make([]IndexQuote, 0, len(symbols))
 	var firstErr error
 	for _, symbol := range symbols {
@@ -146,7 +146,7 @@ func FetchYahooIndexHistory(ctx context.Context, symbol, rangeKey, interval stri
 		template = "https://query1.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=%s"
 	}
 	endpoint := fmt.Sprintf(template, url.PathEscape(symbol), url.QueryEscape(rangeKey), url.QueryEscape(interval))
-	client := &http.Client{Timeout: 12 * time.Second}
+	client := yahooHistoryClient
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return IndexHistory{}, err
