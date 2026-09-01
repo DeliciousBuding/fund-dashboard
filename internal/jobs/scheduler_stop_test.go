@@ -16,25 +16,79 @@ type neverTicker struct{}
 func (neverTicker) Chan() <-chan time.Time { return make(chan time.Time) }
 func (neverTicker) Stop()                  {}
 
+type fakeTimer struct{ ch chan time.Time }
+
+func (f fakeTimer) Chan() <-chan time.Time { return f.ch }
+func (f fakeTimer) Stop() bool             { return true }
+
 func TestSchedulerStopCancelsStartupCatchUp(t *testing.T) {
 	s := &Scheduler{lastRun: map[string]string{}}
+	var ran atomic.Bool
+	ticks := make(chan time.Time, 1)
 	s.mu.Lock()
 	s.stopCh = make(chan struct{})
 	s.ticker = neverTicker{}
 	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
-	var ran atomic.Bool
-	s.startupTimer = time.AfterFunc(80*time.Millisecond, func() {
-		if s.isStopped() {
-			return
-		}
+	s.startupTimer = fakeTimer{ch: ticks}
+	s.startupRefresh = func(context.Context) (int, int, error) {
 		ran.Store(true)
-	})
+		return 0, 0, nil
+	}
 	s.mu.Unlock()
 
+	s.startStartupCatchUp(s.stopCh, s.startupTimer)
 	s.Stop()
-	time.Sleep(150 * time.Millisecond)
+	// A late tick must not run the catch-up: Stop canceled the context and
+	// joined the startup goroutine before returning.
+	ticks <- time.Now().In(cst)
+	time.Sleep(100 * time.Millisecond)
 	if ran.Load() {
 		t.Fatal("startup catch-up ran after Stop")
+	}
+}
+
+func TestStopWaitsForInFlightStartupCatchUp(t *testing.T) {
+	s := &Scheduler{lastRun: map[string]string{}}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	ticks := make(chan time.Time, 1)
+	ticks <- time.Now().In(cst)
+
+	s.mu.Lock()
+	s.stopCh = make(chan struct{})
+	s.ticker = neverTicker{}
+	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
+	s.startupTimer = fakeTimer{ch: ticks}
+	s.startupRefresh = func(context.Context) (int, int, error) {
+		close(started)
+		<-release
+		return 0, 0, nil
+	}
+	s.mu.Unlock()
+
+	s.startStartupCatchUp(s.stopCh, s.startupTimer)
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("startup catch-up never entered the blocking refresh")
+	}
+
+	stopReturned := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(stopReturned)
+	}()
+	select {
+	case <-stopReturned:
+		t.Fatal("Stop returned while the startup catch-up was still in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-stopReturned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop did not return after the startup catch-up exited")
 	}
 }
 

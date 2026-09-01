@@ -122,8 +122,17 @@ func NewServer(deps ServerDeps) (*Server, error) {
 	return &Server{registry: registry, portfolio: deps.Portfolio, admin: deps.Admin, agentOps: deps.AgentOps, nav: deps.Nav, snapshots: deps.Snapshots, holdings: deps.Holdings, role: role}, nil
 }
 
-func (s *Server) Handle(ctx context.Context, request Request) Response {
-	response := Response{JSONRPC: jsonrpcVersion, ID: request.ID}
+func (s *Server) Handle(ctx context.Context, request Request) (response Response) {
+	// A panic in any tool handler must not escape to the transport or take the
+	// process down. Log the panic server-side and degrade to a generic
+	// internal_error without echoing panic details to the caller.
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("mcp request panic", "method", request.Method, "panic", fmt.Sprint(recovered))
+			response = Response{JSONRPC: jsonrpcVersion, ID: request.ID, Error: jsonrpcError(-32603, "internal_error")}
+		}
+	}()
+	response = Response{JSONRPC: jsonrpcVersion, ID: request.ID}
 	if request.JSONRPC != "" && request.JSONRPC != jsonrpcVersion {
 		response.Error = jsonrpcError(-32600, "invalid_request: jsonrpc must be 2.0")
 		return response
@@ -264,6 +273,9 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 	if name == "" {
 		name = params.Tool
 		args = params.Args
+	}
+	if name == "" {
+		return nil, jsonrpcError(-32602, "invalid_params: tool name is required")
 	}
 	if args == nil {
 		args = map[string]any{}
@@ -416,7 +428,7 @@ func (s *Server) claimWriteConfirmation(ctx context.Context, name string, args m
 	in := agentops.ConsumeConfirmationInput{
 		Tool:            name,
 		Role:            s.role,
-		Caller:          valueOrDefault(stringArg(args, "caller"), "mcp"),
+		Caller:          firstNonEmpty(stringArg(args, "caller"), "mcp"),
 		RequestID:       stringArg(args, "request_id"),
 		ConfirmationID:  confirmationID,
 		Token:           token,
@@ -441,11 +453,4 @@ func confirmationPayload(args map[string]any) map[string]any {
 		}
 	}
 	return payload
-}
-
-func valueOrDefault(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
 }

@@ -25,13 +25,18 @@ func run() error {
 	// Set up slog with LOG_LEVEL support ("debug", "info", "warn", "error").
 	level := new(slog.LevelVar)
 	level.Set(slog.LevelInfo)
+	var levelErr error
 	if lv := os.Getenv("LOG_LEVEL"); lv != "" {
 		var parsed slog.Level
-		if err := parsed.UnmarshalText([]byte(lv)); err == nil {
+		levelErr = parsed.UnmarshalText([]byte(lv))
+		if levelErr == nil {
 			level.Set(parsed)
 		}
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	if levelErr != nil {
+		slog.Warn("invalid LOG_LEVEL ignored; using info", "error", levelErr)
+	}
 
 	cfg, err := config.Parse(environMap(os.Environ()))
 	if err != nil {

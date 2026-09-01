@@ -213,4 +213,20 @@ func TestDefaultRegistryInputSchemasAreRealJSONSchema(t *testing.T) {
 	if _, ok := props["fund_code"]; !ok {
 		t.Fatal("run_backtest schema must advertise fund_code")
 	}
+
+	upsert, ok := registry.Lookup("upsert_dca_plan")
+	if !ok {
+		t.Fatal("upsert_dca_plan missing")
+	}
+	upsertProps, _ := upsert.InputSchema["properties"].(map[string]any)
+	if upsertProps == nil {
+		t.Fatal("upsert_dca_plan properties missing")
+	}
+	active, ok := upsertProps["active"].(map[string]any)
+	if !ok {
+		t.Fatal("upsert_dca_plan schema must advertise active 0/1 toggle")
+	}
+	if active["type"] != "integer" {
+		t.Fatalf("upsert_dca_plan active.type = %v, want integer", active["type"])
+	}
 }

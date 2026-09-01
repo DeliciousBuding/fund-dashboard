@@ -29,7 +29,9 @@ type Options struct {
 	// EnvHash, when set (FUND_AUTH_PASSWORD_HASH), is the authoritative
 	// credential: DB credentials are ignored and password change is disabled.
 	EnvHash string
-	// TTL is the sliding session window (default 720h = 30d).
+	// TTL is the sliding session window (default 720h = 30d). It is clamped
+	// to MaxAge: a sliding window longer than the absolute cap is a config error
+	// and must not let sessions outlive created+MaxAge.
 	TTL time.Duration
 	// MaxAge is the absolute session cap from creation (default 2160h = 90d).
 	MaxAge time.Duration
@@ -58,6 +60,13 @@ func NewService(store *Store, opts Options) *Service {
 	maxAge := opts.MaxAge
 	if maxAge <= 0 {
 		maxAge = 2160 * time.Hour
+	}
+	// The sliding window must never outlive the absolute cap: a TTL longer than
+	// MaxAge would otherwise let a freshly created (or idle) session stay valid
+	// past created+MaxAge, defeating the configured absolute limit. Clamp TTL
+	// down so renewal, initial expiry and the session cookie stay consistent.
+	if ttl > maxAge {
+		ttl = maxAge
 	}
 	now := opts.Now
 	if now == nil {
@@ -158,7 +167,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 		if cap := sess.CreatedAt + int64(s.maxAge.Seconds()); newExpiry > cap {
 			newExpiry = cap
 		}
-		if newExpiry > sess.ExpiresAt || now > sess.LastSeenAt {
+		// now > halfLife already implies now > sess.LastSeenAt, so the only
+		// decision left is whether expiry actually moves. Once the renewal is
+		// pinned at the absolute cap (newExpiry == ExpiresAt) a touch would be a
+		// no-op DB write on every request, so skip it.
+		if newExpiry > sess.ExpiresAt {
 			if err := s.store.TouchSession(ctx, id, now, newExpiry); err != nil {
 				return nil, err
 			}

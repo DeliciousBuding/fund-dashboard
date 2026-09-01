@@ -1,8 +1,9 @@
+import { TransactionsResponseSchema } from "@fund-dashboard/contracts";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { downloadBlob, downloadText, transactionsToCsv } from "../../lib/csv";
-import type { TransactionListItem } from "../../lib/queries";
+import { fetchValidated } from "../../lib/queries";
 
 function filteredTxParams(args: {
   portfolioId?: number;
@@ -30,7 +31,8 @@ export function useExportMutations(args: {
 
   const fetchAll = async () => {
     const params = filteredTxParams({ portfolioId, direction, fundCode, search });
-    const all = await api<{ transactions: TransactionListItem[] }>(`/api/transactions?${params}`);
+    // 复用 /api/transactions 契约与边界校验，不再手写 {transactions: [...]} 形状。
+    const all = await fetchValidated(`/api/transactions?${params}`, TransactionsResponseSchema);
     return all.transactions;
   };
 

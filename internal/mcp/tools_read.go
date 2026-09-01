@@ -255,23 +255,14 @@ func (s *Server) callCrawlNav(ctx context.Context, args map[string]any) (map[str
 				"message":           "no_stale_or_missing_held_nav",
 			})
 		}
-		totalAdded := 0
-		done := make([]string, 0, len(codes))
-		failed := make([]string, 0)
-		for _, c := range codes {
-			if err := ctx.Err(); err != nil {
-				break
-			}
-			added, _, err := s.nav.CrawlCode(ctx, c)
-			if err != nil {
-				failed = append(failed, c)
-				continue
-			}
-			totalAdded += added
-			done = append(done, c)
-		}
+		done, failed, totalAdded, cancelled := crawlStaleCodes(ctx, s.nav, codes)
 		status := "complete"
-		if len(failed) > 0 && len(done) == 0 {
+		if cancelled {
+			if len(done) == 0 && len(failed) == 0 {
+				return nil, jsonrpcError(-32000, "tool_error: cancelled")
+			}
+			status = "partial"
+		} else if len(failed) > 0 && len(done) == 0 {
 			status = "error"
 		} else if len(failed) > 0 {
 			status = "partial"
@@ -500,4 +491,25 @@ func (s *Server) harnessAudience() portfoliosvc.HarnessAudience {
 		return portfoliosvc.HarnessAudienceOperator
 	}
 	return portfoliosvc.HarnessAudiencePublic
+}
+
+// crawlStaleCodes crawls each code until the context is cancelled. It keeps
+// per-code soft failures (done vs failed) and reports whether cancellation
+// stopped the batch so the caller can distinguish complete/partial/cancelled.
+func crawlStaleCodes(ctx context.Context, nav NavCrawler, codes []string) (done, failed []string, totalAdded int, cancelled bool) {
+	done = make([]string, 0, len(codes))
+	for _, code := range codes {
+		if err := ctx.Err(); err != nil {
+			cancelled = true
+			return done, failed, totalAdded, cancelled
+		}
+		added, _, err := nav.CrawlCode(ctx, code)
+		if err != nil {
+			failed = append(failed, code)
+			continue
+		}
+		totalAdded += added
+		done = append(done, code)
+	}
+	return done, failed, totalAdded, false
 }

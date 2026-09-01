@@ -58,9 +58,10 @@ type Config struct {
 	APIRPM int
 	// MCPRPM caps per-key MCP requests per minute (FUND_MCP_RPM, default 120).
 	MCPRPM int
-	// TrustedProxies is the Fund-Trusted-Proxies CIDR allowlist. When non-empty,
+	// TrustedProxies is the FUND_TRUSTED_PROXIES CIDR allowlist. When non-empty,
 	// X-Forwarded-For is only trusted from direct peers inside these networks
-	// (design 06 §2.4). Nil = legacy right-most-XFF behavior.
+	// (design 06 §2.4). Nil means no allowlist is configured: X-Forwarded-For is
+	// untrusted entirely and the request IP fails closed to the direct peer.
 	TrustedProxies []*net.IPNet
 	raw            map[string]string
 }
@@ -79,21 +80,26 @@ func Parse(env map[string]string) (Config, error) {
 		AdminKey:          strings.TrimSpace(env["MCP_API_KEY"]),
 		PublicMCPKey:      strings.TrimSpace(env["PUBLIC_MCP_KEY"]),
 		EdgeKey:           strings.TrimSpace(env["FUND_EDGE_KEY"]),
-		AgentOpsEnabled:   parseBool(env["FUND_AGENT_OPS_ENABLED"]),
+		AgentOpsEnabled:   parseBoolEnv(env["FUND_AGENT_OPS_ENABLED"], "FUND_AGENT_OPS_ENABLED"),
 		AuthPasswordHash:  strings.TrimSpace(env["FUND_AUTH_PASSWORD_HASH"]),
-		AuthSessionTTL:    parseDuration(env["FUND_AUTH_SESSION_TTL"], 720*time.Hour),
-		AuthSessionMaxAge: parseDuration(env["FUND_AUTH_SESSION_MAX_AGE"], 2160*time.Hour),
-		AuthSecureCookie:  parseBoolDefault(env["FUND_AUTH_SECURE_COOKIE"], true),
-		EdgeAuthEnabled:   parseBoolDefault(env["FUND_EDGE_AUTH_ENABLED"], true),
+		AuthSessionTTL:    parseDurationEnv(env["FUND_AUTH_SESSION_TTL"], "FUND_AUTH_SESSION_TTL", 720*time.Hour),
+		AuthSessionMaxAge: parseDurationEnv(env["FUND_AUTH_SESSION_MAX_AGE"], "FUND_AUTH_SESSION_MAX_AGE", 2160*time.Hour),
+		AuthSecureCookie:  parseBoolEnvDefault(env["FUND_AUTH_SECURE_COOKIE"], "FUND_AUTH_SECURE_COOKIE", true),
+		EdgeAuthEnabled:   parseBoolEnvDefault(env["FUND_EDGE_AUTH_ENABLED"], "FUND_EDGE_AUTH_ENABLED", true),
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
-		APIRPM:            parseRPM(env["FUND_API_RPM"], 600),
-		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], 120),
+		APIRPM:            parseRPM(env["FUND_API_RPM"], "FUND_API_RPM", 600),
+		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], "FUND_MCP_RPM", 120),
 		TrustedProxies:    parseTrustedProxies(env["FUND_TRUSTED_PROXIES"]),
 		raw:               copyMap(env),
 	}
 
-	if parseBool(env["FUND_BACKUP_PRODUCER_ENABLED"]) {
+	if parseBoolEnv(env["FUND_BACKUP_PRODUCER_ENABLED"], "FUND_BACKUP_PRODUCER_ENABLED") {
 		return Config{}, errors.New("backup producer is disabled in the Go rewrite")
+	}
+	if cfg.AuthSessionTTL > cfg.AuthSessionMaxAge {
+		slog.Warn("config: session TTL exceeds max age; sliding renewal will be clamped to max age",
+			"ttl", cfg.AuthSessionTTL.String(),
+			"max_age", cfg.AuthSessionMaxAge.String())
 	}
 	if cfg.AgentOpsEnabled {
 		cfg.AgentConfirmationSecret = strings.TrimSpace(env["FUND_AGENT_CONFIRMATION_SECRET"])
@@ -174,10 +180,6 @@ func (c Config) Redacted() map[string]string {
 	redacted["FUND_ENV"] = c.Environment
 	redacted["FUND_BACKUP_PRODUCER_ENABLED"] = "false"
 	redacted["FUND_AGENT_OPS_ENABLED"] = boolString(c.AgentOpsEnabled)
-	if c.AgentConfirmationSecret != "" {
-		redacted["FUND_AGENT_CONFIRMATION_SECRET"] = c.AgentConfirmationSecret
-	}
-
 	for key := range redacted {
 		if isSecretKey(key) {
 			redacted[key] = "[redacted]"
@@ -193,46 +195,67 @@ func valueOrDefault(value string, fallback string) string {
 	return value
 }
 
-func parseBool(value string) bool {
+// parseBoolValue parses both truthy and falsy spellings, reporting whether the
+// value was recognized. Empty string is recognized as false; callers handle
+// unset-vs-default semantics separately.
+func parseBoolValue(value string) (parsed, valid bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on", "enabled":
-		return true
+		return true, true
+	case "", "0", "false", "no", "off", "disabled":
+		return false, true
 	default:
-		return false
+		return false, false
 	}
 }
 
-// parseBoolDefault parses a boolean env that defaults to true/false when unset.
-func parseBoolDefault(value string, fallback bool) bool {
-	if strings.TrimSpace(value) == "" {
-		return fallback
+// parseBoolEnv parses a boolean env and warns when a non-empty value is not a
+// recognized spelling, so a typo like "ture" is diagnosable instead of
+// silently disabling a feature.
+func parseBoolEnv(value, name string) bool {
+	parsed, valid := parseBoolValue(value)
+	if !valid {
+		slog.Warn("config: invalid bool env ignored, using false", "env", name, "value", strings.TrimSpace(value))
 	}
-	return parseBool(value)
+	return parsed
 }
 
-// parseDuration parses a Go duration env (e.g. "720h"); invalid → fallback.
-func parseDuration(value string, fallback time.Duration) time.Duration {
+// parseBoolEnvDefault parses a boolean env that keeps the given default when
+// unset, warning on invalid non-empty values.
+func parseBoolEnvDefault(value, name string, fallback bool) bool {
 	if strings.TrimSpace(value) == "" {
 		return fallback
 	}
-	parsed, err := time.ParseDuration(strings.TrimSpace(value))
+	return parseBoolEnv(value, name)
+}
+
+// parseDurationEnv parses a Go duration env (e.g. "720h"). Empty or invalid
+// values fall back to the default; invalid non-empty values are logged so an
+// injected typo is diagnosable at startup instead of silently changing the
+// session lifetime.
+func parseDurationEnv(value, name string, fallback time.Duration) time.Duration {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(trimmed)
 	if err != nil || parsed <= 0 {
+		slog.Warn("config: invalid duration env ignored, using default", "env", name, "value", trimmed, "default", fallback.String())
 		return fallback
 	}
 	return parsed
 }
 
-// parseOrigins splits a comma-separated Origin allowlist. Default covers the
-// Vite dev server; localhost on any port is always accepted by the origin
-// check itself (see internal/httpapi/origin_check.go).
-// parseRPM parses a non-negative per-minute rate env; invalid/empty → fallback.
-func parseRPM(value string, fallback int) int {
+// parseRPM parses a non-negative per-minute rate env; empty/invalid values fall
+// back to the default and invalid non-empty values are logged.
+func parseRPM(value, name string, fallback int) int {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return fallback
 	}
 	n, err := strconv.Atoi(trimmed)
 	if err != nil || n <= 0 {
+		slog.Warn("config: invalid rate env ignored, using default", "env", name, "value", trimmed, "default", fallback)
 		return fallback
 	}
 	return n
@@ -241,8 +264,8 @@ func parseRPM(value string, fallback int) int {
 // parseTrustedProxies parses a comma-separated CIDR/IP allowlist
 // (FUND_TRUSTED_PROXIES). Invalid segments are dropped with a WARN — a segment
 // that fails to parse is treated as untrusted (fail-closed), so the resulting
-// list only ever shrinks the trusted surface. An empty list means "legacy
-// right-most XFF" (no proxy allowlist configured).
+// list only ever shrinks the trusted surface. An unset list (nil) leaves
+// X-Forwarded-For untrusted: the effective IP fails closed to the direct peer.
 func parseTrustedProxies(value string) []*net.IPNet {
 	if strings.TrimSpace(value) == "" {
 		return nil
@@ -277,6 +300,9 @@ func parseTrustedProxies(value string) []*net.IPNet {
 	return out
 }
 
+// parseOrigins splits a comma-separated Origin allowlist. The default covers
+// the Vite dev server; localhost on any port is always accepted by the origin
+// check itself (see internal/httpapi/origin_check.go).
 func parseOrigins(value string) []string {
 	if strings.TrimSpace(value) == "" {
 		return []string{"http://localhost:5173", "http://127.0.0.1:5173"}

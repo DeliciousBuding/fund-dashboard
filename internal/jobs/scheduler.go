@@ -76,8 +76,12 @@ type Scheduler struct {
 	lastRun      map[string]string // job -> window id (usually YYYY-MM-DD CST)
 	rootCtx      context.Context
 	rootCancel   context.CancelFunc
-	startupTimer *time.Timer
-	stopped      bool
+	startupTimer clockTimer
+	startupWG    sync.WaitGroup
+	// startupRefresh runs the stale-only startup catch-up; defaults to
+	// refresher.RefreshStaleHeld and is overridable in tests to observe Stop.
+	startupRefresh func(ctx context.Context) (securities, added int, err error)
+	stopped        bool
 }
 
 // jobDefinitions lists the tracked jobs (name + schedule description) so
@@ -134,6 +138,18 @@ type realTicker struct{ *time.Ticker }
 
 func (t *realTicker) Chan() <-chan time.Time { return t.Ticker.C }
 func (t *realTicker) Stop()                  { t.Ticker.Stop() }
+
+// clockTimer abstracts time.Timer for the startup catch-up goroutine so tests
+// can fire (or hold) the startup tick deterministically.
+type clockTimer interface {
+	Chan() <-chan time.Time
+	Stop() bool
+}
+
+type realTimer struct{ *time.Timer }
+
+func (t *realTimer) Chan() <-chan time.Time { return t.Timer.C }
+func (t *realTimer) Stop() bool             { return t.Timer.Stop() }
 
 // NewScheduler creates a Scheduler. It does not start automatically —
 // call Start() to begin periodic execution.
@@ -236,15 +252,16 @@ func (s *Scheduler) Start() {
 
 	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
 	// Startup catch-up after a short delay (once per CST day; skips same-day redeploys).
-	s.startupTimer = time.AfterFunc(30*time.Second, func() {
-		s.runStartupCatchUp(time.Now().In(cst))
-	})
+	s.startupTimer = &realTimer{time.NewTimer(30 * time.Second)}
 
 	stopCh, done := s.stopCh, s.done
 	go func() {
 		defer close(done)
 		s.loop(stopCh)
 	}()
+	// The catch-up goroutine is tracked separately so Stop waits for it too:
+	// graceful shutdown covers every background goroutine, not just the tick loop.
+	s.startStartupCatchUp(stopCh, s.startupTimer)
 	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, daily 20:00 CST price full-refresh held + DCA weekdays, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
 }
 
@@ -275,11 +292,12 @@ func (s *Scheduler) Stop() {
 	s.stopped = true
 	s.mu.Unlock()
 
-	// Wait outside s.mu: an in-flight tick may still need s.mu (claimWindow /
-	// jobContext) while it finishes canceling.
+	// Wait outside s.mu: an in-flight tick or the startup catch-up may still
+	// need s.mu (claimWindow / jobContext) while it finishes canceling.
 	if done != nil {
 		<-done
 	}
+	s.startupWG.Wait()
 	slog.Info("scheduler stopped")
 }
 
@@ -292,6 +310,21 @@ func (s *Scheduler) loop(stopCh <-chan struct{}) {
 			s.tick(t.In(cst))
 		}
 	}
+}
+
+// startStartupCatchUp spawns the once-per-process startup catch-up goroutine.
+// Callers hold s.mu so the WaitGroup Add happens-before any Stop.
+func (s *Scheduler) startStartupCatchUp(stopCh <-chan struct{}, timer clockTimer) {
+	s.startupWG.Add(1)
+	go func() {
+		defer s.startupWG.Done()
+		select {
+		case <-stopCh:
+			return
+		case <-timer.Chan():
+			s.runStartupCatchUp(time.Now().In(cst))
+		}
+	}()
 }
 
 func (s *Scheduler) runStartupCatchUp(now time.Time) {
@@ -310,7 +343,11 @@ func (s *Scheduler) runStartupCatchUp(now time.Time) {
 		return
 	}
 	// Scheduled paths only touch missing/stale held NAV; full crawl stays on admin/MCP.
-	_, _, err := s.refresher.RefreshStaleHeld(ctx)
+	refresh := s.startupRefresh
+	if refresh == nil {
+		refresh = s.refresher.RefreshStaleHeld
+	}
+	_, _, err := refresh(ctx)
 	if err != nil {
 		slog.Error("startup price refresh failed", "error", err)
 	}
@@ -357,14 +394,17 @@ func (s *Scheduler) tick(now time.Time) {
 			jobErr = err
 		}
 		// MarketTicker indices cache (#92) — best-effort Yahoo refresh.
-		idxCtx, idxCancel := s.jobContext(2 * time.Minute)
-		if _, err := s.indicesRefresh(idxCtx); err != nil {
-			slog.Error("market indices refresh failed", "error", err)
-			if jobErr == nil {
-				jobErr = err
+		// nil guard: custom wiring may intentionally disable this cache refresh.
+		if s.indicesRefresh != nil {
+			idxCtx, idxCancel := s.jobContext(2 * time.Minute)
+			if _, err := s.indicesRefresh(idxCtx); err != nil {
+				slog.Error("market indices refresh failed", "error", err)
+				if jobErr == nil {
+					jobErr = err
+				}
 			}
+			idxCancel()
 		}
-		idxCancel()
 		// DCA materialization stays weekday-only (a financial decision — never on
 		// Saturday/Sunday; price refresh above is pure data sync).
 		if day >= time.Monday && day <= time.Friday {
@@ -453,7 +493,7 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 	for _, sweep := range sweeps {
 		res, err := s.db.ExecContext(ctx, sweep.query, sweep.arg)
 		if err != nil {
-			if strings.Contains(err.Error(), "no such table") {
+			if isMissingTableErr(err) {
 				slog.Debug("sweep skipped (table absent)", "table", sweep.table)
 				continue
 			}
@@ -480,6 +520,18 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+// isMissingTableErr reports a schema-absence error across SQLite ("no such
+// table"), PostgreSQL ("does not exist"), and legacy drivers ("undefined_table").
+func isMissingTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table") ||
+		strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "undefined_table")
 }
 
 // claimWindow records a job attempt for the given window id.
@@ -527,8 +579,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 				VALUES (?, ?, 0, ?, 'ok', ?)
 			`, code, job, windowID, now)
 			if err != nil {
-				msg := strings.ToLower(err.Error())
-				if strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table") {
+				if isMissingTableErr(err) {
 					return true
 				}
 				// race: another process inserted
@@ -541,8 +592,7 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 			}
 			return true
 		}
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "no such table") || strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined_table") {
+		if isMissingTableErr(err) {
 			return true
 		}
 		// Unknown lookup errors: fail closed (do not claim) to avoid duplicate job runs.

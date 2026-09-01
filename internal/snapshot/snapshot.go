@@ -105,9 +105,38 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 		navArg = navVal
 	}
 
+	if resolveID {
+		id, err := resolvePortfolioID(ctx, q, code)
+		if err != nil {
+			return err
+		}
+		portfolioID = int(id)
+	} else if portfolioID <= 0 {
+		portfolioID = 1
+	}
+
+	// Value math must use the NAV that will actually be visible on the row.
+	// ModeLight preserves an existing latest_nav when nav_history has no fresh
+	// value, so current_value/unrealized/pnl have to be derived from that
+	// preserved NAV — otherwise a Light recalc keeps latest_nav while wiping the
+	// valuation columns to zero.
+	effNav := navVal
+	if mode == ModeLight && navVal == 0 {
+		var existing sql.NullFloat64
+		if err := q.QueryRowContext(ctx, `
+			SELECT latest_nav FROM portfolio_snapshot
+			WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
+		`, code, portfolioID).Scan(&existing); err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("recalc snapshot existing nav: %w", err)
+		}
+		if existing.Valid && existing.Float64 > 0 {
+			effNav = existing.Float64
+		}
+	}
+
 	currentValue := 0.0
-	if latestNAV.Valid {
-		currentValue = heldShares * latestNAV.Float64
+	if effNav != 0 {
+		currentValue = heldShares * effNav
 	}
 	unrealized := currentValue + totalCost
 	pnlPct := 0.0
@@ -122,16 +151,6 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 		currentValue = 0
 		unrealized = 0
 		pnlPct = 0
-	}
-
-	if resolveID {
-		id, err := resolvePortfolioID(ctx, q, code)
-		if err != nil {
-			return err
-		}
-		portfolioID = int(id)
-	} else if portfolioID <= 0 {
-		portfolioID = 1
 	}
 
 	var res sql.Result

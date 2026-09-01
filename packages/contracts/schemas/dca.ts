@@ -81,3 +81,21 @@ export const DcaRunResultSchema = z.object({
   side_effects: z.string(),
 });
 export type DcaRunResult = z.infer<typeof DcaRunResultSchema>;
+
+// POST /api/dca/plans → UpsertDCAPlanResult { ok, plan }
+// (internal/service/portfolio/dca.go). The echoed plan follows the same
+// DcaPlan wire shape as the list endpoint.
+export const DcaPlanUpsertResponseSchema = z.object({
+  ok: z.boolean(),
+  plan: DcaPlanSchema,
+});
+export type DcaPlanUpsertResponse = z.infer<typeof DcaPlanUpsertResponseSchema>;
+
+// POST /api/dca/plans/{id}/disable → DisableDCAPlanResult { ok, id, updated }
+// (internal/service/portfolio/dca.go).
+export const DcaPlanDisableResponseSchema = z.object({
+  ok: z.boolean(),
+  id: z.number(),
+  updated: z.boolean(),
+});
+export type DcaPlanDisableResponse = z.infer<typeof DcaPlanDisableResponseSchema>;

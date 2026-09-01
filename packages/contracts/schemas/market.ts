@@ -1,5 +1,5 @@
 // market.ts — market indices, index history, exchange rate
-// v3.0 contracts SSOT — migrated verbatim from web/src/api/types.ts
+// v3.0 contracts SSOT — derived from internal/httpapi/market.go wire shapes.
 import { z } from "zod";
 
 export const MarketIndexSchema = z.object({

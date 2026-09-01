@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
@@ -101,7 +102,7 @@ func (r *PriceRefresher) RefreshSecurity(ctx context.Context, code string, secTy
 		points = filtered
 	}
 
-	added, err := upsertNavHistory(ctx, r.db, code, string(secType), points)
+	added, err := upsertNavHistory(ctx, r.db, r.driver, code, string(secType), points)
 	if err != nil {
 		return nil, err
 	}
@@ -126,11 +127,7 @@ func (r *PriceRefresher) RefreshAllHeld(ctx context.Context) (securities, totalA
 		return 0, 0, nil
 	}
 
-	codes := make([]string, 0, len(held))
-	for _, h := range held {
-		codes = append(codes, h.Code)
-	}
-	return r.RefreshCodes(ctx, codes)
+	return r.RefreshCodes(ctx, held)
 }
 
 // RefreshStaleHeld refreshes only held securities with missing or stale NAV
@@ -155,14 +152,16 @@ func (r *PriceRefresher) RefreshCodes(ctx context.Context, codes []string) (secu
 	if len(codes) == 0 {
 		return 0, 0, nil
 	}
+	attempted := 0
 	for i, code := range codes {
 		if err := ctx.Err(); err != nil {
-			return i, totalAdded, err
+			return securities, totalAdded, err
 		}
 		code = strings.TrimSpace(code)
 		if code == "" {
 			continue
 		}
+		attempted++
 		added, _, cerr := r.CrawlCode(ctx, code)
 		if cerr != nil {
 			slog.Error("price refresh failed", "code", code, "error", cerr)
@@ -177,6 +176,12 @@ func (r *PriceRefresher) RefreshCodes(ctx context.Context, codes []string) (secu
 		}
 	}
 	slog.Info("price refresh complete", "securities", securities, "new_rows", totalAdded, "requested", len(codes))
+	// Total-failure must surface: per-code errors are logged and soft-skipped for
+	// partial-crawl parity, but a run where every attempted security failed is
+	// an error, not a successful crawl.
+	if attempted > 0 && securities == 0 {
+		return securities, totalAdded, fmt.Errorf("price refresh failed for all %d attempted securities", attempted)
+	}
 	return securities, totalAdded, nil
 }
 
@@ -239,15 +244,13 @@ func filterPointsSince(points []datasource.PricePoint, since string) []datasourc
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-// Matches SPA filters (held_shares > 0.001) and scheduler/MCP held queries.
-type heldRow struct {
-	Code string
-	Type datasource.SecurityType
-}
-
-func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]heldRow, error) {
+// getHeldSecurities lists held codes (held_shares > 0.001, same filter as the
+// SPA). The security type is deliberately not carried: CrawlCode re-resolves it
+// from portfolio_snapshot/fund_details at crawl time, so caching it here was
+// dead state.
+func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]string, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT fund_code, COALESCE(security_type, 'fund')
+		SELECT fund_code
 		FROM portfolio_snapshot WHERE held_shares > 0.001
 		LIMIT 5000
 	`)
@@ -256,21 +259,18 @@ func (r *PriceRefresher) getHeldSecurities(ctx context.Context) ([]heldRow, erro
 	}
 	defer rows.Close()
 
-	var held []heldRow
+	var codes []string
 	for rows.Next() {
-		var (
-			code    string
-			secType string
-		)
-		if err := rows.Scan(&code, &secType); err != nil {
+		var code string
+		if err := rows.Scan(&code); err != nil {
 			return nil, err
 		}
-		held = append(held, heldRow{Code: code, Type: datasource.SecurityType(secType)})
+		codes = append(codes, code)
 	}
-	return held, rows.Err()
+	return codes, rows.Err()
 }
 
-func upsertNavHistory(ctx context.Context, db *sql.DB, code, secType string, points []datasource.PricePoint) (int, error) {
+func upsertNavHistory(ctx context.Context, db *sql.DB, driver, code, secType string, points []datasource.PricePoint) (int, error) {
 	// Soft-cap series length defense-in-depth (#241).
 	if len(points) > 5000 {
 		points = points[len(points)-5000:]
@@ -289,17 +289,17 @@ func upsertNavHistory(ctx context.Context, db *sql.DB, code, secType string, poi
 
 	// Only count rows that are newly inserted or whose values actually change.
 	// Plain ON CONFLICT DO UPDATE makes PG RowsAffected=1 for no-op rewrites (#87).
-	insert, err := tx.PrepareContext(ctx, `
+	insert, err := tx.PrepareContext(ctx, fmt.Sprintf(`
 		INSERT INTO nav_history (date, fund_code, unit_nav, daily_change_pct, security_type)
 		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(fund_code, date) DO UPDATE SET
+		ON CONFLICT%s DO UPDATE SET
 			unit_nav = excluded.unit_nav,
 			daily_change_pct = excluded.daily_change_pct,
 			security_type = excluded.security_type
 		WHERE nav_history.unit_nav IS DISTINCT FROM excluded.unit_nav
 			OR nav_history.daily_change_pct IS DISTINCT FROM excluded.daily_change_pct
 			OR COALESCE(nav_history.security_type, '') IS DISTINCT FROM COALESCE(excluded.security_type, '')
-	`)
+	`, navUpsertConflictTarget(driver)))
 	if err != nil {
 		return 0, err
 	}
@@ -431,6 +431,17 @@ func RecalcAllStatus(ok int, failed []string) string {
 		return "error"
 	}
 	return "partial"
+}
+
+// navUpsertConflictTarget returns the unique-column list matching the
+// nav_history PRIMARY KEY for each dialect. The PK column order differs:
+// SQLite (fund_code, date) vs PostgreSQL (date, fund_code), and PostgreSQL
+// rejects a conflict target that does not match an existing unique index.
+func navUpsertConflictTarget(driver string) string {
+	if dialect.New(driver, nil).IsPostgres() {
+		return "(date, fund_code)"
+	}
+	return "(fund_code, date)"
 }
 
 // sleepContext waits d or returns early when ctx is canceled (#247).

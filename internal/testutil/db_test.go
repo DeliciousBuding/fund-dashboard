@@ -23,10 +23,8 @@ func TestOpenTempDBWithSchema(t *testing.T) {
 	if err := db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
 		t.Fatal(err)
 	}
-	if mode != "wal" && mode != "WAL" {
-		// sqlitedb returns lower-case "wal" typically
-		if mode != "wal" {
-			t.Fatalf("journal_mode=%q want wal", mode)
-		}
+	// The modernc sqlite driver reports journal_mode lower-case.
+	if mode != "wal" {
+		t.Fatalf("journal_mode=%q want wal", mode)
 	}
 }

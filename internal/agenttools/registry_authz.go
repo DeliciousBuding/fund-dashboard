@@ -34,6 +34,9 @@ func (r *Registry) Validate() error {
 		if tool.Capability.Permission == PermissionRequiresConfirmation && !tool.Confirmation.Required {
 			return fmt.Errorf("tool %q permission requires confirmation but policy does not", tool.Name)
 		}
+		if tool.Confirmation.Required && tool.Capability.Permission != PermissionRequiresConfirmation {
+			return fmt.Errorf("tool %q confirmation policy required but permission = %q", tool.Name, tool.Capability.Permission)
+		}
 		if tool.Audit.EventType == "" {
 			return fmt.Errorf("tool %q missing audit event_type", tool.Name)
 		}
@@ -43,10 +46,16 @@ func (r *Registry) Validate() error {
 }
 
 func (r *Registry) Lookup(name string) (ToolDefinition, bool) {
-	if r.byName == nil {
+	r.indexMu.RLock()
+	index := r.byName
+	r.indexMu.RUnlock()
+	if index == nil {
 		r.reindex()
+		r.indexMu.RLock()
+		index = r.byName
+		r.indexMu.RUnlock()
 	}
-	tool, ok := r.byName[name]
+	tool, ok := index[name]
 	return tool, ok
 }
 
@@ -92,7 +101,7 @@ func (r *Registry) Authorize(request AuthorizeRequest) AuthorizeDecision {
 		decision.Reason = DenyReviewRequired
 		return decision
 	}
-	if !roleAllowsScope(request.Role, tool.Capability.Scope) {
+	if !RoleAllowsScope(request.Role, tool.Capability.Scope) {
 		decision.Reason = DenyScope
 		return decision
 	}
@@ -191,15 +200,14 @@ func RoleAllowsScope(role Role, scope Scope) bool {
 	return slices.Contains(allowed[role], scope)
 }
 
-func roleAllowsScope(role Role, scope Scope) bool {
-	return RoleAllowsScope(role, scope)
-}
-
 func (r *Registry) reindex() {
-	r.byName = map[string]ToolDefinition{}
+	index := make(map[string]ToolDefinition, len(r.Tools))
 	for _, tool := range r.Tools {
-		r.byName[tool.Name] = tool
+		index[tool.Name] = tool
 	}
+	r.indexMu.Lock()
+	r.byName = index
+	r.indexMu.Unlock()
 }
 
 func disabledBoundaryTools() []ToolDefinition {

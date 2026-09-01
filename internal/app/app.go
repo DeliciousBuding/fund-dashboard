@@ -1,6 +1,7 @@
 // Package app provides the production dependency assembly path.
-// Build opens SQLite, creates data sources, starts the scheduler, wires HTTP routes,
-// and returns a Runtime that can be gracefully shut down.
+// Build opens the configured database (SQLite or PostgreSQL), creates data
+// sources, starts the scheduler, wires HTTP routes, and returns a Runtime that
+// can be gracefully shut down.
 package app
 
 import (
@@ -29,9 +30,24 @@ type Runtime struct {
 	scheduler *jobs.Scheduler
 }
 
+// resolveDriver mirrors db.Open's driver inference so schema bootstrapping and
+// every downstream driver option agree on one value for the process lifetime.
+// config.Parse already lowercases and trims FUND_DB_DRIVER; an empty value means
+// "infer from the connection inputs" exactly like db.Open.
+func resolveDriver(cfg config.Config) string {
+	if cfg.DBDriver != "" {
+		return cfg.DBDriver
+	}
+	if cfg.PGDSN != "" {
+		return "pg"
+	}
+	return "sqlite"
+}
+
 func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
+	driver := resolveDriver(cfg)
 	dbase, err := db.Open(ctx, db.Options{
-		Driver:     cfg.DBDriver,
+		Driver:     driver,
 		SQLitePath: cfg.DBPath,
 		DSN:        cfg.PGDSN,
 	})
@@ -40,22 +56,22 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	}
 
 	// On PostgreSQL, ensure the schema exists before startup.
-	if cfg.DBDriver == "pg" {
+	if driver == "pg" {
 		if err := db.EnsurePGSchema(ctx, dbase); err != nil {
 			_ = dbase.Close()
 			return nil, fmt.Errorf("ensure pg schema: %w", err)
 		}
 	} else {
 		// SQLite first install: a fresh self-hosted DB must boot into a usable
-		// empty state, not a wall of internal_error 500s (agent tables come from
-		// buildWithDB's EnsureSchema calls, same as before).
+		// empty state, not a wall of internal_error 500s. Agent and auth tables
+		// come from buildWithDB's EnsureSchema calls.
 		if err := db.EnsureSQLiteSchema(ctx, dbase); err != nil {
 			_ = dbase.Close()
 			return nil, fmt.Errorf("ensure sqlite schema: %w", err)
 		}
 	}
 
-	runtime, err := buildWithDB(ctx, cfg, dbase)
+	runtime, err := buildWithDB(ctx, cfg, driver, dbase)
 	if err != nil {
 		_ = dbase.Close()
 		return nil, err
@@ -73,14 +89,14 @@ func (r *Runtime) Close() error {
 	return nil
 }
 
-func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, error) {
+func buildWithDB(ctx context.Context, cfg config.Config, driver string, dbase *sql.DB) (*Runtime, error) {
 	// ── agent state tables ───────────────────────────────────────────
-	confirmationRepo := agentstate.NewConfirmationRepository(db)
-	auditRepo := agentstate.NewAuditEventRepository(db)
+	confirmationRepo := agentstate.NewConfirmationRepository(dbase)
+	auditRepo := agentstate.NewAuditEventRepository(dbase)
 
 	// On SQLite, EnsureSchema creates agent tables with AUTOINCREMENT.
 	// On PG, EnsurePGSchema already created them with SERIAL PRIMARY KEY.
-	if cfg.DBDriver != "pg" {
+	if driver != "pg" {
 		if err := confirmationRepo.EnsureSchema(ctx); err != nil {
 			return nil, err
 		}
@@ -92,8 +108,8 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	// ── data sources ─────────────────────────────────────────────────
 	fundSource := datasource.NewEastmoneyFund()
 	stockSource := datasource.NewYahooStock()
-	refresher := jobs.NewPriceRefresher(db,
-		jobs.WithDBDriver(cfg.DBDriver),
+	refresher := jobs.NewPriceRefresher(dbase,
+		jobs.WithDBDriver(driver),
 		jobs.WithSource(datasource.TypeFund, fundSource),
 		jobs.WithSource(datasource.TypeStock, stockSource),
 	)
@@ -102,8 +118,8 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	// On PG the auth tables are created by EnsurePGSchema; on SQLite we create
 	// them here (same pattern as agentstate). The store also backs the daily
 	// auth_events sweep wired into the scheduler below.
-	authStore := authpkg.NewStore(db)
-	if cfg.DBDriver != "pg" {
+	authStore := authpkg.NewStore(dbase)
+	if driver != "pg" {
 		if err := authStore.EnsureSchema(ctx); err != nil {
 			return nil, fmt.Errorf("ensure auth schema: %w", err)
 		}
@@ -115,21 +131,26 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 	})
 
 	// ── scheduler ────────────────────────────────────────────────────
-	scheduler := jobs.NewScheduler(refresher, db)
+	// Started only after the router is fully wired so a wiring error cannot
+	// leave background jobs running against a database that Build closes.
+	scheduler := jobs.NewScheduler(refresher, dbase)
 	scheduler.WithAuthEventSweeper(authStore)
 	scheduler.WithAuthSessionSweeper(authService)
-	scheduler.Start()
 
 	// ── HTTP router ──────────────────────────────────────────────────
 	options := []httpapi.RouterOption{
-		httpapi.WithDB(db),
-		httpapi.WithDBDriver(cfg.DBDriver),
+		httpapi.WithDB(dbase),
+		httpapi.WithDBDriver(driver),
 		httpapi.WithAuth(authService),
 	}
 
 	if cfg.StaticDir != "" {
-		if _, err := os.Stat(cfg.StaticDir); err != nil {
+		info, err := os.Stat(cfg.StaticDir)
+		if err != nil {
 			return nil, fmt.Errorf("open static dir: %w", err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("static dir is not a directory: %s", cfg.StaticDir)
 		}
 		options = append(options, httpapi.WithStaticFS(os.DirFS(cfg.StaticDir)))
 	} else {
@@ -147,14 +168,17 @@ func buildWithDB(ctx context.Context, cfg config.Config, db *sql.DB) (*Runtime, 
 
 	// MCP crawl_nav uses the same PriceRefresher instance.
 	options = append(options, httpapi.WithNavCrawler(refresher))
-	options = append(options, httpapi.WithSnapshotRecalculator(jobs.NewSnapshotService(db)))
-	options = append(options, httpapi.WithHoldingsCrawler(jobs.NewHoldingsRefresher(db)))
+	options = append(options, httpapi.WithSnapshotRecalculator(jobs.NewSnapshotService(dbase)))
+	options = append(options, httpapi.WithHoldingsCrawler(jobs.NewHoldingsRefresher(dbase)))
 	// Workspace system API: scheduler runtime snapshot for /api/system/jobs.
 	options = append(options, httpapi.WithJobStatus(scheduler.StatusSnapshot))
 
+	handler := httpapi.NewRouter(cfg, options...)
+	scheduler.Start()
+
 	return &Runtime{
-		DB:        db,
-		Handler:   httpapi.NewRouter(cfg, options...),
+		DB:        dbase,
+		Handler:   handler,
 		scheduler: scheduler,
 	}, nil
 }

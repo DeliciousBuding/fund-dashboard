@@ -11,10 +11,16 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 )
 
+// holdingsSource fetches top holdings for one fund; datasource.EastmoneyHoldings
+// implements it and tests can substitute a stub.
+type holdingsSource interface {
+	FetchHoldings(ctx context.Context, code string, topline int) ([]datasource.FundHolding, error)
+}
+
 // HoldingsRefresher crawls fund top holdings into fund_holdings.
 type HoldingsRefresher struct {
 	db     *sql.DB
-	source *datasource.EastmoneyHoldings
+	source holdingsSource
 }
 
 func NewHoldingsRefresher(db *sql.DB) *HoldingsRefresher {
@@ -42,7 +48,9 @@ func (r *HoldingsRefresher) CrawlCode(ctx context.Context, code string) (added i
 	}
 	reportDate = holdings[0].ReportDate
 	if reportDate == "" {
-		reportDate = time.Now().Format("2006-01-02")
+		// Calendar-day fallback must follow the China fund calendar (cst), not the
+		// runner's local timezone.
+		reportDate = time.Now().In(cst).Format("2006-01-02")
 	}
 	n, err := upsertFundHoldings(ctx, r.db, code, reportDate, holdings)
 	if err != nil {
@@ -74,10 +82,12 @@ func (r *HoldingsRefresher) CrawlAllHeld(ctx context.Context) (funds int, added 
 	if err := rows.Err(); err != nil {
 		return 0, 0, err
 	}
+	attempted := 0
 	for i, code := range codes {
 		if err := ctx.Err(); err != nil {
 			return funds, added, err
 		}
+		attempted++
 		n, _, err := r.CrawlCode(ctx, code)
 		if err != nil {
 			slog.Error("holdings refresh failed", "code", code, "error", err)
@@ -90,6 +100,11 @@ func (r *HoldingsRefresher) CrawlAllHeld(ctx context.Context) (funds int, added 
 				return funds, added, err
 			}
 		}
+	}
+	// Total-failure must surface: partial crawl parity soft-skips per-fund errors,
+	// but a run where every attempted fund failed is an error, not success.
+	if attempted > 0 && funds == 0 {
+		return funds, added, fmt.Errorf("holdings refresh failed for all %d attempted funds", attempted)
 	}
 	return funds, added, nil
 }

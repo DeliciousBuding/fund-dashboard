@@ -24,7 +24,13 @@ var (
 	ErrMissingRegistry          = errors.New("agentops registry is nil")
 	ErrMissingConfirmationStore = errors.New("agentops confirmation repository is missing")
 	ErrMissingAuditStore        = errors.New("agentops audit repository is missing")
+	ErrIdentityTooLong          = errors.New("agent identity field exceeds maximum length")
 )
+
+// maxAgentIdentityLength bounds caller/request_id before audit persistence.
+// The HTTP surface clamps at the same boundary; this is defense in depth for
+// direct/MCP callers so oversized identity strings cannot bloat audit rows.
+const maxAgentIdentityLength = 128
 
 type Service struct {
 	registry         *agenttools.Registry
@@ -105,6 +111,17 @@ func (s *Service) PrepareConfirmation(ctx context.Context, input PrepareConfirma
 	if s.confirmations == nil {
 		return PreparedConfirmation{}, confirmations.ErrEmptySecret
 	}
+	if len(input.Caller) > maxAgentIdentityLength || len(input.RequestID) > maxAgentIdentityLength {
+		return PreparedConfirmation{}, ErrIdentityTooLong
+	}
+	// Fail fast on missing stores before issuing a token or persisting a row:
+	// a later audit failure must not leave an orphan confirmation behind.
+	if s.confirmationRepo == (agentstate.ConfirmationRepository{}) {
+		return PreparedConfirmation{}, ErrMissingConfirmationStore
+	}
+	if s.auditRepo == (agentstate.AuditEventRepository{}) {
+		return PreparedConfirmation{}, ErrMissingAuditStore
+	}
 
 	tool, ok := s.registry.Lookup(input.Tool)
 	if !ok {
@@ -131,17 +148,11 @@ func (s *Service) PrepareConfirmation(ctx context.Context, input PrepareConfirma
 	if err != nil {
 		return PreparedConfirmation{}, err
 	}
-	if s.confirmationRepo == (agentstate.ConfirmationRepository{}) {
-		return PreparedConfirmation{}, ErrMissingConfirmationStore
-	}
 	confirmationID, err := s.confirmationRepo.Save(ctx, issued.Record)
 	if err != nil {
 		return PreparedConfirmation{}, fmt.Errorf("persist prepared confirmation: %w", err)
 	}
 
-	if s.auditRepo == (agentstate.AuditEventRepository{}) {
-		return PreparedConfirmation{}, ErrMissingAuditStore
-	}
 	auditID, err := s.auditRepo.Save(ctx, audit.NewAttemptEvent(audit.EventInput{
 		RequestID: input.RequestID,
 		Caller:    input.Caller,
@@ -181,6 +192,9 @@ func (s *Service) ClaimConfirmation(ctx context.Context, input ConsumeConfirmati
 	}
 	if s.auditRepo == (agentstate.AuditEventRepository{}) {
 		return ConsumedConfirmation{}, ErrMissingAuditStore
+	}
+	if len(input.Caller) > maxAgentIdentityLength || len(input.RequestID) > maxAgentIdentityLength {
+		return ConsumedConfirmation{}, ErrIdentityTooLong
 	}
 
 	tool, ok := s.registry.Lookup(input.Tool)
