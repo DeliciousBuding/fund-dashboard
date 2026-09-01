@@ -1,6 +1,7 @@
 // 工作台 /system —— 系统状态卡 + 调度任务（触发/最近运行）+ 告警扫描。
 // 写操作（抓取/校验）全部二次确认（06 §3）。
 
+import { SystemJobsResponseSchema, SystemStatusSchema } from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Database, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -19,24 +20,7 @@ import {
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
-import type { AlertItem } from "../lib/queries";
-
-interface SystemStatus {
-  version: string;
-  db_driver: string;
-  go_version: string;
-  uptime_sec: number;
-  db_size_bytes?: number;
-  freshness?: { health?: string };
-}
-
-interface JobStatus {
-  name: string;
-  schedule: string;
-  last_run?: number;
-  last_error?: string;
-  next_run: number;
-}
+import { type AlertItem, fetchValidated } from "../lib/queries";
 
 interface AlertsResult {
   ok: boolean;
@@ -82,12 +66,12 @@ const ACTIONS: { key: ActionKey; label: string; description: string }[] = [
 export function SystemPage() {
   const status = useQuery({
     queryKey: ["system-status"],
-    queryFn: ({ signal }) => api<SystemStatus>("/api/system/status", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/system/status", SystemStatusSchema, signal),
     refetchInterval: 30_000,
   });
   const jobs = useQuery({
     queryKey: ["system-jobs"],
-    queryFn: ({ signal }) => api<{ jobs: JobStatus[] }>("/api/system/jobs", { signal }),
+    queryFn: ({ signal }) => fetchValidated("/api/system/jobs", SystemJobsResponseSchema, signal),
     refetchInterval: 30_000,
   });
   const alerts = useQuery({
