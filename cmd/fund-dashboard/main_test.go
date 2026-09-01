@@ -9,7 +9,7 @@ func TestEnvironMap(t *testing.T) {
 		want  map[string]string
 	}{
 		{"simple pairs", []string{"FUND_ENV=production", "PORT=8765"}, map[string]string{"FUND_ENV": "production", "PORT": "8765"}},
-		{"value containing equals", []string{"FUND_PG_DSN=postgres://u:p@h/db?x=1"}, map[string]string{"FUND_PG_DSN": "postgres://u:p@h/db?x=1"}},
+		{"value containing equals", []string{"FUND_PG_DSN=postgres://db-host/db?sslmode=disable&x=1"}, map[string]string{"FUND_PG_DSN": "postgres://db-host/db?sslmode=disable&x=1"}},
 		{"empty value", []string{"EMPTY="}, map[string]string{"EMPTY": ""}},
 		{"malformed entry skipped", []string{"NO_EQUALS"}, map[string]string{}},
 		{"last duplicate wins", []string{"K=first", "K=second"}, map[string]string{"K": "second"}},
