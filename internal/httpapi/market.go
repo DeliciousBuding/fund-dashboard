@@ -73,6 +73,10 @@ func handleIndexLive(service *portfoliosvc.Service) http.HandlerFunc {
 		}
 		report, err := service.GetIndexLive(r.Context(), code)
 		if err != nil {
+			if portfoliosvc.IsValidationError(err) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			writeSafeError(w, r, http.StatusBadGateway, err)
 			return
 		}
@@ -91,6 +95,10 @@ func handleIndexHistory(service *portfoliosvc.Service) http.HandlerFunc {
 		interval := r.URL.Query().Get("interval")
 		report, err := service.GetIndexHistory(r.Context(), code, rangeKey, interval)
 		if err != nil {
+			if portfoliosvc.IsValidationError(err) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			writeSafeError(w, r, http.StatusBadGateway, err)
 			return
 		}

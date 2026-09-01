@@ -188,3 +188,17 @@ func TestIndexHistoryCacheEvictsExpiredAndCapsSize(t *testing.T) {
 		t.Fatalf("expected newest entry to remain under size cap")
 	}
 }
+
+func TestGetIndexHistoryBlankCodeFailsClosed(t *testing.T) {
+	svc := NewService(nil)
+	for _, code := range []string{"", "   ", "\t"} {
+		_, err := svc.GetIndexHistory(context.Background(), code, "1y", "")
+		if !IsValidationError(err) {
+			t.Fatalf("code %q err = %v, want ValidationError", code, err)
+		}
+		_, err = svc.GetIndexLive(context.Background(), code)
+		if !IsValidationError(err) {
+			t.Fatalf("live code %q err = %v, want ValidationError", code, err)
+		}
+	}
+}

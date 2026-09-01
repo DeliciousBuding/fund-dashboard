@@ -137,6 +137,23 @@ func TestIndexLiveAndHistoryRoutes(t *testing.T) {
 	}
 }
 
+func TestIndexRoutesRejectBlankCode(t *testing.T) {
+	db := openMarketHTTPFixture(t)
+	defer db.Close()
+	router := newAuthedRouter(t, config.Config{ServiceName: "fund-dashboard-go", Version: "test"}, db)
+
+	// Blank code used to emit a facts envelope with data:null (contract
+	// violation); both routes now fail closed with 400 before any envelope.
+	for _, path := range []string{"/api/market/index/%20", "/api/market/index/%20/history"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d body=%s, want 400", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func openMarketHTTPFixture(t *testing.T) *sql.DB {
 	t.Helper()
 	return testutil.OpenTempDBWithSchema(t, marketHTTPFixtureStatements)
