@@ -27,7 +27,7 @@ func TestAuthEventsInsertListOrderAndClamp(t *testing.T) {
 		{"logout", base + 20},
 	}
 	for _, ev := range events {
-		if err := store.InsertAuthEvent(context.Background(), ev.name, "1.2.3.4", "ua-1", "detail-"+ev.name, ev.ts); err != nil {
+		if err := store.InsertAuthEvent(context.Background(), ev.name, "192.0.2.1", "ua-1", "detail-"+ev.name, ev.ts); err != nil {
 			t.Fatalf("InsertAuthEvent %s: %v", ev.name, err)
 		}
 	}
@@ -43,7 +43,7 @@ func TestAuthEventsInsertListOrderAndClamp(t *testing.T) {
 	if got[0].Event != "logout" || got[1].Event != "login_ok" || got[2].Event != "login_fail" {
 		t.Fatalf("order = %v %v %v, want logout/login_ok/login_fail", got[0].Event, got[1].Event, got[2].Event)
 	}
-	if got[0].IP != "1.2.3.4" || got[0].UserAgent != "ua-1" || got[0].Detail != "detail-logout" {
+	if got[0].IP != "192.0.2.1" || got[0].UserAgent != "ua-1" || got[0].Detail != "detail-logout" {
 		t.Fatalf("row = %#v", got[0])
 	}
 
@@ -76,8 +76,8 @@ func TestServiceRecordsAuthEventsWithInjectedClock(t *testing.T) {
 	svc := newTestService(t, Options{Now: func() time.Time { return now }})
 	ctx := context.Background()
 
-	svc.RecordAuthEvent(ctx, "login_ok", "5.6.7.8", "cli/1", "")
-	svc.RecordAuthEvent(ctx, "lockout", "5.6.7.8", "cli/1", "retry_after=901")
+	svc.RecordAuthEvent(ctx, "login_ok", "198.51.100.7", "cli/1", "")
+	svc.RecordAuthEvent(ctx, "lockout", "198.51.100.7", "cli/1", "retry_after=901")
 
 	got, err := svc.ListAuthEvents(ctx, 10)
 	if err != nil {

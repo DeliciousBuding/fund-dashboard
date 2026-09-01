@@ -396,6 +396,16 @@ export function DcaPage() {
                 <Skeleton key={k} className="h-10 w-full" />
               ))}
             </div>
+          ) : plans.isError ? (
+            <EmptyState
+              title="加载失败"
+              description="定投计划拉取失败，请重试。"
+              action={
+                <Button size="sm" onClick={() => void plans.refetch()}>
+                  重试
+                </Button>
+              }
+            />
           ) : rows.length === 0 ? (
             <EmptyState
               title="还没有定投计划"

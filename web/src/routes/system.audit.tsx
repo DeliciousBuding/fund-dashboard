@@ -5,6 +5,7 @@ import { SystemAuditResponseSchema } from "@fund-dashboard/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Segmented } from "../components/ui/segmented";
@@ -52,6 +53,16 @@ export function SystemAuditPage() {
       <CardContent>
         {audit.isPending ? (
           <Skeleton className="h-48" />
+        ) : audit.isError ? (
+          <EmptyState
+            title="加载失败"
+            description="审计时间线拉取失败，请重试。"
+            action={
+              <Button size="sm" onClick={() => void audit.refetch()}>
+                重试
+              </Button>
+            }
+          />
         ) : rows.length === 0 ? (
           <EmptyState
             title="暂无审计事件"

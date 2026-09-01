@@ -33,8 +33,8 @@ function csvText(v: unknown): string {
 export function transactionsToCsv(rows: TransactionListItem[]): string {
   const lines = rows.map((tx) =>
     [
-      (tx.trade_time ?? "").substring(0, 16),
-      tx.confirm_date ?? "",
+      csvText((tx.trade_time ?? "").substring(0, 16)),
+      csvText(tx.confirm_date),
       DIRECTION_LABEL[tx.direction ?? ""] ?? csvText(tx.direction),
       csvText(tx.trade_type),
       tx.amount != null ? tx.amount.toFixed(2) : "",
@@ -57,6 +57,10 @@ export function downloadText(filename: string, content: string, mime = "text/csv
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Deferred revoke: immediate revoke races the click and cancels the
+  // download in Safari/Firefox.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

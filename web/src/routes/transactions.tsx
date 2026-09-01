@@ -230,6 +230,20 @@ export function TransactionsPage() {
                   ))}
                 </Tr>
               ))
+            ) : data.isError ? (
+              <Tr>
+                <Td colSpan={columns.length}>
+                  <EmptyState
+                    title="加载失败"
+                    description="台账拉取失败，请重试。"
+                    action={
+                      <Button size="sm" onClick={() => void data.refetch()}>
+                        重试
+                      </Button>
+                    }
+                  />
+                </Td>
+              </Tr>
             ) : table.getRowModel().rows.length === 0 ? (
               <Tr>
                 <Td colSpan={columns.length}>
