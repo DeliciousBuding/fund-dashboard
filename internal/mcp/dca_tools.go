@@ -20,12 +20,12 @@ func (s *Server) callUpsertDCAPlan(ctx context.Context, args map[string]any) (ma
 		EndDate:     stringArg(args, "end_date"),
 		Source:      stringArg(args, "source"),
 	}
-	if _, ok := args["active"]; ok {
-		v := intArg(args, "active", 1)
-		if v != 0 {
-			v = 1
+	if raw, ok := args["active"]; ok {
+		active, valid := integerFlag(raw)
+		if !valid || (active != 0 && active != 1) {
+			return nil, jsonrpcError(-32602, "invalid_params: active must be 0 or 1")
 		}
-		in.Active = &v
+		in.Active = &active
 	}
 	res, err := s.portfolio.UpsertDCAPlan(ctx, in)
 	if err != nil {

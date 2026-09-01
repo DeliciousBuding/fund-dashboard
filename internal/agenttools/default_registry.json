@@ -3119,6 +3119,11 @@
             "description": "组合 ID，默认 1",
             "minimum": 1
           },
+          "active": {
+            "type": "integer",
+            "description": "启用状态：1 启用，0 停用；缺省 1",
+            "enum": [0, 1]
+          },
           "start_date": {
             "type": "string",
             "description": "开始日期 YYYY-MM-DD"

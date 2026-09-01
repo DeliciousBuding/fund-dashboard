@@ -55,7 +55,11 @@ type Registry struct {
 	GeneratedAt   string           `json:"generated_at"`
 	Tools         []ToolDefinition `json:"tools"`
 
-	byName map[string]ToolDefinition
+	// indexMu guards the lazily-built byName index. Registries are immutable
+	// after load, but the first Lookup calls on a shared registry can race, so
+	// the index build and all reads take the lock.
+	indexMu sync.RWMutex
+	byName  map[string]ToolDefinition
 }
 
 type ToolDefinition struct {
@@ -167,7 +171,7 @@ func LoadJSON(payload []byte, options ...LoadOption) (*Registry, error) {
 	// Re-encode the assembled registry (including disabled boundary tools) and
 	// enforce the same contract invariants the public contract validator checks,
 	// so the validator runs on the production load path rather than only tests.
-	encoded, err := json.Marshal(registry)
+	encoded, err := json.Marshal(&registry)
 	if err != nil {
 		return nil, fmt.Errorf("re-encode tool registry: %w", err)
 	}

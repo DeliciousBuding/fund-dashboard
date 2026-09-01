@@ -3,6 +3,7 @@ package mcp
 import (
 	"encoding/json"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -92,7 +93,9 @@ func intArg(args map[string]any, key string, fallback int) int {
 			return typed
 		}
 	case float64:
-		if typed > 0 {
+		// Guard the float64->int conversion: out-of-range values have an
+		// implementation-defined result and could collapse to a bogus id.
+		if typed > 0 && typed <= math.MaxInt {
 			return int(typed)
 		}
 	case json.Number:
@@ -191,6 +194,29 @@ func stringSliceArg(args map[string]any, key string) []string {
 	return nil
 }
 
+// integerFlag parses an integer argument where 0 is a meaningful value (for
+// example a 0/1 toggle). It differs from intArg, which treats any non-positive
+// value as absent. It reports false for non-integer or out-of-range values.
+func integerFlag(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		if typed >= math.MinInt && typed <= math.MaxInt {
+			return int(typed), true
+		}
+	case float64:
+		if typed >= math.MinInt && typed <= math.MaxInt && typed == math.Trunc(typed) {
+			return int(typed), true
+		}
+	case json.Number:
+		if parsed, err := typed.Int64(); err == nil && parsed >= math.MinInt && parsed <= math.MaxInt {
+			return int(parsed), true
+		}
+	}
+	return 0, false
+}
+
 func dateOnlyStringPtr(value *string) *string {
 	if value == nil {
 		return nil
@@ -230,9 +256,11 @@ func sanitizedToolErrorMessage(msg string) string {
 	}
 	low := strings.ToLower(m)
 	for _, marker := range []string{
-		"sql:", "pq:", "sqlite", "postgres", "driver:", "stack", "panic",
-		"no such table", "syntax error", "constraint", "connection refused",
-		"connection reset", "dial ", "unmarshal", "certificate",
+		"sql:", "pq:", "sqlite", "postgres", "pgx", "sqlx", "driver:", "stack", "panic",
+		"no such table", "no such column", "no such file", "no such host",
+		"does not exist", "sqlstate", "syntax error", "constraint", "database",
+		"connection refused", "connection reset", "dial ", "tls:", "connect:",
+		"unmarshal", "certificate", "open ", ":\\", "://",
 	} {
 		if strings.Contains(low, marker) {
 			return "internal_error"
