@@ -18,7 +18,10 @@
 完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
-## [Unreleased]
+
+- **修复** 导出 XLSX 文件名支持中文：Content-Disposition 改 RFC 6266 双文件名（ASCII fallback + `filename*` UTF-8 百分号编码）；XLSX 生成/写盘错误不再吞掉。
+- **改进** 查询参数畸形值不再静默回落默认：`limit`/`offset`/`price_change_pct`/`drawdown_pct`/`stale_days` 返回 400 `invalid_query_param`；指数代码解码失败返回 400 `invalid_code`。
+- **chore** `.gitattributes` 补齐 css/html/svg/sql/patch/toml 与无扩展名文本文件显式 LF，防 Windows autocrlf 行尾漂移。
 
 - **chore** neat-freak 二轮收口：Go 三份 recalcSnapshot 收敛为 `internal/snapshot`；前端删死导出、收敛 toneClass/DIRECTION_LABEL/AlertItem/FreshnessReport 契约、修告警 severity 映射（high/medium/low/info）；Dockerfile 镜像 pin digest；CI setup-go pin `1.26.6`。
 - **文档** 归版过时事实：测绘时间限定（登录/recover/Origin 白名单）、ARCHITECTURE 历史叙事指针化、TESTING smoke-prod 死链改 prose、CHANGELOG 死文件引用标注。
