@@ -67,7 +67,7 @@ var agentCapabilities = []AgentCapability{
 	{Tool: "search_stocks", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "本地股票档案搜索"},
 	{Tool: "get_us_stock", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "读取缓存美股行情/档案"},
 	{Tool: "get_market_indices", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "读取缓存指数"},
-	{Tool: "get_investment_source_brief", Scope: "external_context", Permission: "allowed", RiskLevel: "low", UseFor: "生成 Hermes/DSA/WebSearch 可消费的消息源查询"},
+	{Tool: "get_investment_source_brief", Scope: "external_context", Permission: "allowed", RiskLevel: "low", UseFor: "生成 AI Agent/搜索服务 可消费的消息源查询"},
 	{Tool: "get_source_events", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "读取已抓取新闻、公告和搜索结果队列"},
 	{Tool: "get_investment_harness_snapshot", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "读取 agent harness 边界与可用工具"},
 	{Tool: "get_data_freshness", Scope: "read", Permission: "allowed", RiskLevel: "low", UseFor: "检查 NAV/价格新鲜度和可行动补数入口"},

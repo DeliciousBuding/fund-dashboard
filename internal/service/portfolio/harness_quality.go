@@ -98,7 +98,7 @@ func buildRecommendedAgentActions(stalePriceCount int, missingChangePctCount int
 	actions = append(actions, RecommendedAgentAction{
 		Priority: "low",
 		Tool:     "get_investment_source_brief",
-		Reason:   clampPortfolioText("生成 Hermes/DSA/WebSearch 消息源查询，用于补充外部上下文", 500),
+		Reason:   clampPortfolioText("生成 AI Agent/搜索服务 消息源查询，用于补充外部上下文", 500),
 		Input:    map[string]any{"limit": 8},
 	})
 	return actions
