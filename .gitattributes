@@ -35,3 +35,5 @@ web/public/manifest.webmanifest text eol=lf
 .gitignore text eol=lf
 LICENSE text eol=lf
 SECURITY.md text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
