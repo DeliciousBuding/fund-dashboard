@@ -4,6 +4,7 @@
 
 export * from "./schemas/admin";
 export * from "./schemas/analysis";
+export * from "./schemas/dca";
 export * from "./schemas/funds";
 export * from "./schemas/harness";
 export * from "./schemas/market";

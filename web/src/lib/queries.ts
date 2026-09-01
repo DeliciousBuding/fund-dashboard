@@ -3,6 +3,8 @@
 
 import {
   CompareResultSchema,
+  type DcaComputeResult,
+  type DcaPlan,
   DrawdownResultSchema,
   FundDetailSchema,
   IndexHistorySchema,
@@ -149,16 +151,6 @@ export function useDrawdown(code: string) {
     staleTime: FIVE_MIN,
     enabled: code.length > 0,
   });
-}
-
-export interface DcaComputeResult {
-  code?: string;
-  base_amount: number;
-  dca_rate: number;
-  actual_amount: number;
-  signal: string;
-  explanation: string;
-  error?: string;
 }
 
 export function useDcaCompute(code: string, baseAmount: number, mode: string) {
@@ -316,23 +308,6 @@ export function useTransactions(filter: TransactionsFilter) {
     staleTime: 60 * 1000,
     placeholderData: (prev) => prev,
   });
-}
-
-export interface DcaPlan {
-  id: number;
-  fund_code: string;
-  fund_name: string | null;
-  amount: number;
-  frequency: string;
-  weekday_mask: string;
-  trade_type: string;
-  portfolio_id: number;
-  start_date: string;
-  end_date: string | null;
-  active: number;
-  source: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export function useDcaPlans(activeOnly = false, portfolioId?: number) {
