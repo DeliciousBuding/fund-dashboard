@@ -18,9 +18,17 @@
 完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
+## [Unreleased]
 
 - **chore** neat-freak 二轮收口：Go 三份 recalcSnapshot 收敛为 `internal/snapshot`；前端删死导出、收敛 toneClass/DIRECTION_LABEL/AlertItem/FreshnessReport 契约、修告警 severity 映射（high/medium/low/info）；Dockerfile 镜像 pin digest；CI setup-go pin `1.26.6`。
 - **文档** 归版过时事实：测绘时间限定（登录/recover/Origin 白名单）、ARCHITECTURE 历史叙事指针化、TESTING smoke-prod 死链改 prose、CHANGELOG 死文件引用标注。
+- **修复** NAV 历史 `daily_change_pct` 为 null 时被 zod 拒绝导致净值图解析失败（NavPoint schema 改 nullable）。
+- **改进** `/api/transactions`、`/api/alerts`、`/api/reports`、`/api/dca/run` 响应契约入 zod contracts，读取面接 `fetchValidated` 运行时校验。
+- **修复** 登录 PHC 参数无上限可被异常凭据打成内存/CPU DoS；`decodePHC` 按 OWASP 设 m/t/p 上限。
+- **改进** MCP 工具失败、美股行情回写失败统一落 `slog`，不再静默吞错。
+- **chore** 删除死代码/死导出（LoadFile、nullIfZero、DefaultUSIndexSymbols、buttonVariants 导出等）。
+- **chore** CI Actions SHA 锁定 + workflow 级最小权限 + concurrency + dispatch 发布仅限 main。
+- **文档** SECURITY 补 Web 登录/session/HSTS 边界；MCP 工具描述与 agent brief 去除内部代号 Hermes/DSA。
 
 ## [2.0.0] - 2026-09-01
 
