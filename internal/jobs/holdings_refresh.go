@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 )
 
@@ -48,9 +49,9 @@ func (r *HoldingsRefresher) CrawlCode(ctx context.Context, code string) (added i
 	}
 	reportDate = holdings[0].ReportDate
 	if reportDate == "" {
-		// Calendar-day fallback must follow the China fund calendar (cst), not the
+		// Calendar-day fallback must follow the China fund calendar (chinatime.Loc), not the
 		// runner's local timezone.
-		reportDate = time.Now().In(cst).Format("2006-01-02")
+		reportDate = time.Now().In(chinatime.Loc).Format("2006-01-02")
 	}
 	n, err := upsertFundHoldings(ctx, r.db, code, reportDate, holdings)
 	if err != nil {

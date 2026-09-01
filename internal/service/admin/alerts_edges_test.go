@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 )
 
 func seedAlertHeldFund(t *testing.T, db *sql.DB, code, name, market string) {
@@ -48,7 +50,7 @@ func TestCheckAlertsDefaultsAndPortfolioClamp(t *testing.T) {
 }
 
 func TestCheckAlertsPriceThresholdBoundaries(t *testing.T) {
-	today := time.Now().In(chinaLoc).Format("2006-01-02")
+	today := time.Now().In(chinatime.Loc).Format("2006-01-02")
 	cases := []struct {
 		name      string
 		change    float64
@@ -107,8 +109,8 @@ func TestCheckAlertsPriceThresholdBoundaries(t *testing.T) {
 }
 
 func TestCheckAlertsDrawdownThresholdBoundaries(t *testing.T) {
-	d1 := time.Now().In(chinaLoc).AddDate(0, 0, -2).Format("2006-01-02")
-	d2 := time.Now().In(chinaLoc).AddDate(0, 0, -1).Format("2006-01-02")
+	d1 := time.Now().In(chinatime.Loc).AddDate(0, 0, -2).Format("2006-01-02")
+	d2 := time.Now().In(chinatime.Loc).AddDate(0, 0, -1).Format("2006-01-02")
 	cases := []struct {
 		name   string
 		trough float64
@@ -183,7 +185,7 @@ func TestCheckAlertsStaleThresholdBoundaries(t *testing.T) {
 			// stale days are computed against the China market calendar in production;
 			// navDate must be seeded on the same clock or the test drifts by a day
 			// when the runner TZ date differs from the China date (e.g. UTC runners).
-			navDate := time.Now().In(chinaLoc).AddDate(0, 0, -tc.daysAgo).Format("2006-01-02")
+			navDate := time.Now().In(chinatime.Loc).AddDate(0, 0, -tc.daysAgo).Format("2006-01-02")
 			if _, err := db.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav, daily_change_pct) VALUES ('019173', ?, 1.0, 0)`, navDate); err != nil {
 				t.Fatal(err)
 			}
@@ -254,7 +256,7 @@ func TestCheckAlertsDCADayAlerts(t *testing.T) {
 	if dca[0].Value == nil || *dca[0].Value != 100 {
 		t.Fatalf("value = %v, want 100", dca[0].Value)
 	}
-	if dca[0].AsOf != time.Now().In(chinaLoc).Format("2006-01-02") {
+	if dca[0].AsOf != time.Now().In(chinatime.Loc).Format("2006-01-02") {
 		t.Fatalf("as_of = %q, want today (china loc)", dca[0].AsOf)
 	}
 }

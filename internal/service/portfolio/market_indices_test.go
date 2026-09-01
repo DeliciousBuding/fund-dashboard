@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 	_ "modernc.org/sqlite"
 )
@@ -20,7 +21,7 @@ func TestServiceGetMarketIndicesReadsFreshCachedRows(t *testing.T) {
 	}
 	defer db.Close()
 
-	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, chinatime.Loc)
 	indicesNowFn = func() time.Time { return now }
 	t.Cleanup(func() { indicesNowFn = time.Now })
 	fresh := now.Add(-30 * time.Minute).Format("2006-01-02 15:04:05")
@@ -184,7 +185,7 @@ func TestServiceGetMarketIndicesClampsAndLimits(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
-	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.FixedZone("CST", 8*3600))
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, chinatime.Loc)
 	indicesNowFn = func() time.Time { return now }
 	t.Cleanup(func() { indicesNowFn = time.Now })
 	fresh := now.Add(-10 * time.Minute).Format("2006-01-02 15:04:05")

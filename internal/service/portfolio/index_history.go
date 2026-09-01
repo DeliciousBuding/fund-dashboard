@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 )
 
@@ -157,7 +158,7 @@ func (s Service) GetIndexLive(ctx context.Context, code string) (IndexLiveReport
 	report.Price = q.Price
 	report.ChangePct = q.ChangePct
 	report.ChangeAmt = q.Change
-	report.UpdatedAt = q.UpdatedAt.In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05")
+	report.UpdatedAt = q.UpdatedAt.In(chinatime.Loc).Format("2006-01-02 15:04:05")
 	report.Source = "yahoo_chart"
 	report.ExternalFetch = "yahoo_chart"
 	return report, nil

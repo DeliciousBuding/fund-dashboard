@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 )
 
 func TestRedactMappingRedactsNestedSensitiveValuesWithoutMutatingInput(t *testing.T) {
@@ -115,7 +116,7 @@ func TestNewAttemptEventUsesInjectedClock(t *testing.T) {
 
 	// Fixed non-UTC instant: the event must carry the UTC rendering of this
 	// exact time, not the wall clock observed by the test.
-	fixed := time.Date(2026, 8, 2, 3, 4, 5, 123456789, time.FixedZone("CST", 8*3600))
+	fixed := time.Date(2026, 8, 2, 3, 4, 5, 123456789, chinatime.Loc)
 	event := NewAttemptEvent(EventInput{
 		RequestID: "req-clock",
 		Caller:    "hermes",

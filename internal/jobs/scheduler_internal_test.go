@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	_ "modernc.org/sqlite"
 )
@@ -42,7 +43,7 @@ func TestTickWeekday20RunsDCAMaterialization(t *testing.T) {
 	}
 	stub := &stubDCARunner{}
 	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
-	now := time.Date(2026, 7, 15, 20, 3, 0, 0, cst) // Wednesday
+	now := time.Date(2026, 7, 15, 20, 3, 0, 0, chinatime.Loc) // Wednesday
 	s.tick(now)
 	if stub.calls != 1 {
 		t.Fatalf("dca calls=%d want 1", stub.calls)
@@ -72,7 +73,7 @@ func TestTickWeekday20OncePerDay(t *testing.T) {
 	}
 	stub := &stubDCARunner{}
 	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
-	day := time.Date(2026, 7, 15, 20, 0, 0, 0, cst)
+	day := time.Date(2026, 7, 15, 20, 0, 0, 0, chinatime.Loc)
 	s.tick(day)
 	s.tick(day.Add(5 * time.Minute))
 	s.tick(day.Add(55 * time.Minute))
@@ -80,7 +81,7 @@ func TestTickWeekday20OncePerDay(t *testing.T) {
 		t.Fatalf("dca calls=%d want 1 for same day window", stub.calls)
 	}
 	// next weekday
-	next := time.Date(2026, 7, 16, 20, 0, 0, 0, cst) // Thursday
+	next := time.Date(2026, 7, 16, 20, 0, 0, 0, chinatime.Loc) // Thursday
 	s.tick(next)
 	if stub.calls != 2 {
 		t.Fatalf("dca calls=%d want 2 after next day", stub.calls)
@@ -98,7 +99,7 @@ func TestTickNonWindowDoesNotRunDCA(t *testing.T) {
 	defer db.Close()
 	stub := &stubDCARunner{}
 	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
-	now := time.Date(2026, 7, 15, 19, 0, 0, 0, cst)
+	now := time.Date(2026, 7, 15, 19, 0, 0, 0, chinatime.Loc)
 	s.tick(now)
 	if stub.calls != 0 {
 		t.Fatalf("dca calls=%d want 0", stub.calls)
@@ -129,7 +130,7 @@ func TestTickDailyWindowRefreshesPriceAndSignalsDCAWeekdaysOnly(t *testing.T) {
 	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(stub)
 
 	// Saturday 20:00 — price window runs, DCA must NOT materialize.
-	saturday := time.Date(2026, 7, 18, 20, 1, 0, 0, cst)
+	saturday := time.Date(2026, 7, 18, 20, 1, 0, 0, chinatime.Loc)
 	s.tick(saturday)
 	if stub.calls != 0 {
 		t.Fatalf("dca calls on saturday=%d want 0", stub.calls)
@@ -139,14 +140,14 @@ func TestTickDailyWindowRefreshesPriceAndSignalsDCAWeekdaysOnly(t *testing.T) {
 	}
 
 	// Sunday 20:00 — same: price runs, DCA skipped.
-	sunday := time.Date(2026, 7, 19, 20, 1, 0, 0, cst)
+	sunday := time.Date(2026, 7, 19, 20, 1, 0, 0, chinatime.Loc)
 	s.tick(sunday)
 	if stub.calls != 0 {
 		t.Fatalf("dca calls on sunday=%d want 0", stub.calls)
 	}
 
 	// Monday (weekday) 20:00 — price runs, DCA materializes.
-	monday := time.Date(2026, 7, 20, 20, 1, 0, 0, cst)
+	monday := time.Date(2026, 7, 20, 20, 1, 0, 0, chinatime.Loc)
 	s.tick(monday)
 	if stub.calls != 1 {
 		t.Fatalf("dca calls on monday=%d want 1", stub.calls)
@@ -166,7 +167,7 @@ func TestTickSaturdayRunsHoldingsPathOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewScheduler(NewPriceRefresher(db), db)
-	now := time.Date(2026, 7, 18, 10, 0, 0, 0, cst) // Saturday
+	now := time.Date(2026, 7, 18, 10, 0, 0, 0, chinatime.Loc) // Saturday
 	s.tick(now)
 	s.tick(now.Add(10 * time.Minute))
 	// second tick same day should claim false; no panic is enough smoke
@@ -205,7 +206,7 @@ func TestStartupCatchUpOncePerDay(t *testing.T) {
 		}
 	}
 	s := NewScheduler(NewPriceRefresher(db), db)
-	now := time.Date(2026, 7, 17, 8, 0, 0, 0, cst)
+	now := time.Date(2026, 7, 17, 8, 0, 0, 0, chinatime.Loc)
 	s.runStartupCatchUp(now)
 	s.runStartupCatchUp(now.Add(time.Hour))
 	if s.lastRun["startup_refresh"] != "2026-07-17" {

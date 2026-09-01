@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
 	_ "modernc.org/sqlite"
 )
@@ -82,7 +83,7 @@ func TestTickNilIndicesRefresherDoesNotPanic(t *testing.T) {
 	s := NewScheduler(NewPriceRefresher(db), db).
 		WithDCARunner(nil).
 		WithMarketIndicesRefresher(nil)
-	now := time.Date(2026, 7, 15, 20, 3, 0, 0, cst) // Wednesday 20:00 window
+	now := time.Date(2026, 7, 15, 20, 3, 0, 0, chinatime.Loc) // Wednesday 20:00 window
 	s.tick(now)
 	for _, entry := range s.StatusSnapshot() {
 		if entry.Name == "price_dca" && entry.LastError != "" {

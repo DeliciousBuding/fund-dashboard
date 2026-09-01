@@ -7,17 +7,9 @@ import (
 	"math"
 	"strings"
 	"time"
-)
 
-// chinaLoc is the fund NAV calendar location (CN A-share / fund industry
-// convention), matching portfolio.summary's chinaMarketLoc. Calendar-day math
-// must use it so 00:00–08:00 local does not undercount stale days.
-var chinaLoc = func() *time.Location {
-	if loc, err := time.LoadLocation("Asia/Shanghai"); err == nil {
-		return loc
-	}
-	return time.FixedZone("CST", 8*3600)
-}()
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
+)
 
 type CheckAlertsInput struct {
 	PriceChangePct float64 // absolute threshold, default 5
@@ -75,7 +67,7 @@ func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAle
 	if portfolioID > 1000 {
 		portfolioID = 1000
 	}
-	now := time.Now().In(chinaLoc)
+	now := time.Now().In(chinatime.Loc)
 	checkedAt := now.UTC().Format(time.RFC3339)
 
 	alerts := []AlertItem{}
@@ -175,9 +167,9 @@ func (s Service) CheckAlerts(ctx context.Context, in CheckAlertsInput) (CheckAle
 			if len(dateStr) > 10 {
 				dateStr = dateStr[:10]
 			}
-			d, err := time.ParseInLocation("2006-01-02", dateStr, chinaLoc)
+			d, err := time.ParseInLocation("2006-01-02", dateStr, chinatime.Loc)
 			if err == nil {
-				today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, chinaLoc)
+				today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, chinatime.Loc)
 				days := int(today.Sub(d).Hours() / 24)
 				if days >= staleDays {
 					v := float64(days)

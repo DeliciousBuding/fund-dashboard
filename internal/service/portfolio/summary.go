@@ -7,6 +7,8 @@ import (
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 )
 
 type Service struct {
@@ -231,27 +233,17 @@ func (s Service) fillContributors(ctx context.Context, portfolioID int, summary 
 	return nil
 }
 
-// chinaMarketLoc is the fund NAV calendar (CN A-share / fund industry convention).
-// Host may be in another timezone; stale chips must not use host local TZ.
-var chinaMarketLoc = func() *time.Location {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		return time.FixedZone("CST", 8*3600)
-	}
-	return loc
-}()
-
 // calendarDaysSince returns whole calendar days from YYYY-MM-DD to Asia/Shanghai today.
 func calendarDaysSince(dateYYYYMMDD string) (int, bool) {
 	if len(dateYYYYMMDD) < 10 {
 		return 0, false
 	}
-	t, err := time.ParseInLocation("2006-01-02", dateYYYYMMDD[:10], chinaMarketLoc)
+	t, err := time.ParseInLocation("2006-01-02", dateYYYYMMDD[:10], chinatime.Loc)
 	if err != nil {
 		return 0, false
 	}
-	now := time.Now().In(chinaMarketLoc)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, chinaMarketLoc)
+	now := time.Now().In(chinatime.Loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, chinatime.Loc)
 	d := int(today.Sub(t).Hours() / 24)
 	if d < 0 {
 		return 0, true
