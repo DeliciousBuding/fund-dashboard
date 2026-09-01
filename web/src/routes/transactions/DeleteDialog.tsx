@@ -1,3 +1,4 @@
+import { DeleteTransactionResponseSchema } from "@fund-dashboard/contracts";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -16,7 +17,10 @@ import { ApiError, api } from "../../lib/api";
 export function DeleteDialog(props: { seq: number | null; onOpenChange: (v: boolean) => void }) {
   const queryClient = useQueryClient();
   const del = useMutation({
-    mutationFn: () => api(`/api/transactions/${props.seq}`, { method: "DELETE" }),
+    mutationFn: async () =>
+      DeleteTransactionResponseSchema.parse(
+        await api<unknown>(`/api/transactions/${props.seq}`, { method: "DELETE" }),
+      ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       await queryClient.invalidateQueries({ queryKey: ["securities"] });

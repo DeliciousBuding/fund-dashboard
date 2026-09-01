@@ -108,3 +108,44 @@ export const TransactionsResponseSchema = z.object({
   total: z.number(),
 });
 export type TransactionsResponse = z.infer<typeof TransactionsResponseSchema>;
+
+// 写响应（/api/transactions/import、PUT/DELETE /api/transactions/{seq}）。
+// Go 侧 ImportTransactionsResult/UpdateTransactionResult/DeleteTransactionResult
+// 全部字段无 omitempty，恒下发；.strict() 锁定线型防漂移。
+export const ImportTransactionsResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    imported: z.number(),
+    total: z.number(),
+    affected_funds: z.number(),
+  })
+  .strict();
+export type ImportTransactionsResponse = z.infer<typeof ImportTransactionsResponseSchema>;
+
+export const UpdateTransactionResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    updated: z
+      .object({
+        seq: z.number(),
+        fields: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+export type UpdateTransactionResponse = z.infer<typeof UpdateTransactionResponseSchema>;
+
+export const DeleteTransactionResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    deleted: z
+      .object({
+        seq: z.number(),
+        fund_code: z.string(),
+        direction: z.string(),
+        amount: z.number(),
+      })
+      .strict(),
+  })
+  .strict();
+export type DeleteTransactionResponse = z.infer<typeof DeleteTransactionResponseSchema>;
