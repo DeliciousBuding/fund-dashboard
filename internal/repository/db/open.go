@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite" // register "sqlite" driver
@@ -134,6 +135,11 @@ func openPG(ctx context.Context, opts Options) (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(3)
 	db.SetMaxIdleConns(1)
+	// Bound connection staleness so a restarted PG container or a NAT-dropped
+	// idle socket is recycled within minutes instead of surfacing as errors
+	// on the first request afterwards.
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
@@ -163,8 +169,13 @@ type rebindConn struct {
 	inner driver.Conn
 }
 
-// Compile-time check: pool checkout can reset session state via the wrapper.
-var _ driver.SessionResetter = (*rebindConn)(nil)
+// Compile-time checks: session reset, health probes, and argument checking
+// all route through the wrapper instead of silently bypassing it.
+var (
+	_ driver.SessionResetter   = (*rebindConn)(nil)
+	_ driver.Pinger            = (*rebindConn)(nil)
+	_ driver.NamedValueChecker = (*rebindConn)(nil)
+)
 
 func (c *rebindConn) Prepare(query string) (driver.Stmt, error) {
 	q, err := rebind(query)
@@ -232,6 +243,35 @@ func (c *rebindConn) ResetSession(ctx context.Context) error {
 	if rs, ok := c.inner.(driver.SessionResetter); ok {
 		return rs.ResetSession(ctx)
 	}
+	return nil
+}
+
+// Ping forwards health probes to the inner pgx connection. Without this,
+// database/sql falls back to a "SELECT 1" round-trip that cannot surface
+// pgx's driver.ErrBadConn mapping for locally closed sockets, so the pool
+// would recycle dead connections less efficiently.
+func (c *rebindConn) Ping(ctx context.Context) error {
+	if pinger, ok := c.inner.(driver.Pinger); ok {
+		return pinger.Ping(ctx)
+	}
+	return nil
+}
+
+// CheckNamedValue forwards pgx's permissive argument checking. Without this,
+// database/sql applies driver.DefaultParameterConverter, which rejects every
+// type outside its small builtin set (int64, float64, bool, []byte, string,
+// time.Time) even though pgx converts them natively - e.g. int, uint64, or
+// []string arguments for ANY($1).
+func (c *rebindConn) CheckNamedValue(nv *driver.NamedValue) error {
+	if checker, ok := c.inner.(driver.NamedValueChecker); ok {
+		return checker.CheckNamedValue(nv)
+	}
+	// Mirror database/sql's own fallback: apply the default value converter.
+	v, err := driver.DefaultParameterConverter.ConvertValue(nv.Value)
+	if err != nil {
+		return err
+	}
+	nv.Value = v
 	return nil
 }
 

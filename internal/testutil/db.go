@@ -17,11 +17,11 @@ import (
 func OpenTempDB(t testing.TB) *sql.DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
+	opened, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
 	if err != nil {
 		t.Fatalf("testutil.OpenTempDB: %v", err)
 	}
-	return db
+	return opened
 }
 
 // ExecStatements runs DDL/DML statements in order; fails the test on first error.

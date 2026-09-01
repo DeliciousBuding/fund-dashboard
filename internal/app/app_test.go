@@ -119,3 +119,24 @@ func assertAgentStateSchemaExists(t *testing.T, db *sql.DB) {
 		}
 	}
 }
+
+func TestResolveDriver(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  config.Config
+		want string
+	}{
+		{"explicit sqlite", config.Config{DBDriver: "sqlite"}, "sqlite"},
+		{"explicit pg", config.Config{DBDriver: "pg"}, "pg"},
+		{"empty with pg dsn infers pg", config.Config{PGDSN: "postgres://example"}, "pg"},
+		{"empty without dsn defaults sqlite", config.Config{}, "sqlite"},
+		{"explicit driver wins over dsn", config.Config{DBDriver: "sqlite", PGDSN: "postgres://example"}, "sqlite"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveDriver(tc.cfg); got != tc.want {
+				t.Fatalf("resolveDriver() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

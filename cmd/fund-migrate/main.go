@@ -6,8 +6,8 @@
 //
 // 语义：
 //   - 目标库必须为空（全新部署）；幂等（重复运行不炸，INSERT 冲突按 DO NOTHING）。
-//   - 表清单取自 SQLite；只迁移业务表（排除 sqlite_* 系统表、auth_* 会话/事件——
-//     新部署从头建鉴权面）。
+//   - 表清单取自 SQLite；只迁移业务表（排除 sqlite_* 系统表、auth_* / agent_*
+//     会话与事件——新部署从头建鉴权面）。
 //   - 按列交集导入（源列 ∩ 目标列），未知列跳过，缺列补默认值，避免 legacy 与
 //     PG DDL 的形状差异阻塞上线。
 //   - 每表一个事务；结束时打印每表行数 + 源/目标对账。
@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
@@ -123,16 +124,16 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 		return nil
 	}
 
-	if _, err := dst.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, quoteIdent(table))); err != nil {
+	if _, err := dst.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s`, dialect.QuoteIdentifier(table))); err != nil {
 		return fmt.Errorf("clear target before import: %w", err)
 	}
 
 	// Quote identifiers against catalog names that would otherwise break or
 	// inject SQL (reserved words, spaces, quotes in legacy schemas).
-	quotedTable := quoteIdent(table)
+	quotedTable := dialect.QuoteIdentifier(table)
 	quotedCols := make([]string, len(cols))
 	for i, c := range cols {
-		quotedCols[i] = quoteIdent(c)
+		quotedCols[i] = dialect.QuoteIdentifier(c)
 	}
 	colList := strings.Join(quotedCols, ", ")
 	placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ")
@@ -202,7 +203,7 @@ func migrateTable(ctx context.Context, src, dst *sql.DB, table string) error {
 // verify checks the destination row count matched the imported count.
 func verify(ctx context.Context, dst *sql.DB, table string, want int) {
 	var got int
-	if err := dst.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s`, quoteIdent(table))).Scan(&got); err != nil {
+	if err := dst.QueryRowContext(ctx, fmt.Sprintf(`SELECT COUNT(*) FROM %s`, dialect.QuoteIdentifier(table))).Scan(&got); err != nil {
 		log.Printf("  %-28s 对账失败: %v", table, err)
 		return
 	}
@@ -233,7 +234,7 @@ func pgColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, 
 	out := map[string]bool{}
 	// SQLite 目标（行为 pin 测试）走 PRAGMA；生产目标固定走 PG information_schema。
 	if rows, err := db.QueryContext(ctx,
-		fmt.Sprintf(`PRAGMA table_info(%s)`, quoteIdent(table))); err == nil {
+		fmt.Sprintf(`PRAGMA table_info(%s)`, dialect.QuoteIdentifier(table))); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var cid int
@@ -267,9 +268,4 @@ func pgColumns(ctx context.Context, db *sql.DB, table string) (map[string]bool, 
 		out[name] = true
 	}
 	return out, rows.Err()
-}
-
-// quoteIdent double-quotes an identifier against SQL injection via table names.
-func quoteIdent(ident string) string {
-	return `"` + strings.ReplaceAll(ident, `"`, `""`) + `"`
 }
