@@ -1,5 +1,7 @@
 // 顶栏：指数 ticker（SSE，无动画更新）+ 新鲜度徽章 + 主题切换 + ⌘K + 账户菜单。
 // 移动端隐藏 ticker 细节，只留连接态点。
+
+import type { FreshnessReport } from "@fund-dashboard/contracts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { CircleDot, LogOut, Moon, Search, Sun, SunMoon } from "lucide-react";
@@ -22,12 +24,6 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-
-interface FreshnessReport {
-  last_nav_date: string | null;
-  health: string;
-  anomaly_count: number;
-}
 
 function useFreshness() {
   return useQuery({

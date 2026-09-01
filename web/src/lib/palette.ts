@@ -20,15 +20,3 @@ export const CHART_PALETTE_LIGHT = CHART_PALETTE_DARK.map((c) =>
     return `oklch(${(l - 0.14).toFixed(2)}`;
   }),
 );
-
-export function chartPalette(mode: "dark" | "light"): string[] {
-  return mode === "dark" ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT;
-}
-
-/** paletteColor resolves a slot index (-1 → muted) against the mode palette. */
-export function paletteColor(slot: number, mode: "dark" | "light"): string {
-  if (slot < 0) return mode === "dark" ? "oklch(0.52 0.015 250)" : "oklch(0.55 0.015 250)";
-  const palette = chartPalette(mode);
-  const fallback = palette[0] ?? "oklch(0.78 0.11 85)";
-  return palette[slot % palette.length] ?? fallback;
-}

@@ -1,5 +1,6 @@
 // 市场 /market —— 指数看板（开盘状态着色）+ 纳斯达克透视（NDX 历史线 +
 // 全体交易散点叠加 + 统计卡）。SSE ticker 在顶栏，本页用轮询快照。
+
 import { useMemo, useState } from "react";
 import { Chart } from "../components/charts/Chart";
 import { baseChartOption } from "../components/charts/theme";
@@ -10,10 +11,9 @@ import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
 import { fmtCNY, fmtSignedPct, pnlTone } from "../lib/format";
 import { useIndexHistory, useIndices, useTransactions } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { isUSMarketOpen } from "../services/marketTime";
-
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
 
 const RANGES = [
   { value: "3mo", label: "3月" },

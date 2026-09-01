@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
+import type { AlertItem } from "../lib/queries";
 
 interface SystemStatus {
   version: string;
@@ -40,7 +41,7 @@ interface JobStatus {
 interface AlertsResult {
   ok: boolean;
   count: number;
-  alerts: { kind: string; code: string; name?: string; severity: string; message: string }[];
+  alerts: AlertItem[];
 }
 
 function fmtTs(ts?: number): string {
@@ -254,9 +255,9 @@ export function SystemPage() {
                 >
                   <Badge
                     tone={
-                      a.severity === "critical"
+                      a.severity === "high"
                         ? "danger"
-                        : a.severity === "warn"
+                        : a.severity === "medium" || a.severity === "low"
                           ? "warn"
                           : "neutral"
                     }

@@ -38,7 +38,7 @@ import {
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { ApiError, api } from "../lib/api";
-import { downloadText, transactionsToCsv } from "../lib/csv";
+import { DIRECTION_LABEL, downloadText, transactionsToCsv } from "../lib/csv";
 import { fmtCNY } from "../lib/format";
 import { type TransactionListItem, useSecurities, useTransactions } from "../lib/queries";
 import { cn } from "../lib/utils";
@@ -58,15 +58,6 @@ const DIRECTION_BADGE: Record<string, "up" | "down" | "accent" | "neutral"> = {
   sell: "down",
   dividend: "accent",
 };
-const DIRECTION_LABEL: Record<string, string> = {
-  buy: "买入",
-  sell: "卖出",
-  dividend: "分红",
-  convert_in: "转换转入",
-  convert_out: "转换转出",
-  forced_redeem: "强制赎回",
-};
-
 // ── 新增/编辑表单 ───────────────────────────────────────────────────
 
 interface TxFormState {

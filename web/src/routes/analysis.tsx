@@ -18,13 +18,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { api } from "../lib/api";
 import { fmtCNY, fmtPct, fmtSignedPct, pnlTone } from "../lib/format";
 import { useCompare, useNavHistory, usePenetration, useSecurities } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { calcIRR } from "../services/irr";
 import { simulatePath } from "../services/montecarlo";
 import { dailyReturns, mean, pearson, sampleStd } from "../services/statistics";
 import { useUi } from "../stores/ui";
 
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
 const MAX_COMPARE = 8;
 
 // ── 标的多选（compare/backtest/advanced 共用）─────────────────────────

@@ -19,10 +19,9 @@ import {
   useSecurities,
   useTimeline,
 } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
-
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
 
 // ── KPI 区 ──────────────────────────────────────────────────────────
 

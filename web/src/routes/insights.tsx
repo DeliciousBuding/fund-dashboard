@@ -143,9 +143,9 @@ function AlertsCard() {
               >
                 <Badge
                   tone={
-                    a.severity === "critical"
+                    a.severity === "high"
                       ? "danger"
-                      : a.severity === "warn"
+                      : a.severity === "medium" || a.severity === "low"
                         ? "warn"
                         : "neutral"
                   }

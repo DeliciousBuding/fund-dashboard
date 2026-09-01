@@ -1,7 +1,7 @@
 // 持仓 /holdings —— 持仓表格（排序/占比/盈亏/陈旧度），移动端降级卡片流（03 §8/§9）。
 // 陈旧度：/api/freshness 的 stale_securities 客户端 join。
 
-import type { SecurityInfo } from "@fund-dashboard/contracts";
+import type { FreshnessReport, SecurityInfo } from "@fund-dashboard/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -22,14 +22,9 @@ import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
 import { api } from "../lib/api";
 import { fmtCNY, fmtPct, fmtSignedCNY, fmtSignedPct, pnlTone } from "../lib/format";
 import { useSecurities } from "../lib/queries";
+import { toneClass } from "../lib/tones";
 import { cn } from "../lib/utils";
 import { useUi } from "../stores/ui";
-
-const toneClass = { up: "text-up", down: "text-down", flat: "text-fg-3" } as const;
-
-interface FreshnessReport {
-  stale_securities: { code: string; stale_days: number }[];
-}
 
 function useStaleMap() {
   const freshness = useQuery({

@@ -3,7 +3,7 @@
 
 import { CHART_PALETTE_DARK, CHART_PALETTE_LIGHT } from "../../lib/palette";
 
-export interface ChartTheme {
+interface ChartTheme {
   fg: string;
   fg2: string;
   fg3: string;
@@ -46,7 +46,7 @@ function resolveCssColor(color: string): string {
   return `rgb(${d[0]},${d[1]},${d[2]})`;
 }
 
-export function currentThemeMode(): "dark" | "light" {
+function currentThemeMode(): "dark" | "light" {
   if (typeof document === "undefined") return "dark";
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }

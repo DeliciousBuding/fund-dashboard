@@ -30,10 +30,7 @@ export const TransactionSchema = z
     fee: z.number(),
     nav: z.number().nullable(),
     inferred_nav: z.number().nullable(),
-    nav_verified: z.union([z.boolean(), z.number()]).nullable().optional(),
-    trade_day_type: z.string().nullable().optional(),
     settlement_days: z.number().nullable().optional(),
-    effective_nav_date: z.string().nullable().optional(),
     order_id: z.string().nullable().optional(),
     anomaly: z.string().nullable(),
   })

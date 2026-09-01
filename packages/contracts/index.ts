@@ -2,6 +2,7 @@
 // Shared between the Go backend (types) and the frontend repo (zod validation).
 // v3.0 Reshape
 
+export * from "./schemas/admin";
 export * from "./schemas/analysis";
 export * from "./schemas/funds";
 export * from "./schemas/harness";

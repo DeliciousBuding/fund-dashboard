@@ -15,7 +15,7 @@ const HEADERS = [
   "备注",
 ] as const;
 
-const DIRECTION_LABEL: Record<string, string> = {
+export const DIRECTION_LABEL: Record<string, string> = {
   buy: "买入",
   sell: "卖出",
   dividend: "分红",
