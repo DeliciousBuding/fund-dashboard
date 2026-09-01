@@ -19,9 +19,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// DB is the minimal database handle needed by HTTP handlers.
-type DB = *sql.DB
-
 type RouterOption func(*routerDeps)
 
 type routerDeps struct {
@@ -29,7 +26,7 @@ type routerDeps struct {
 	agentOps   *agentops.Service
 	auth       *auth.Service
 	staticFS   fs.FS
-	db         DB
+	db         *sql.DB
 	dbDriver   string
 	navCrawler mcp.NavCrawler // optional, for MCP crawl_nav
 	snapshots  mcp.SnapshotRecalculator
@@ -37,7 +34,7 @@ type routerDeps struct {
 	jobStatus  func() []jobs.JobStatus // optional, scheduler runtime snapshot
 }
 
-func WithDB(db DB) RouterOption {
+func WithDB(db *sql.DB) RouterOption {
 	return func(deps *routerDeps) {
 		service := portfoliosvc.NewService(db)
 		deps.portfolio = &service

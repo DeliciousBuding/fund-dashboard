@@ -197,6 +197,9 @@ func (s Service) upsertUSStockHistory(ctx context.Context, snap datasource.Stock
 	if kind == klineUpsertNone || stmt == nil {
 		return 0, nil
 	}
+	// preparedKlineUpsert prepares per call; the statement lives only for the
+	// duration of this upsert.
+	defer stmt.Close()
 	n := 0
 	for _, pt := range snap.History {
 		var execErr error

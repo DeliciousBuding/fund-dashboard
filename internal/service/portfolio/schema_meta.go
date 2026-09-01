@@ -17,13 +17,6 @@ type schemaMetaCache struct {
 
 	colsMu sync.Mutex
 	cols   map[string]map[string]struct{}
-
-	// Prepared stock_kline_cache upsert (shape resolved once from columns).
-	klineMu    sync.Mutex
-	klineReady bool
-	klineKind  klineUpsertKind
-	klineStmt  *sql.Stmt
-	klineErr   error
 }
 
 type klineUpsertKind int
@@ -166,23 +159,17 @@ func (s Service) probeTableColumns(ctx context.Context, table string) (map[strin
 	return out, rows.Err()
 }
 
-// preparedKlineUpsert returns a prepare-once statement for stock_kline_cache upserts.
-// kind is klineUpsertNone when the table/shape cannot support history writes.
+// preparedKlineUpsert prepares a stock_kline_cache upsert statement for a single
+// call. The caller must Close the returned statement once done. kind is
+// klineUpsertNone when the table/shape cannot support history writes.
+//
+// The statement is prepared per call rather than cached for the process
+// lifetime: its lifecycle then stays symmetric with its use, so there is no
+// orphaned *sql.Stmt left behind. Schema probing (table/column shape) remains
+// cached in schemaMetaCache, and the caller reuses one prepare across all
+// history rows of a single upsert.
 func (s Service) preparedKlineUpsert(ctx context.Context) (klineUpsertKind, *sql.Stmt, error) {
-	if s.schema == nil {
-		return s.buildKlineUpsert(ctx)
-	}
-	s.schema.klineMu.Lock()
-	defer s.schema.klineMu.Unlock()
-	if s.schema.klineReady {
-		return s.schema.klineKind, s.schema.klineStmt, s.schema.klineErr
-	}
-	kind, stmt, err := s.buildKlineUpsert(ctx)
-	s.schema.klineKind = kind
-	s.schema.klineStmt = stmt
-	s.schema.klineErr = err
-	s.schema.klineReady = true
-	return kind, stmt, err
+	return s.buildKlineUpsert(ctx)
 }
 
 func (s Service) buildKlineUpsert(ctx context.Context) (klineUpsertKind, *sql.Stmt, error) {

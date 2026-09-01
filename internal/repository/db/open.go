@@ -167,7 +167,11 @@ type rebindConn struct {
 var _ driver.SessionResetter = (*rebindConn)(nil)
 
 func (c *rebindConn) Prepare(query string) (driver.Stmt, error) {
-	return c.inner.Prepare(rebind(query))
+	q, err := rebind(query)
+	if err != nil {
+		return nil, err
+	}
+	return c.inner.Prepare(q)
 }
 
 func (c *rebindConn) Close() error {
@@ -180,26 +184,38 @@ func (c *rebindConn) Begin() (driver.Tx, error) {
 
 // ExecContext intercepts direct execution and rebinds ? → $N.
 func (c *rebindConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	q, err := rebind(query)
+	if err != nil {
+		return nil, err
+	}
 	if execer, ok := c.inner.(driver.ExecerContext); ok {
-		return execer.ExecContext(ctx, rebind(query), args)
+		return execer.ExecContext(ctx, q, args)
 	}
 	return nil, driver.ErrSkip
 }
 
 // QueryContext intercepts direct query and rebinds ? → $N.
 func (c *rebindConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	q, err := rebind(query)
+	if err != nil {
+		return nil, err
+	}
 	if queryer, ok := c.inner.(driver.QueryerContext); ok {
-		return queryer.QueryContext(ctx, rebind(query), args)
+		return queryer.QueryContext(ctx, q, args)
 	}
 	return nil, driver.ErrSkip
 }
 
 // PrepareContext intercepts prepared statement creation and rebinds.
 func (c *rebindConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
-		return preparer.PrepareContext(ctx, rebind(query))
+	q, err := rebind(query)
+	if err != nil {
+		return nil, err
 	}
-	return c.inner.Prepare(rebind(query))
+	if preparer, ok := c.inner.(driver.ConnPrepareContext); ok {
+		return preparer.PrepareContext(ctx, q)
+	}
+	return c.inner.Prepare(q)
 }
 
 // BeginTx delegates to the inner connection.
@@ -220,45 +236,199 @@ func (c *rebindConn) ResetSession(ctx context.Context) error {
 }
 
 // rebind replaces ? positional placeholders with $1, $2, ... $N.
-// Single-quoted SQL string literals are respected: ? inside '...' is left alone,
-// and a doubled quote (two single quotes) does not end the string. Dollar-quoting
-// and double-quoted identifiers are not specially handled.
-func rebind(query string) string {
-	// Fast path: no ? present.
+//
+// The scanner understands the PostgreSQL lexical constructs that may contain a
+// ? so that literal content is never rewritten as a parameter:
+//
+//   - 'single-quoted strings' with a doubled ” as an escaped quote
+//   - "double-quoted identifiers" with a doubled "" as an escaped quote
+//   - -- line comments (run to the end of the line)
+//   - /* block comments */ (nested, as PostgreSQL permits)
+//   - $tag$ dollar-quoted strings (tag may be empty: $$)
+//
+// Unterminated constructs are rejected with a descriptive error instead of
+// silently mis-rewriting a ? that the server would treat as literal content.
+// Backslash escapes in E'...' strings are not modelled: this codebase does not
+// emit E-strings, and treating them as ordinary strings is conservative except
+// when the body contains a backslash-escaped quote.
+func rebind(query string) (string, error) {
+	// Fast path: no ? present, nothing to do. Also lets $n parameter
+	// references and $tag$ queries (such as the DO $$ migration block)
+	// pass through untouched.
 	if !strings.ContainsRune(query, '?') {
-		return query
+		return query, nil
 	}
 
 	var buf strings.Builder
 	buf.Grow(len(query) + 16)
 	n := 0
-	inString := false
-	// Iterate by index so we can look ahead for '' escaped quotes.
-	for i := 0; i < len(query); i++ {
-		ch := query[i]
-		if inString {
-			buf.WriteByte(ch)
-			if ch == '\'' {
-				// '' inside a string is an escaped quote; stay in string.
-				if i+1 < len(query) && query[i+1] == '\'' {
-					buf.WriteByte(query[i+1])
-					i++
-					continue
-				}
-				inString = false
+	for i := 0; i < len(query); {
+		switch {
+		case query[i] == '\'':
+			j, err := scanSQLString(&buf, query, i)
+			if err != nil {
+				return "", err
 			}
-			continue
-		}
-		switch ch {
-		case '\'':
-			inString = true
-			buf.WriteByte(ch)
-		case '?':
+			i = j
+		case query[i] == '"':
+			j, err := scanQuotedIdent(&buf, query, i)
+			if err != nil {
+				return "", err
+			}
+			i = j
+		case i+1 < len(query) && query[i] == '-' && query[i+1] == '-':
+			i = scanLineComment(&buf, query, i)
+		case i+1 < len(query) && query[i] == '/' && query[i+1] == '*':
+			j, err := scanBlockComment(&buf, query, i)
+			if err != nil {
+				return "", err
+			}
+			i = j
+		case query[i] == '$':
+			if tag, ok := dollarQuoteTagAt(query, i); ok {
+				j, err := scanDollarQuote(&buf, query, i, tag)
+				if err != nil {
+					return "", err
+				}
+				i = j
+				continue
+			}
+			buf.WriteByte(query[i])
+			i++
+		case query[i] == '?':
 			n++
 			fmt.Fprintf(&buf, "$%d", n)
+			i++
 		default:
-			buf.WriteByte(ch)
+			buf.WriteByte(query[i])
+			i++
 		}
 	}
-	return buf.String()
+	return buf.String(), nil
+}
+
+// scanSQLString copies a '...'-quoted string literal beginning at i (the
+// opening quote) and returns the index just past its closing quote. A doubled
+// ” is an escaped quote and stays inside the string.
+func scanSQLString(buf *strings.Builder, query string, i int) (int, error) {
+	start := i
+	i++
+	for i < len(query) {
+		if query[i] != '\'' {
+			i++
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == '\'' {
+			i += 2
+			continue
+		}
+		i++
+		buf.WriteString(query[start:i])
+		return i, nil
+	}
+	return start, fmt.Errorf("rebind: unterminated string literal at offset %d", start)
+}
+
+// scanQuotedIdent copies a "..."-quoted identifier beginning at i (the opening
+// quote) and returns the index just past its closing quote. A doubled "" is an
+// escaped quote and stays inside the identifier.
+func scanQuotedIdent(buf *strings.Builder, query string, i int) (int, error) {
+	start := i
+	i++
+	for i < len(query) {
+		if query[i] != '"' {
+			i++
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == '"' {
+			i += 2
+			continue
+		}
+		i++
+		buf.WriteString(query[start:i])
+		return i, nil
+	}
+	return start, fmt.Errorf("rebind: unterminated quoted identifier at offset %d", start)
+}
+
+// scanLineComment copies a -- comment through the end of the current line and
+// returns the index of the newline (or len(query)) so scanning resumes there.
+func scanLineComment(buf *strings.Builder, query string, i int) int {
+	for i < len(query) && query[i] != '\n' {
+		buf.WriteByte(query[i])
+		i++
+	}
+	return i
+}
+
+// scanBlockComment copies a /* ... */ block comment beginning at i and returns
+// the index just past the closing */. Nesting is honoured: PostgreSQL treats
+// nested block comments as comments.
+func scanBlockComment(buf *strings.Builder, query string, i int) (int, error) {
+	start := i
+	depth := 0
+	for i < len(query) {
+		switch {
+		case i+1 < len(query) && query[i] == '/' && query[i+1] == '*':
+			i += 2
+			depth++
+		case i+1 < len(query) && query[i] == '*' && query[i+1] == '/':
+			i += 2
+			depth--
+			if depth == 0 {
+				buf.WriteString(query[start:i])
+				return i, nil
+			}
+		default:
+			i++
+		}
+	}
+	return start, fmt.Errorf("rebind: unterminated block comment at offset %d", start)
+}
+
+// scanDollarQuote copies a $tag$...$tag$ dollar-quoted string beginning at i
+// and returns the index just past the closing delimiter. A ? inside the body
+// is literal content and is copied verbatim.
+func scanDollarQuote(buf *strings.Builder, query string, i int, tag string) (int, error) {
+	delim := "$" + tag + "$"
+	body := i + len(delim)
+	j := strings.Index(query[body:], delim)
+	if j < 0 {
+		return i, fmt.Errorf("rebind: unterminated dollar-quoted string %s at offset %d", delim, i)
+	}
+	end := body + j + len(delim)
+	buf.WriteString(query[i:end])
+	return end, nil
+}
+
+// dollarQuoteTagAt reports whether query[i:] begins a PostgreSQL dollar-quote
+// delimiter and returns its tag. A tag is empty ($$) or a plain identifier.
+// $n positional parameter references are not dollar-quote delimiters.
+func dollarQuoteTagAt(query string, i int) (string, bool) {
+	if i >= len(query) || query[i] != '$' {
+		return "", false
+	}
+	if i+1 < len(query) && query[i+1] == '$' {
+		return "", true
+	}
+	j := i + 1
+	if j >= len(query) || !isDollarTagStart(query[j]) {
+		return "", false
+	}
+	j++
+	for j < len(query) && isDollarTagPart(query[j]) {
+		j++
+	}
+	if j < len(query) && query[j] == '$' {
+		return query[i+1 : j], true
+	}
+	return "", false
+}
+
+func isDollarTagStart(c byte) bool {
+	return c == '_' || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+}
+
+func isDollarTagPart(c byte) bool {
+	return isDollarTagStart(c) || ('0' <= c && c <= '9')
 }

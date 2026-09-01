@@ -25,6 +25,9 @@ type EventInput struct {
 	Tool      agenttools.ToolDefinition
 	Args      map[string]any
 	Result    map[string]any
+	// Now overrides the audit timestamp source for tests. When nil the
+	// package default (time.Now) is used.
+	Now func() time.Time
 }
 
 type Event struct {
@@ -69,6 +72,10 @@ func RedactMapping(input map[string]any, keys []string) map[string]any {
 }
 
 func newEvent(input EventInput, status Status) Event {
+	now := input.Now
+	if now == nil {
+		now = time.Now
+	}
 	return Event{
 		RequestID:  input.RequestID,
 		Caller:     input.Caller,
@@ -78,7 +85,7 @@ func newEvent(input EventInput, status Status) Event {
 		Scope:      string(input.Tool.Capability.Scope),
 		Permission: string(input.Tool.Capability.Permission),
 		RiskLevel:  string(input.Tool.Capability.RiskLevel),
-		CreatedAt:  time.Now().UTC().Format(time.RFC3339Nano),
+		CreatedAt:  now().UTC().Format(time.RFC3339Nano),
 	}
 }
 

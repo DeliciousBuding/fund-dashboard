@@ -100,10 +100,13 @@ func (s Service) UpdateTransaction(ctx context.Context, seq int, update UpdateTr
 		fields = append(fields, "fee")
 	}
 	if update.FundCode != nil {
-		next.FundCode = NormalizeSecurityCode(*update.FundCode)
-		if next.FundCode == "" || len(next.FundCode) > maxTxFundCodeLen {
+		// Reject before normalization: NormalizeSecurityCode silently truncates
+		// oversized codes, which would merge distinct securities on this write path.
+		raw := strings.TrimSpace(*update.FundCode)
+		if raw == "" || len(raw) > maxTxFundCodeLen {
 			return UpdateTransactionResult{}, fmt.Errorf("%w: fund_code invalid", ErrInvalidInput)
 		}
+		next.FundCode = NormalizeSecurityCode(raw)
 		sets = append(sets, "fund_code = ?")
 		args = append(args, next.FundCode)
 		fields = append(fields, "fund_code")

@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -23,30 +24,32 @@ func TestValidateAgentContextPackJSONRejectsMissingDisabledBackupBoundary(t *tes
 		"agent_brief":"facts only"
 	}`)
 
-	if err := ValidateAgentContextPackJSON(payload); err == nil {
+	err := ValidateAgentContextPackJSON(payload)
+	if err == nil {
 		t.Fatalf("ValidateAgentContextPackJSON returned nil, want missing backup_producer error")
+	}
+	if !strings.Contains(err.Error(), "backup_producer") {
+		t.Fatalf("error = %q, want backup_producer", err.Error())
 	}
 }
 
 func TestValidateToolRegistryJSONRejectsConfirmationWithoutTTL(t *testing.T) {
-	payload := []byte(`{
-		"schema_version":"tool-registry-v1",
-		"generated_at":"2026-07-07T03:35:00Z",
-		"tools":[{
-			"name":"add_transaction",
-			"category":"transactions",
-			"description":"write transaction",
-			"input_schema":{},
-			"output_envelope":{"kind":"json","json_root":null},
-			"capability":{"tool":"add_transaction","scope":"write","permission":"requires_confirmation","risk_level":"high","use_for":"write transaction"},
-			"confirmation":{"required":true,"reason":"confirm write","token_ttl_seconds":null},
-			"audit":{"event_type":"write","record_attempt":true,"record_result":true,"redact_args":["token"]},
-			"mcp_annotations":{"read_only_hint":false,"destructive_hint":true,"open_world_hint":false}
-		}]
-	}`)
+	// Use a full 44-tool registry so validation reaches the tool rules instead of
+	// failing on the minimum-tool-count guard first.
+	payload := buildToolRegistryJSON(t, 44, func(_ int, tools []map[string]any) {
+		tools[0]["capability"].(map[string]any)["permission"] = "requires_confirmation"
+		tools[0]["capability"].(map[string]any)["risk_level"] = "high"
+		tools[0]["confirmation"].(map[string]any)["required"] = true
+		tools[0]["confirmation"].(map[string]any)["reason"] = "confirm write"
+		tools[0]["confirmation"].(map[string]any)["token_ttl_seconds"] = nil
+	})
 
-	if err := ValidateToolRegistryJSON(payload); err == nil {
+	err := ValidateToolRegistryJSON(payload)
+	if err == nil {
 		t.Fatalf("ValidateToolRegistryJSON returned nil, want confirmation TTL error")
+	}
+	if !strings.Contains(err.Error(), "token_ttl_seconds") {
+		t.Fatalf("error = %q, want token_ttl_seconds", err.Error())
 	}
 }
 

@@ -152,3 +152,96 @@ func newEastmoneyFundForTest(server *httptest.Server) *EastmoneyFund {
 		serverURL: server.URL,
 	}
 }
+
+func TestFetchHistory_MissingEquityReturnDefaultsToZero(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`var Data_netWorthTrend = [{"x":1782864000000,"y":1.2345}];`))
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	points, err := orig.FetchHistory(context.Background(), "019173")
+	if err != nil {
+		t.Fatalf("FetchHistory: %v", err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("len(points)=%d want 1", len(points))
+	}
+	if points[0].ChangePct != 0 {
+		t.Fatalf("ChangePct=%f, want 0 when equityReturn is absent", points[0].ChangePct)
+	}
+}
+
+func TestFetchHistory_MalformedSeriesJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`var Data_netWorthTrend = [{"x":"not-a-number","y":1.2}];`))
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	points, err := orig.FetchHistory(context.Background(), "019173")
+	if err == nil {
+		t.Fatalf("expected error for malformed series JSON, got points=%v", points)
+	}
+	if points != nil {
+		t.Fatalf("expected nil points on parse failure, got %v", points)
+	}
+}
+
+func TestFetchHistory_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	if _, err := orig.FetchHistory(context.Background(), "019173"); err == nil {
+		t.Fatal("expected error for upstream HTTP 500")
+	}
+}
+
+func TestFetchMeta_MissingNameOrType(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"name only", `var fS_name = "测试基金";`},
+		{"type only", `var fS_code = "QDII";`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+
+			orig := newEastmoneyFundForTest(server)
+			meta, err := orig.FetchMeta(context.Background(), "019173")
+			if err != nil {
+				t.Fatalf("FetchMeta: %v", err)
+			}
+			if meta != nil {
+				t.Fatalf("expected nil meta when a required field is missing, got %+v", meta)
+			}
+		})
+	}
+}
+
+func TestFetchMeta_MissingInception(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`var fS_name = "测试基金";var fS_code = "QDII";`))
+	}))
+	defer server.Close()
+
+	orig := newEastmoneyFundForTest(server)
+	meta, err := orig.FetchMeta(context.Background(), "019173")
+	if err != nil {
+		t.Fatalf("FetchMeta: %v", err)
+	}
+	if meta == nil {
+		t.Fatal("expected meta, got nil")
+	}
+	if meta.Inception != "" {
+		t.Fatalf("Inception=%q, want empty when fS_buyMinDate is absent", meta.Inception)
+	}
+}

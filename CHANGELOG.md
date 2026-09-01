@@ -28,6 +28,11 @@
 - **安全** CI 修复断链 SHA pin（`pnpm/action-setup`、`softprops/action-gh-release`）；workflow_dispatch 输入改 env 间接注入；buildx 缓存按架构隔离；契约测试进 CI 门禁；dependabot 补 npm。
 - **修复** `deploy/.env.example` 移除 `FUND_BACKUP_PRODUCER_ENABLED=true` 地雷（配置解析直接拒绝启动）；compose 补 9 个代码实际读取但未透传的环境变量。
 - **重构** 三份重复的 rune-clamp 收敛到 `internal/textutil`；工具注册表校验接入生产加载路径；删除不可达的 crawl-nav legacy 适配器与 `WithClock`/`SessionMaxAge`/`SessionFromContext`/setup 限流死桶等死代码；对外文案实际去除内部代号（`source_brief`）。
+- **修复** 交易导入/更新写路径 fund_code 长度校验是死代码：超长代码先被归一化静默截断到 32 字符，可能合并不同证券；改为归一化前拒绝。
+- **修复** PG 写路径占位符 rebind 重写为词法状态机：双引号标识符/注释/dollar-quote 内的 `?` 不再误改写；未闭合构造返回带 offset 的错误，不再静默透传无效 SQL。
+- **改进** `stock_kline_cache` upsert 的 prepared statement 改每次调用 prepare+用后 Close，消除进程级孤儿句柄；审计时间时钟可注入测试；备份目录读取失败补调试痕迹；删除 `httpapi.DB` 死别名。
+- **改进** 设置页接口契约化：packages/contracts 新增 auth sessions/events 与 system agent（完整 14 字段）契约，前端删除 3 个手写接口改 `fetchValidated`，Sessions 卡补 empty 态。
+- **测试** 补齐测试空洞：admin 写路径/告警阈值/新鲜度/状态边界（覆盖 47%→71%）、internal/contracts 校验器分支（→100%）、eastmoney meta/持仓解析、EnsurePGSchema 结构 pin+控制流 fake driver、rebind 表驱动 30 例。
 - **测试** 限流器表驱动+并发、调度器优雅停机、快照重算数学、fund-migrate 保留字标识符引用、契约包 node:test 8 例、CSV 纯函数 7 例。
 - **chore** `chi` v5.3.2；`zod` 统一 `^4.5.4`；`.dockerignore` 排除本地产物；文档路由数对齐实测。
 

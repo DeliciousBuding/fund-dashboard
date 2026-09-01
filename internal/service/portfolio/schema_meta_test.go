@@ -147,7 +147,7 @@ func TestProbeTableColumnsMissingTableOnSQLiteReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestPreparedKlineUpsert_ReuseAndWrite(t *testing.T) {
+func TestPreparedKlineUpsert_PerCallPrepareCloseAndWrite(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:schema-kline-prep?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -173,12 +173,21 @@ func TestPreparedKlineUpsert_ReuseAndWrite(t *testing.T) {
 	if kind1 != klineUpsertMarket || stmt1 == nil {
 		t.Fatalf("kind=%v stmt=%v", kind1, stmt1)
 	}
+	// The statement is owned by the caller: closing the first one must not
+	// affect a later prepare, because nothing is cached process-lifetime.
+	if err := stmt1.Close(); err != nil {
+		t.Fatalf("close first stmt: %v", err)
+	}
 	kind2, stmt2, err := svc.preparedKlineUpsert(ctx)
 	if err != nil {
-		t.Fatalf("second prepare: %v", err)
+		t.Fatalf("second prepare after first close: %v", err)
 	}
-	if kind2 != kind1 || stmt2 != stmt1 {
-		t.Fatalf("expected reused stmt; kind %v vs %v, stmt equal=%v", kind1, kind2, stmt1 == stmt2)
+	defer stmt2.Close()
+	if kind2 != klineUpsertMarket || stmt2 == nil {
+		t.Fatalf("second prepare kind=%v stmt=%v", kind2, stmt2)
+	}
+	if stmt1 == stmt2 {
+		t.Fatalf("expected per-call statements to be independent")
 	}
 
 	n, err := svc.upsertUSStockHistory(ctx, datasource.StockSnapshot{
