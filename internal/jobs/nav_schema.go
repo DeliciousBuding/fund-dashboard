@@ -109,20 +109,11 @@ func addNavHistoryColumn(ctx context.Context, db *sql.DB, name string) error {
 	stmt := fmt.Sprintf("ALTER TABLE nav_history ADD COLUMN %s %s", dialect.QuoteIdentifier(name), def)
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
 		// Concurrent/race: column may already exist after probe; treat as success.
-		if isDuplicateColumnErr(err) {
+		if dialect.IsDuplicateColumnError(err) {
 			return nil
 		}
 		slog.Error("alter nav_history", "column", name, "error", err)
 		return fmt.Errorf("add column %s: %w", name, err)
 	}
 	return nil
-}
-
-func isDuplicateColumnErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate column") ||
-		strings.Contains(msg, "already exists")
 }
