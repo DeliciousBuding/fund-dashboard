@@ -19,3 +19,11 @@ scripts/*.sh text eol=lf
 
 # Windows autocrlf 会把工作副本转 CRLF；biome 对该文件按 LF 校验，强制 LF 保持本地/CI 一致。
 web/public/manifest.webmanifest text eol=lf
+
+# 其余文本类型显式 LF：防止 Windows autocrlf 把工作副本转 CRLF 导致本地 gofmt/biome 与 CI 不一致。
+*.css text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.sql text eol=lf
+*.patch text eol=lf
+*.toml text eol=lf
