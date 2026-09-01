@@ -1,6 +1,7 @@
 // 审计 /system/audit —— auth_events + agent_audit_events 合并时间线（06 §3）。
 // kind chip 过滤、时间倒序、detail 截断展开。
 
+import { SystemAuditResponseSchema } from "@fund-dashboard/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Badge } from "../components/ui/badge";
@@ -8,15 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { EmptyState } from "../components/ui/empty-state";
 import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
-import { api } from "../lib/api";
-
-interface AuditEntry {
-  kind: "auth" | "agent";
-  ts: number;
-  event: string;
-  summary: string;
-  ip?: string;
-}
+import { fetchValidated } from "../lib/queries";
 
 const KIND_LABEL: Record<string, string> = { auth: "认证", agent: "Agent" };
 const AUTH_EVENT_LABEL: Record<string, string> = {
@@ -34,7 +27,7 @@ export function SystemAuditPage() {
   const audit = useQuery({
     queryKey: ["system-audit"],
     queryFn: ({ signal }) =>
-      api<{ events: AuditEntry[] }>("/api/system/audit?limit=200", { signal }),
+      fetchValidated("/api/system/audit?limit=200", SystemAuditResponseSchema, signal),
     staleTime: 60 * 1000,
   });
 
