@@ -13,11 +13,11 @@ func (s *Server) callPortfolioSummary(ctx context.Context, args map[string]any) 
 	portfolioID := intArgMax(args, "portfolio_id", 1, 1000)
 	summary, err := s.portfolio.GetSummary(ctx, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	harness, err := s.portfolio.GetHarnessSnapshotFor(ctx, portfolioID, s.harnessAudience())
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	payload := map[string]any{
 		"summary": map[string]any{
@@ -55,7 +55,7 @@ func (s *Server) callPortfolioSummary(ctx context.Context, args map[string]any) 
 func (s *Server) callPortfolioAllocation(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	allocation, err := s.portfolio.GetAllocation(ctx, intArgMax(args, "portfolio_id", 1, 1000))
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(allocation)
 }
@@ -63,7 +63,7 @@ func (s *Server) callPortfolioAllocation(ctx context.Context, args map[string]an
 func (s *Server) callListPortfolios(ctx context.Context) (map[string]any, *Error) {
 	portfolios, err := s.portfolio.ListPortfolioDefinitions(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(portfolios)
 }
@@ -74,7 +74,7 @@ func (s *Server) callListDCAPlans(ctx context.Context, args map[string]any) (map
 		PortfolioID: intArgMax(args, "portfolio_id", 0, 1000),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"count":             len(plans),
@@ -87,7 +87,7 @@ func (s *Server) callListDCAPlans(ctx context.Context, args map[string]any) (map
 func (s *Server) callInvestmentHarnessSnapshot(ctx context.Context, args map[string]any) (map[string]any, *Error) {
 	snapshot, err := s.portfolio.GetHarnessSnapshotFor(ctx, intArgMax(args, "portfolio_id", 1, 1000), s.harnessAudience())
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(snapshot)
 }
@@ -98,7 +98,7 @@ func (s *Server) callInvestmentSourceBrief(ctx context.Context, args map[string]
 		Limit:       intArgMax(args, "limit", 20, 100),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(brief)
 }
@@ -117,7 +117,7 @@ func (s *Server) callSourceEvents(ctx context.Context, args map[string]any) (map
 		ShowRead:            showRead,
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"count":             len(events),
@@ -140,7 +140,7 @@ func (s *Server) callCrawlFundHoldings(ctx context.Context, args map[string]any)
 	if code != "" {
 		added, reportDate, err := s.holdings.CrawlCode(ctx, code)
 		if err != nil {
-			return nil, jsonrpcError(-32000, "tool_error: internal_error")
+			return nil, internalToolError(err)
 		}
 		return textJSONResult(map[string]any{
 			"status":            "complete",
@@ -154,7 +154,7 @@ func (s *Server) callCrawlFundHoldings(ctx context.Context, args map[string]any)
 	}
 	funds, added, err := s.holdings.CrawlAllHeld(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"status":            "complete",
@@ -179,7 +179,7 @@ func (s *Server) callRecalculateSnapshot(ctx context.Context, args map[string]an
 	}
 	if code != "" {
 		if err := s.snapshots.RecalcCode(ctx, code); err != nil {
-			return nil, jsonrpcError(-32000, "tool_error: internal_error")
+			return nil, internalToolError(err)
 		}
 		return textJSONResult(map[string]any{
 			"status":            "complete",
@@ -191,7 +191,7 @@ func (s *Server) callRecalculateSnapshot(ctx context.Context, args map[string]an
 	}
 	n, failed, err := s.snapshots.RecalcAll(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	if failed == nil {
 		failed = []string{}
@@ -221,7 +221,7 @@ func (s *Server) callCrawlNav(ctx context.Context, args map[string]any) (map[str
 	if code != "" {
 		added, latest, err := s.nav.CrawlCode(ctx, code)
 		if err != nil {
-			return nil, jsonrpcError(-32000, "tool_error: internal_error")
+			return nil, internalToolError(err)
 		}
 		return textJSONResult(map[string]any{
 			"status":            "complete",
@@ -240,7 +240,7 @@ func (s *Server) callCrawlNav(ctx context.Context, args map[string]any) (map[str
 		}
 		report, err := s.admin.GetFreshness(ctx)
 		if err != nil {
-			return nil, jsonrpcError(-32000, "tool_error: internal_error")
+			return nil, internalToolError(err)
 		}
 		codes := RecommendedRefreshCodes(report)
 		if len(codes) == 0 {
@@ -289,7 +289,7 @@ func (s *Server) callCrawlNav(ctx context.Context, args map[string]any) (map[str
 	}
 	securities, added, err := s.nav.CrawlAllHeld(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"status":            "complete",
@@ -324,7 +324,7 @@ func (s *Server) callMarkSourceEvent(ctx context.Context, args map[string]any) (
 	}
 	ok, err := s.portfolio.MarkSourceEventRead(ctx, id, input)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	if !ok {
 		return nil, jsonrpcError(-32000, "tool_error: not found or no fields to update")
@@ -342,7 +342,7 @@ func (s *Server) callDataFreshness(ctx context.Context) (map[string]any, *Error)
 	}
 	report, err := s.admin.GetFreshness(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	// Only recommend crawl_nav when held NAV is stale/missing (#74).
 	// health=fresh must not force maintenance (agents were always crawling).
@@ -379,7 +379,7 @@ func (s *Server) callVerifyData(ctx context.Context) (map[string]any, *Error) {
 	}
 	report, err := s.admin.VerifyData(ctx)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"healthy":           report.OK,
@@ -399,7 +399,7 @@ func (s *Server) callFundStatus(ctx context.Context, args map[string]any) (map[s
 	}
 	status, err := s.admin.GetStatusByCode(ctx, code)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"code":          status.Code,
@@ -435,7 +435,7 @@ func (s *Server) callSystemStatus(ctx context.Context) (map[string]any, *Error) 
 	}
 	status, err := s.admin.GetSystemStatus(ctx, processStartedAt, nowUTC())
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(status)
 }
@@ -447,29 +447,29 @@ func (s *Server) callFullDashboard(ctx context.Context, args map[string]any) (ma
 
 	summary, err := s.portfolio.GetSummary(ctx, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	harness, err := s.portfolio.GetHarnessSnapshotFor(ctx, portfolioID, s.harnessAudience())
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	allocation, err := s.portfolio.GetAllocation(ctx, portfolioID)
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	sourceBrief, err := s.portfolio.GetInvestmentSourceBrief(ctx, portfoliosvc.SourceBriefOptions{
 		PortfolioID: portfolioID,
 		Limit:       sourceLimit,
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	sourceEvents, err := s.portfolio.GetSourceEvents(ctx, portfoliosvc.GetSourceEventsOptions{
 		Limit:    eventLimit,
 		ShowRead: true,
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	agentContext, err := s.portfolio.GetAgentContextPackFor(ctx, portfoliosvc.AgentContextOptions{
 		PortfolioID:  portfolioID,
@@ -478,7 +478,7 @@ func (s *Server) callFullDashboard(ctx context.Context, args map[string]any) (ma
 		BaseCurrency: stringArg(args, "base_currency"),
 	}, s.harnessAudience())
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 
 	return textJSONResult(map[string]any{

@@ -205,6 +205,16 @@ func jsonrpcError(code int, message string) *Error {
 	return &Error{Code: code, Message: message}
 }
 
+// internalToolError preserves the underlying error for operator debuggability
+// while bounding message length to avoid dumping oversized internals.
+func internalToolError(err error) *Error {
+	msg := err.Error()
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	return jsonrpcError(-32000, "tool_error: "+msg)
+}
+
 func nowUTC() time.Time {
 	return time.Now().UTC()
 }

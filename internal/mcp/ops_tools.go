@@ -27,7 +27,7 @@ func (s *Server) callAdjustPosition(ctx context.Context, args map[string]any) (m
 		Reason:      stringArg(args, "reason"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -52,7 +52,7 @@ func (s *Server) callCheckAlerts(ctx context.Context, args map[string]any) (map[
 		PortfolioID:    intArgMax(args, "portfolio_id", 1, 1000),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -107,7 +107,7 @@ func (s *Server) callRunDCAAutoInvest(ctx context.Context, args map[string]any) 
 		BaseAmount:  floatArgMax(args, "base_amount", 0, 1_000_000),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,
@@ -132,7 +132,7 @@ func (s *Server) callGenerateReport(ctx context.Context, args map[string]any) (m
 		AsOf:         stringArg(args, "as_of"),
 	})
 	if err != nil {
-		return nil, jsonrpcError(-32000, "tool_error: internal_error")
+		return nil, internalToolError(err)
 	}
 	return textJSONResult(map[string]any{
 		"ok":                res.OK,

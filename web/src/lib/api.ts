@@ -47,6 +47,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       if (typeof data.error === "string" && data.error.length > 0) code = data.error;
     } catch {
       // non-JSON error body — keep the synthesized code
+      console.warn("[api] non-JSON error body", { status: res.status });
     }
     throw new ApiError(res.status, code);
   }

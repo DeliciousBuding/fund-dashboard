@@ -37,8 +37,9 @@ export function useMarketStream(enabled = true): MarketStreamState {
             connected: true,
             updatedAt: new Date().toISOString(),
           });
-        } catch {
+        } catch (err) {
           // 脏帧跳过，等下一帧
+          console.warn("[market-stream] invalid indices frame", err);
         }
       });
       source.onerror = () => {
