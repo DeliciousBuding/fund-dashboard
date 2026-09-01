@@ -1,13 +1,39 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
+)
+
+// Admin crawl/recalculate requests run the same whole-batch crawls as the
+// scheduled jobs, but synchronously inside one HTTP request. Without a
+// request-level deadline a slow upstream could pin the connection until the
+// server WriteTimeout cuts it. These bounds are the primary defense; the
+// server WriteTimeout stays as the last-resort backstop.
+//
+// Derivation (see internal/jobs/scheduler.go #248/#268 and
+// internal/datasource/*.go):
+//   - Batch modes (crawl-nav held/stale_only, crawl-holdings held,
+//     recalculate-snapshot all) reuse the scheduler's established 45m
+//     whole-batch ceiling. Worst case at production scale (~61 held funds):
+//     61 × the 30s upstream HTTP client timeout plus the 1.5s per-code backoff
+//     ≈ 33m, leaving headroom for slow upstreams/retries.
+//   - Single-code modes only need one upstream fetch (30s Eastmoney / 12s
+//     Yahoo history) plus DB round-trips; 2m is ample margin.
+//
+// Package vars are overridable in tests so the timeout path can be exercised
+// deterministically with short durations (see admin_crawl_timeout_test.go).
+var (
+	adminCrawlBatchTimeout  = 45 * time.Minute
+	adminCrawlSingleTimeout = 2 * time.Minute
 )
 
 // navCrawlHandler exposes POST /api/admin/crawl-nav.
@@ -38,12 +64,15 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 			return
 		}
 		if code != "" {
-			added, latest, err := n.CrawlCode(r.Context(), code)
+			ctx, cancel := context.WithTimeout(r.Context(), adminCrawlSingleTimeout)
+			defer cancel()
+			added, latest, err := n.CrawlCode(ctx, code)
 			out := resp{Mode: "single", FundCode: code, Added: added, Latest: latest}
 			if err != nil {
+				status, msg := crawlOpFailure(r, err)
 				out.Status = "error"
-				out.Error = safeAdminOpError(r, err)
-				WriteJSON(w, http.StatusInternalServerError, out)
+				out.Error = msg
+				WriteJSON(w, status, out)
 				return
 			}
 			out.Status = "complete"
@@ -53,16 +82,19 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 
 		staleOnly := truthyQuery(r.URL.Query().Get("stale_only"))
 		if staleOnly {
+			ctx, cancel := context.WithTimeout(r.Context(), adminCrawlBatchTimeout)
+			defer cancel()
 			if admin == nil {
 				WriteJSON(w, http.StatusInternalServerError, resp{
 					Status: "error", Mode: "stale_only", Error: "admin_freshness_unavailable",
 				})
 				return
 			}
-			report, err := admin.GetFreshness(r.Context())
+			report, err := admin.GetFreshness(ctx)
 			if err != nil {
-				WriteJSON(w, http.StatusInternalServerError, resp{
-					Status: "error", Mode: "stale_only", Error: safeAdminOpError(r, err),
+				status, msg := crawlOpFailure(r, err)
+				WriteJSON(w, status, resp{
+					Status: "error", Mode: "stale_only", Error: msg,
 				})
 				return
 			}
@@ -81,10 +113,10 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 			done := make([]string, 0, len(codes))
 			failed := make([]string, 0)
 			for _, c := range codes {
-				if err := r.Context().Err(); err != nil {
+				if err := ctx.Err(); err != nil {
 					break
 				}
-				added, _, err := n.CrawlCode(r.Context(), c)
+				added, _, err := n.CrawlCode(ctx, c)
 				if err != nil {
 					slog.Error("admin crawl-nav stale_only code failed",
 						"request_id", RequestIDFromContext(r.Context()),
@@ -96,6 +128,21 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 				}
 				totalAdded += added
 				done = append(done, c)
+			}
+			// The loop above stops on a deadline without an error return; the
+			// whole-request budget is still exhausted, so surface 504 rather
+			// than a misleading partial/complete.
+			if requestDeadlineHit(ctx) {
+				WriteJSON(w, http.StatusGatewayTimeout, resp{
+					Status:      "error",
+					Mode:        "stale_only",
+					Securities:  len(done),
+					Added:       totalAdded,
+					Codes:       done,
+					FailedCodes: failed,
+					Error:       "timeout",
+				})
+				return
 			}
 			status := "complete"
 			if len(failed) > 0 && len(done) == 0 {
@@ -119,12 +166,15 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 			return
 		}
 
-		securities, added, err := n.CrawlAllHeld(r.Context())
+		ctx, cancel := context.WithTimeout(r.Context(), adminCrawlBatchTimeout)
+		defer cancel()
+		securities, added, err := n.CrawlAllHeld(ctx)
 		out := resp{Mode: "held", Securities: securities, Added: added}
 		if err != nil {
+			status, msg := crawlOpFailure(r, err)
 			out.Status = "error"
-			out.Error = safeAdminOpError(r, err)
-			WriteJSON(w, http.StatusInternalServerError, out)
+			out.Error = msg
+			WriteJSON(w, status, out)
 			return
 		}
 		out.Status = "complete"
@@ -163,24 +213,30 @@ func holdingsCrawlHandler(h mcp.HoldingsCrawler) http.HandlerFunc {
 			return
 		}
 		if code != "" {
-			added, reportDate, err := h.CrawlCode(r.Context(), code)
+			ctx, cancel := context.WithTimeout(r.Context(), adminCrawlSingleTimeout)
+			defer cancel()
+			added, reportDate, err := h.CrawlCode(ctx, code)
 			out := resp{Mode: "single", FundCode: code, Added: added, ReportDate: reportDate}
 			if err != nil {
+				status, msg := crawlOpFailure(r, err)
 				out.Status = "error"
-				out.Error = safeAdminOpError(r, err)
-				WriteJSON(w, http.StatusInternalServerError, out)
+				out.Error = msg
+				WriteJSON(w, status, out)
 				return
 			}
 			out.Status = "complete"
 			WriteJSON(w, http.StatusOK, out)
 			return
 		}
-		funds, added, err := h.CrawlAllHeld(r.Context())
+		ctx, cancel := context.WithTimeout(r.Context(), adminCrawlBatchTimeout)
+		defer cancel()
+		funds, added, err := h.CrawlAllHeld(ctx)
 		out := resp{Mode: "held", Funds: funds, Added: added}
 		if err != nil {
+			status, msg := crawlOpFailure(r, err)
 			out.Status = "error"
-			out.Error = safeAdminOpError(r, err)
-			WriteJSON(w, http.StatusInternalServerError, out)
+			out.Error = msg
+			WriteJSON(w, status, out)
 			return
 		}
 		out.Status = "complete"
@@ -210,27 +266,46 @@ func recalculateSnapshotHandler(s mcp.SnapshotRecalculator) http.HandlerFunc {
 			return
 		}
 		if code != "" {
-			err := s.RecalcCode(r.Context(), code)
+			ctx, cancel := context.WithTimeout(r.Context(), adminCrawlSingleTimeout)
+			defer cancel()
+			err := s.RecalcCode(ctx, code)
 			out := resp{Mode: "single", FundCode: code}
 			if err != nil {
+				status, msg := crawlOpFailure(r, err)
 				out.Status = "error"
-				out.Error = safeAdminOpError(r, err)
-				WriteJSON(w, http.StatusInternalServerError, out)
+				out.Error = msg
+				WriteJSON(w, status, out)
 				return
 			}
 			out.Status = "complete"
 			WriteJSON(w, http.StatusOK, out)
 			return
 		}
-		n, failed, err := s.RecalcAll(r.Context())
+		ctx, cancel := context.WithTimeout(r.Context(), adminCrawlBatchTimeout)
+		defer cancel()
+		n, failed, err := s.RecalcAll(ctx)
 		if failed == nil {
 			failed = []string{}
 		}
 		out := resp{Mode: "all", Codes: n, FailedCodes: failed}
 		if err != nil {
+			status, msg := crawlOpFailure(r, err)
 			out.Status = "error"
-			out.Error = safeAdminOpError(r, err)
-			WriteJSON(w, http.StatusInternalServerError, out)
+			out.Error = msg
+			WriteJSON(w, status, out)
+			return
+		}
+		// RecalcAll soft-fails per code and can return err=nil after a deadline
+		// cut the batch short; still report 504 instead of a misleading
+		// complete/partial.
+		if requestDeadlineHit(ctx) {
+			WriteJSON(w, http.StatusGatewayTimeout, resp{
+				Status:      "error",
+				Mode:        "all",
+				Codes:       n,
+				FailedCodes: failed,
+				Error:       "timeout",
+			})
 			return
 		}
 		status := jobs.RecalcAllStatus(n, failed)
@@ -241,6 +316,28 @@ func recalculateSnapshotHandler(s mcp.SnapshotRecalculator) http.HandlerFunc {
 		}
 		WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// crawlOpFailure maps an admin crawl/recalculate failure to (HTTP status, safe
+// client message). A request deadline returns 504 with the stable "timeout"
+// code; every other error keeps the existing 500 safeAdminOpError path so
+// internal details (SQL/upstream noise) never leave the server.
+func crawlOpFailure(r *http.Request, err error) (int, string) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		rid := ""
+		if r != nil {
+			rid = RequestIDFromContext(r.Context())
+		}
+		slog.Warn("admin crawl request timed out", "request_id", rid, "path", safePath(r), "error", err.Error())
+		return http.StatusGatewayTimeout, "timeout"
+	}
+	return http.StatusInternalServerError, safeAdminOpError(r, err)
+}
+
+// requestDeadlineHit reports whether ctx expired because of a deadline (not a
+// client disconnect/cancel).
+func requestDeadlineHit(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.DeadlineExceeded)
 }
 
 // safeAdminOpError logs the full error and returns a stable client-facing code for admin crawl/recalc (#206).

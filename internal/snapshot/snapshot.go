@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // HeldSharesDust is the minimum absolute share count treated as a real holding.
@@ -153,31 +154,47 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 		pnlPct = 0
 	}
 
-	var res sql.Result
-	var err error
-	if mode == ModeFull {
-		res, err = q.ExecContext(ctx, `
-			UPDATE portfolio_snapshot SET
-				fund_name = ?, held_shares = ?, total_cost = ?, latest_nav = ?,
-				current_value = ?, unrealized_pnl = ?, pnl_pct = ?, security_type = ?
-			WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
-		`, fundName, heldShares, totalCost, navArg, currentValue, unrealized, pnlPct, secType, code, portfolioID)
-	} else {
-		res, err = q.ExecContext(ctx, `
-			UPDATE portfolio_snapshot SET
-				held_shares = ?, total_cost = ?, latest_nav = COALESCE(NULLIF(?,0), latest_nav),
-				current_value = ?, unrealized_pnl = ?, pnl_pct = ?
-			WHERE fund_code = ? AND COALESCE(portfolio_id,1) = ?
-		`, heldShares, totalCost, navVal, currentValue, unrealized, pnlPct, code, portfolioID)
-	}
-	if err != nil {
-		return fmt.Errorf("recalc snapshot update: %w", err)
-	}
-	n, raErr := res.RowsAffected()
-	if raErr != nil {
-		return fmt.Errorf("recalc snapshot rows affected: %w", raErr)
-	}
-	if n == 0 {
+	// Portable first-write upsert. UPDATE-then-INSERT works for both *sql.DB
+	// and *sql.Tx queriers (a Tx cannot open another transaction) and for every
+	// supported portfolio_snapshot PK shape — legacy SQLite keeps a single
+	// (fund_code) PRIMARY KEY (deploy/ci-seed.sql) while fresh SQLite/PG use
+	// (fund_code, portfolio_id). A single INSERT ... ON CONFLICT would need a
+	// dialect-aware conflict target and would still break the legacy
+	// single-column PK.
+	//
+	// Two connections can both see UPDATE affect 0 rows on a first write and
+	// then both INSERT; the loser gets a UNIQUE/PK violation. One bounded retry
+	// re-runs the UPDATE path after the winner's row is visible, converging on
+	// the same row without leaking concurrent-write errors to callers.
+	for attempt := 0; ; attempt++ {
+		var res sql.Result
+		var err error
+		if mode == ModeFull {
+			res, err = q.ExecContext(ctx, `
+				UPDATE portfolio_snapshot SET
+					fund_name = ?, held_shares = ?, total_cost = ?, latest_nav = ?,
+					current_value = ?, unrealized_pnl = ?, pnl_pct = ?, security_type = ?
+				WHERE fund_code = ? AND COALESCE(portfolio_id, 1) = ?
+			`, fundName, heldShares, totalCost, navArg, currentValue, unrealized, pnlPct, secType, code, portfolioID)
+		} else {
+			res, err = q.ExecContext(ctx, `
+				UPDATE portfolio_snapshot SET
+					held_shares = ?, total_cost = ?, latest_nav = COALESCE(NULLIF(?,0), latest_nav),
+					current_value = ?, unrealized_pnl = ?, pnl_pct = ?
+				WHERE fund_code = ? AND COALESCE(portfolio_id,1) = ?
+			`, heldShares, totalCost, navVal, currentValue, unrealized, pnlPct, code, portfolioID)
+		}
+		if err != nil {
+			return fmt.Errorf("recalc snapshot update: %w", err)
+		}
+		n, raErr := res.RowsAffected()
+		if raErr != nil {
+			return fmt.Errorf("recalc snapshot rows affected: %w", raErr)
+		}
+		if n > 0 {
+			return nil
+		}
+
 		insertNav := navArg
 		if mode == ModeLight {
 			var idErr error
@@ -192,11 +209,14 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 				(fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, code, fundName, heldShares, totalCost, insertNav, currentValue, unrealized, pnlPct, secType, portfolioID)
-		if err != nil {
+		if err == nil {
+			return nil
+		}
+		if !isUniqueViolation(err) || attempt >= maxSnapshotWriteRetries-1 {
 			return fmt.Errorf("recalc snapshot insert: %w", err)
 		}
+		// The concurrent first writer committed its row; loop back to UPDATE.
 	}
-	return nil
 }
 
 func resolveIdentity(ctx context.Context, q Querier, code string, txFundName sql.NullString) (string, string, error) {
@@ -236,6 +256,27 @@ func resolvePortfolioID(ctx context.Context, q Querier, code string) (int64, err
 		portfolioID = 1
 	}
 	return portfolioID, nil
+}
+
+// maxSnapshotWriteRetries bounds the UPDATE→INSERT first-write retry loop. One
+// retry suffices for the concurrent-writer case (the conflict is only raised
+// after the winning transaction committed); the cap turns a pathological
+// concurrent delete/insert livelock into an error instead of a hang.
+const maxSnapshotWriteRetries = 3
+
+// isUniqueViolation reports whether err is a PRIMARY KEY/UNIQUE constraint
+// conflict. Both supported drivers surface it as a plain error string:
+// SQLite "UNIQUE constraint failed: ..." and PostgreSQL "duplicate key value
+// violates unique constraint ..." (SQLSTATE 23505). Matching stays narrow so
+// every other INSERT failure (NOT NULL, CHECK, ...) keeps surfacing unchanged.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint failed") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint") ||
+		strings.Contains(msg, "sqlstate 23505")
 }
 
 func nullIfZero(v float64) any {
