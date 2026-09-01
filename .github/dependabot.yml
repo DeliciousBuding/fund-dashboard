@@ -9,6 +9,15 @@ updates:
     labels:
       - "dependencies"
 
+  # npm — workspace root (biome / playwright)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0  # no auto PRs, manual only
+    labels:
+      - "dependencies"
+
   # npm — contracts (zod)
   - package-ecosystem: "npm"
     directory: "/packages/contracts"

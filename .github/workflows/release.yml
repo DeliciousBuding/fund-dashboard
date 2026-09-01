@@ -38,12 +38,16 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
         run: |
           tag="${GITHUB_REF_NAME}"
           prerelease="false"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ inputs.release_tag }}"
-            prerelease="${{ inputs.prerelease }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_RELEASE_TAG"
+            prerelease="$INPUT_PRERELEASE"
             git rev-parse "$tag" >/dev/null
           fi
           case "$tag" in
@@ -181,7 +185,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.validate.outputs.release_tag }}
           name: ${{ needs.validate.outputs.release_tag }}

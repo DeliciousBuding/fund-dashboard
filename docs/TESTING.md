@@ -35,6 +35,9 @@ pnpm -C web test
 pnpm exec biome check .
 pnpm -C web build
 
+# Contracts (zod SSOT) wire-shape tests — node:test, no extra deps
+node --test "packages/contracts/**/*.test.ts"
+
 # 浏览器 E2E：先启动 deploy/docker-compose.ci.yml，密码与环境变量一致
 pnpm exec playwright install chromium
 E2E_BASE_URL=http://127.0.0.1:8080 \
@@ -58,7 +61,7 @@ pnpm test:e2e
 
 1. `test-go`：gofmt / vet / race tests。
 2. `build-go`：静态 Go build。
-3. `test-web`：Biome + Vitest。
+3. `test-web`：Biome + Vitest + contracts node:test（`packages/contracts/**/*.test.ts`，覆盖 zod 契约线上形状）。
 4. `build-web`：TypeScript + Vite + go:embed 输出。
 5. `smoke-e2e`：seed → image → compose → API/MCP auth → Playwright Chromium。
 6. `build-and-push` 仅在 main push（或仅限 main 的 workflow_dispatch）且上述门禁成功后构建双架构镜像。

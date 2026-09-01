@@ -19,6 +19,18 @@
 
 ## [Unreleased]
 
+- **修复** 限流器 sweep 语义修反：原先删掉耗干桶让被限流者一次 sweep 后 burst 满血重建，现只删已补满的空闲桶；限流 map 摊销式清扫过期 key，不再无限增长。
+- **修复** 登录锁定期间审计洪泛：原先每个 429 都写一行 `auth_events`，现锁触发瞬间记一次；改密路径补上 lockout 事件。
+- **修复** MCP 工具错误回显不再透出原始内部错误（SQL/拨号细节），技术错误降级为稳定 `internal_error`，完整错误落服务端日志。
+- **修复** 无净值历史的标的 `/api/funds/{code}/nav` 返回 `[]` 而非 `null`（前端 zod 解析不再崩）；`risk_flags`/`signal_tags`/`dca.plans` 三处 Go nil slice → JSON null 在 contracts 归一化为空数组；DCA 计算错误分支字段改可选并接 `fetchValidated`。
+- **改进** 会话过期清扫改走 `auth.Service.SweepExpired`（`jobs.AuthSessionSweeper` 接口），消除调度器裸 SQL；scheduler Stop 等待后台 loop 退出（优雅停机）；Yahoo 行情/汇率改共享 HTTP client 池。
+- **改进** 前端构建分包：主 chunk 750KB→47KB（echarts/react/tanstack/vendor 独立）；告警列表/新鲜度/净值历史收敛为共享查询与组件；分析页与总览补齐 loading/error 态；登出失败补 toast；标的芯片改真按钮（a11y）。
+- **安全** CI 修复断链 SHA pin（`pnpm/action-setup`、`softprops/action-gh-release`）；workflow_dispatch 输入改 env 间接注入；buildx 缓存按架构隔离；契约测试进 CI 门禁；dependabot 补 npm。
+- **修复** `deploy/.env.example` 移除 `FUND_BACKUP_PRODUCER_ENABLED=true` 地雷（配置解析直接拒绝启动）；compose 补 9 个代码实际读取但未透传的环境变量。
+- **重构** 三份重复的 rune-clamp 收敛到 `internal/textutil`；工具注册表校验接入生产加载路径；删除不可达的 crawl-nav legacy 适配器与 `WithClock`/`SessionMaxAge`/`SessionFromContext`/setup 限流死桶等死代码；对外文案实际去除内部代号（`source_brief`）。
+- **测试** 限流器表驱动+并发、调度器优雅停机、快照重算数学、fund-migrate 保留字标识符引用、契约包 node:test 8 例、CSV 纯函数 7 例。
+- **chore** `chi` v5.3.2；`zod` 统一 `^4.5.4`；`.dockerignore` 排除本地产物；文档路由数对齐实测。
+
 - **修复** 导出 XLSX 文件名支持中文：Content-Disposition 改 RFC 6266 双文件名（ASCII fallback + `filename*` UTF-8 百分号编码）；XLSX 生成/写盘错误不再吞掉。
 - **改进** 查询参数畸形值不再静默回落默认：`limit`/`offset`/`price_change_pct`/`drawdown_pct`/`stale_days` 返回 400 `invalid_query_param`；指数代码解码失败返回 400 `invalid_code`。
 - **chore** `.gitattributes` 补齐 css/html/svg/sql/patch/toml 与无扩展名文本文件显式 LF，防 Windows autocrlf 行尾漂移。

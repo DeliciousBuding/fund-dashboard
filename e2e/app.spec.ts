@@ -31,7 +31,9 @@ test.describe("authentication", () => {
 
     await expect(page).toHaveURL(/\/$/);
     await expect(page.locator("aside")).toBeVisible();
-    await expect(page.locator("aside").getByRole("link", { name: "总览", exact: true })).toBeVisible();
+    await expect(
+      page.locator("aside").getByRole("link", { name: "总览", exact: true }),
+    ).toBeVisible();
     await expectRouteSettled(page);
     assertNoErrors();
   });
@@ -97,7 +99,10 @@ test.describe("desktop navigation", () => {
     ] as const;
 
     for (const [label, path] of routes) {
-      await page.locator("aside").getByRole("link", { name: label, exact: true }).dispatchEvent("click");
+      await page
+        .locator("aside")
+        .getByRole("link", { name: label, exact: true })
+        .dispatchEvent("click");
       await expect(page).toHaveURL(new RegExp(`${path === "/" ? "/" : path}$`));
       await expectRouteSettled(page);
     }
