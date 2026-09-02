@@ -182,3 +182,42 @@ func TestEnsureSQLiteSchemaNoSideEffectsOnLegacyDB(t *testing.T) {
 		t.Fatalf("legacy transactions DDL changed: %s", ddl)
 	}
 }
+
+// TestEnsureSQLiteSchemaAppliesTransactionsColumnDefaults pins dialect parity
+// with schema_pg.go: an insert that omits portfolio_id and security_type must
+// land on 1 and 'fund'. That is what legacy databases already got from
+// ALTER TABLE ... ADD COLUMN portfolio_id INTEGER DEFAULT 1, and what
+// admin.Service.ImportTransactions relies on because its column list has never
+// included either field.
+func TestEnsureSQLiteSchemaAppliesTransactionsColumnDefaults(t *testing.T) {
+	ctx := context.Background()
+	dbi, err := Open(ctx, Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "defaults.db")})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer dbi.Close()
+	if err := EnsureSQLiteSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsureSQLiteSchema: %v", err)
+	}
+
+	if _, err := dbi.ExecContext(ctx, `
+		INSERT INTO transactions (order_id, trade_time, direction, fund_code, confirm_amount)
+		VALUES ('pdf-00000-019173', '2026-08-30 09:00:00', 'buy', '019173', 100)
+	`); err != nil {
+		t.Fatalf("insert transaction omitting portfolio_id/security_type: %v", err)
+	}
+
+	var portfolioID int64
+	var securityType string
+	if err := dbi.QueryRowContext(ctx,
+		`SELECT portfolio_id, security_type FROM transactions WHERE order_id = 'pdf-00000-019173'`,
+	).Scan(&portfolioID, &securityType); err != nil {
+		t.Fatalf("read back defaults: %v", err)
+	}
+	if portfolioID != 1 {
+		t.Fatalf("portfolio_id = %d, want the DEFAULT 1", portfolioID)
+	}
+	if securityType != "fund" {
+		t.Fatalf("security_type = %q, want the DEFAULT 'fund'", securityType)
+	}
+}

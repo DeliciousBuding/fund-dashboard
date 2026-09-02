@@ -73,10 +73,19 @@ RFC 8615 的路径感知 well-known 构造规定：资源为 `https://host/mcp` 
 | scope | agenttools 角色 | 可见工具面 |
 |-------|----------------|-----------|
 | `fund.read` | `analyst` | read + external_context（写/运维工具**不可见**） |
-| `fund.write` | `operator` | 追加 write + maintenance；每个写工具仍需二次确认 |
+| `fund.write` | `operator` | 追加 write + maintenance；每个写工具仍需二次确认（部署前提见下） |
 
 `fund.write` **默认不对外广告**（`FUND_OAUTH_ALLOW_WRITE_SCOPE=false`）。
 即使打开了，写作用域也强制走同意页，不会被 auto-approve。
+
+二次确认流还有一个**部署前提**：它由 AgentOps 服务提供
+（`FUND_AGENT_OPS_ENABLED=true` + `FUND_AGENT_CONFIRMATION_SECRET`，compose 需透传这两键）。
+未接线时 `app.go` 根本不构建该服务，`claimWriteConfirmation` 对每个 confirmation-gated
+工具 fail-closed 返回 `tool_denied: confirmation_service_unavailable`，因此 `tools/list`
+也**不广告**它们——广告一个永远无法成功调用的工具等于向 agent 谎报服务面，与
+「analyst 不广告写工具」是同一条原则，两处判据收敛为 `Server.confirmationCompletable()`。
+operator 静态 key 同理：接线时 44 个工具（25 read + 3 maintenance + 3 external_context
++ 13 write），未接线时 29 个（去掉 15 个 confirmation-gated），仍严格多于 analyst 的 26 个。
 
 ### 3.1 签名密钥
 

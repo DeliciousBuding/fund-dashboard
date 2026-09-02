@@ -188,3 +188,66 @@ func TestListTransactionsServerSort(t *testing.T) {
 		}
 	}
 }
+
+// TestListTransactionsIncludesNullPortfolioRowsUnderPortfolioFilter is the
+// regression guard for the production symptom: rows written by an insert path
+// that omits portfolio_id land NULL on a database created before that column
+// carried a DEFAULT. Positions kept counting them (every other portfolio-scoped
+// read uses COALESCE(portfolio_id,1)) while a strict portfolio_id = ? filter
+// hid them from the ledger, so the two views disagreed.
+func TestListTransactionsIncludesNullPortfolioRowsUnderPortfolioFilter(t *testing.T) {
+	dbi, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbi.Close()
+	for _, q := range []string{
+		`CREATE TABLE transactions (
+			seq INTEGER PRIMARY KEY AUTOINCREMENT,
+			order_id TEXT,
+			trade_time TEXT,
+			confirm_date TEXT,
+			trade_type TEXT,
+			direction TEXT,
+			fund_code TEXT,
+			fund_name TEXT,
+			confirm_amount REAL,
+			confirm_share REAL,
+			fee REAL,
+			security_type TEXT,
+			portfolio_id INTEGER
+		)`,
+		// One row explicitly in portfolio 1, one left NULL by an import that
+		// omits the column, and one that genuinely belongs to portfolio 2.
+		`INSERT INTO transactions (order_id, trade_time, direction, fund_code, fund_name, confirm_amount, portfolio_id)
+			VALUES
+			('assigned','2026-06-01T10:00:00+08:00','buy','019173','Test Fund',100,1),
+			('imported','2026-06-02T10:00:00+08:00','buy','019173','Test Fund',200,NULL),
+			('other','2026-06-03T10:00:00+08:00','buy','019173','Test Fund',300,2)`,
+	} {
+		if _, err := dbi.ExecContext(context.Background(), q); err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+	}
+
+	svc := NewService(dbi)
+	res, err := svc.ListTransactions(context.Background(), ListTransactionsOptions{PortfolioID: 1})
+	if err != nil {
+		t.Fatalf("list transactions: %v", err)
+	}
+	if res.Total != 2 || len(res.Transactions) != 2 {
+		t.Fatalf("portfolio 1 must see the assigned row and the NULL row: total=%d rows=%d", res.Total, len(res.Transactions))
+	}
+	seen := map[string]bool{}
+	for _, row := range res.Transactions {
+		if row.OrderID != nil {
+			seen[*row.OrderID] = true
+		}
+	}
+	if !seen["assigned"] || !seen["imported"] {
+		t.Fatalf("expected assigned+imported, got %v", seen)
+	}
+	if seen["other"] {
+		t.Fatal("portfolio 2 row leaked into the portfolio 1 listing")
+	}
+}

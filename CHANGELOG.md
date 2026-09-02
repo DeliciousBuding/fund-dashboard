@@ -19,6 +19,11 @@
 
 ## [Unreleased]
 
+- **修复** MCP `tools/list` 会广告永远无法执行的写工具。`FUND_AGENT_OPS_ENABLED` 未接线时 `app.go` 不构建 agentops 服务，`claimWriteConfirmation` 对每个 confirmation-gated 工具 fail-closed 返回 `tool_denied: confirmation_service_unavailable`，但 operator 静态 key 仍看到全部 44 个工具（生产实测）。现在广告面与可执行面由同一判据 `Server.confirmationCompletable()` 决定：未接线时 operator 面为 29（25 read + 3 maintenance + 1 external_context），接线后恢复 44；analyst 面 26 不变。`tools/call` 的 fail-closed 行为不变。
+- **修复** `transactions.portfolio_id` / `security_type` 的方言默认值缺失。旧 SQLite 库由 `ALTER TABLE … ADD COLUMN portfolio_id INTEGER DEFAULT 1` 取得默认值，而 PG 建表语句从未声明，于是省略这两列的插入路径（`ImportTransactions` 的列清单从来没有它们）在 PG 上写入 NULL。现在双方言建表都声明 `DEFAULT 1` / `DEFAULT 'fund'`；PG 侧另有幂等修复（回填既有 NULL + `ALTER COLUMN … SET DEFAULT`），与既有 `migratePortfolioSnapshotPK` 同风格、失败只告警不阻断启动。SQLite 侧遵循本仓既有约定「建表语句永不 ALTER 既有表」，遗留库由读侧 COALESCE 兜住。
+- **修复** 交易列表按组合过滤时用严格 `portfolio_id = ?`，与其余全部组合读路径（`snapshot.go`/`allocation.go`/`summary.go`/`detail.go`/`adjust_position.go`）的 `COALESCE(portfolio_id,1)` 不一致：NULL 行在持仓里被计入、却在流水里被隐藏，两个视图互相矛盾（生产实测 85 笔导入交易因此从流水消失）。改为 COALESCE 对齐。
+- **测试** 新增 7 例：未接线 AgentOps 时的 operator 广告面（含接线后对照与「仍严格多于 analyst」）、PG 建表默认值 pin、遗留库回填与默认值声明的先后顺序、幂等（已迁移形态零副作用）、探测失败降级为告警不阻断启动、SQLite 默认值真的落库、流水列表在组合过滤下包含 NULL 行且不串组合。`scripts/smoke-oauth.sh` 的 operator 断言改为按 `FUND_AGENT_OPS_ENABLED` 分支，两种部署形态都成立。
+
 - **新功能** OAuth 2.1 授权服务器（`internal/oauth`）：远程 MCP 客户端（ChatGPT 自定义连接器 / Claude / Cursor）可用标准授权码 + PKCE(S256) 接入 `/mcp`，不再需要外发静态 key。含 RFC 9728 / RFC 8414 发现文档（两套 well-known 路径形式 + OIDC 别名）、RFC 7591 动态注册、OpenAI client-id 元数据文档（CIMD，主机白名单 + SSRF 防护）、RFC 7009 撤销、ES256 JWT（`aud` 绑定 MCP 资源 URL）与 JWKS。
 - **新功能** 「跳转网站登录后即授权成功」：`/oauth/authorize` 无会话时 302 到 `/login?next=…`（保留 PKCE challenge 等全部原始参数），SPA 登录成功后整页回跳；只读作用域 + 已登录默认免同意页（`FUND_OAUTH_AUTO_APPROVE=true`）。写作用域强制显示服务端渲染同意页（零 JS、零内联样式，符合既有 CSP）。
 - **改进** 首次授权显示同意页，之后静默：`/oauth/authorize` 对**未批准过的 client** 先渲染同意页（显示连接器名称与作用域），所有者批准一次后，同一 client + 同一作用域的后续授权恢复「登录即通过」。理由：动态注册是开放的（RFC 7591），任何人都能取得 `client_id` 并造一条指向本站 `/oauth/authorize` 的可信看似链接；若首次即静默发码，所有者一旦登录就把只读组合数据交给了陌生客户端。`FUND_OAUTH_AUTO_APPROVE` 语义相应变为「允许对已批准 client 静默重授权」（仍默认 true）。

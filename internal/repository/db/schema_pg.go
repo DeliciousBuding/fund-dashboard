@@ -25,6 +25,7 @@ func EnsurePGSchema(ctx context.Context, db *sql.DB) error {
 		// do not fail boot — import/DCA still use WHERE NOT EXISTS
 		slog.Warn("pg unique index transactions(order_id,fund_code) skipped", "error", err)
 	}
+	migrateTransactionsDefaults(ctx, db)
 	migratePortfolioSnapshotPK(ctx, db)
 	return nil
 }
@@ -89,6 +90,66 @@ func migratePortfolioSnapshotPK(ctx context.Context, db *sql.DB) {
 		return
 	}
 	slog.Info("portfolio_snapshot primary key is (fund_code, portfolio_id)")
+}
+
+// migrateTransactionsDefaults declares the transactions.portfolio_id and
+// transactions.security_type defaults on databases created before the CREATE
+// TABLE above carried them, and backfills rows already written as NULL.
+//
+// Legacy SQLite databases got these defaults from
+// ALTER TABLE transactions ADD COLUMN portfolio_id INTEGER DEFAULT 1; the PG
+// side never had an equivalent, so insert paths that legitimately omit both
+// columns -- admin.Service.ImportTransactions has never listed them -- wrote
+// NULL. Most reads defend with COALESCE(portfolio_id,1) and stay correct, but a
+// strict portfolio_id = ? filter silently hides those rows from the transaction
+// list. CREATE TABLE IF NOT EXISTS never alters an existing table, hence this
+// repair. Best-effort and idempotent, like migratePortfolioSnapshotPK: a
+// failure must never block boot.
+func migrateTransactionsDefaults(ctx context.Context, db *sql.DB) {
+	var portfolioDefault, securityDefault sql.NullString
+	if err := db.QueryRowContext(ctx, `
+		SELECT MAX(column_default) FILTER (WHERE column_name = 'portfolio_id'),
+		       MAX(column_default) FILTER (WHERE column_name = 'security_type')
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'transactions'
+	`).Scan(&portfolioDefault, &securityDefault); err != nil {
+		slog.Warn("transactions column default probe skipped", "error", err)
+		return
+	}
+	var nulls int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM transactions WHERE portfolio_id IS NULL OR security_type IS NULL`,
+	).Scan(&nulls); err != nil {
+		slog.Warn("transactions null probe skipped", "error", err)
+		return
+	}
+	if portfolioDefault.Valid && securityDefault.Valid && nulls == 0 {
+		return
+	}
+	if nulls > 0 {
+		if _, err := db.ExecContext(ctx, `UPDATE transactions SET portfolio_id = 1 WHERE portfolio_id IS NULL`); err != nil {
+			slog.Warn("transactions null portfolio_id fill skipped", "error", err)
+			return
+		}
+		if _, err := db.ExecContext(ctx, `UPDATE transactions SET security_type = 'fund' WHERE security_type IS NULL`); err != nil {
+			slog.Warn("transactions null security_type fill skipped", "error", err)
+			return
+		}
+		slog.Info("transactions null portfolio_id/security_type backfilled", "rows", nulls)
+	}
+	if !portfolioDefault.Valid {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE transactions ALTER COLUMN portfolio_id SET DEFAULT 1`); err != nil {
+			slog.Warn("transactions portfolio_id default skipped", "error", err)
+			return
+		}
+	}
+	if !securityDefault.Valid {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE transactions ALTER COLUMN security_type SET DEFAULT 'fund'`); err != nil {
+			slog.Warn("transactions security_type default skipped", "error", err)
+			return
+		}
+	}
+	slog.Info("transactions portfolio_id/security_type defaults declared")
 }
 
 var pgSchemaStatements = []string{
@@ -421,8 +482,8 @@ var pgSchemaStatements = []string{
 		export_seq BIGINT,
 		settlement_days BIGINT,
 		anomaly TEXT,
-		security_type TEXT,
-		portfolio_id BIGINT,
+		security_type TEXT DEFAULT 'fund',
+		portfolio_id BIGINT DEFAULT 1,
 		PRIMARY KEY (seq)
 	)`,
 

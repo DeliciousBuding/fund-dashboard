@@ -349,15 +349,23 @@ func TestMCPStaticKeysStillWork(t *testing.T) {
 	if len(adminTools) <= len(publicTools) {
 		t.Fatalf("operator (%d) must see more tools than analyst (%d)", len(adminTools), len(publicTools))
 	}
-	// The operator must still see write tools.
-	sawWrite := false
+	// This env wires no AgentOps, which is how a deployment without
+	// FUND_AGENT_OPS_ENABLED boots. Confirmation-gated tools can never succeed
+	// there, so they must not be advertised; the operator is still strictly
+	// ahead of the analyst because it keeps the maintenance scope. The wired
+	// case (operator does see write tools) is pinned by
+	// TestListToolsHidesConfirmationGatedToolsWithoutAgentOps in internal/mcp.
+	sawMaintenance := false
 	for _, entry := range adminTools {
-		if entry.(map[string]any)["name"] == "add_transaction" {
-			sawWrite = true
+		switch entry.(map[string]any)["name"] {
+		case "add_transaction", "import_transactions", "delete_transaction":
+			t.Fatalf("operator key is advertised confirmation-gated %q without AgentOps", entry.(map[string]any)["name"])
+		case "crawl_nav":
+			sawMaintenance = true
 		}
 	}
-	if !sawWrite {
-		t.Fatal("operator key lost access to write tools")
+	if !sawMaintenance {
+		t.Fatal("operator key lost the maintenance scope that distinguishes it from the analyst")
 	}
 
 	// A read call under the legacy key must still succeed and keep the shape an

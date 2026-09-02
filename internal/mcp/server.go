@@ -217,9 +217,15 @@ func (s *Server) listTools() map[string]any {
 		if !agenttools.RoleAllowsScope(s.role, tool.Capability.Scope) {
 			continue
 		}
-		// Non-operators cannot complete confirmation flows (AgentOps is operator-only).
-		// Do not advertise confirmation-gated tools they can never successfully call.
-		if s.role != agenttools.RoleOperator &&
+		// Confirmation-gated tools are advertised only when the confirmation flow
+		// can actually be completed. Two independent things can make it
+		// impossible: the caller is not an operator (AgentOps is operator-only),
+		// or AgentOps is not wired at all -- FUND_AGENT_OPS_ENABLED unset means
+		// app.go never builds the service, and claimWriteConfirmation then fails
+		// every gated call closed with confirmation_service_unavailable. Either
+		// way such a tool can never succeed, so advertising it would misreport
+		// this server's capability surface to the agent.
+		if !s.confirmationCompletable() &&
 			(tool.Capability.Permission == agenttools.PermissionRequiresConfirmation || tool.Confirmation.Required) {
 			continue
 		}
@@ -235,6 +241,14 @@ func (s *Server) listTools() map[string]any {
 		})
 	}
 	return map[string]any{"tools": tools}
+}
+
+// confirmationCompletable reports whether a confirmation-gated tool call could
+// succeed on this server. It is the single source of truth for the listTools
+// advertisement guard, so the advertised surface and the executable surface
+// cannot drift apart.
+func (s *Server) confirmationCompletable() bool {
+	return s.agentOps != nil && s.role == agenttools.RoleOperator
 }
 
 // implementedMCPTools is the SSOT for tools/call switch cases below.

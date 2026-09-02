@@ -54,5 +54,16 @@ every token and must never be derived from a proxied `Host` header. Optional
 depending on deployment shape: `PUBLIC_MCP_KEY` (MCP analyst, read-only),
 `FUND_EDGE_KEY` (frontend mutation key injected by the edge proxy), and the
 `FUND_OAUTH_*` connector knobs (all defaulted; see the OAuth block in
-`.env.example`). All are placeholders in `.env.example`; real values must never be
-committed.
+`.env.example`).
+
+The MCP **write** surface additionally requires AgentOps: set both
+`FUND_AGENT_OPS_ENABLED=true` and `FUND_AGENT_CONFIRMATION_SECRET`
+(`openssl rand -hex 32`). Production refuses to boot when the flag is on and the
+secret is missing or weak, **and** your compose file must actually pass both keys
+into the container — `deploy/docker-compose.yml` does, a hand-written compose can
+silently drop them, which is how a deployment ends up advertising write tools it
+can never execute. Leaving the flag unset is fail-closed rather than broken: the
+15 confirmation-gated tools are simply not advertised in `tools/list`, so the
+operator surface is 29 tools instead of 44 while the analyst surface stays at 26.
+
+All are placeholders in `.env.example`; real values must never be committed.
