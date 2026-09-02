@@ -87,7 +87,11 @@ func TestServiceGetHarnessSnapshotReturnsFactsOnlyAgentContext(t *testing.T) {
 		t.Fatalf("AgentBrief = %q, want public read-only boundary", snapshot.AgentBrief)
 	}
 
-	// Operator audience restores full discovery surface.
+	// Operator audience restores full discovery surface. This is the wired deployment:
+	// FUND_AGENT_OPS_ENABLED set, so the confirmation flow can complete and the gated
+	// tools are honestly advertised. The unwired shape is asserted in
+	// harness_availability_test.go and, across surfaces, in internal/mcp.
+	service.SetConfirmationFlowAvailable(true)
 	op, err := service.GetHarnessSnapshotFor(context.Background(), 1, HarnessAudienceOperator)
 	if err != nil {
 		t.Fatalf("GetHarnessSnapshotFor operator: %v", err)

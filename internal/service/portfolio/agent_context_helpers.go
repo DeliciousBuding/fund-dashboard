@@ -27,18 +27,23 @@ func registryAgentCapabilities() []AgentCapability {
 }
 
 // agentContextDiscovery selects capability/permission surfaces by audience.
-// Public HTTP must not leak write/maintenance/confirmation tool names (#65).
-func agentContextDiscovery(audience HarnessAudience) ([]AgentCapability, AgentPermissions) {
+// Public HTTP must not leak write/maintenance/confirmation tool names (#65); operator
+// additionally loses anything this deployment cannot execute (harness_availability.go).
+func agentContextDiscovery(audience HarnessAudience, confirmationsAvailable bool) ([]AgentCapability, AgentPermissions) {
 	if audience == HarnessAudienceOperator {
-		return registryAgentCapabilities(), defaultAgentPermissions()
+		return capabilitiesWithConfirmationAvailability(registryAgentCapabilities(), confirmationsAvailable),
+			permissionsWithConfirmationAvailability(defaultAgentPermissions(), confirmationsAvailable)
 	}
 	return publicAgentCapabilities(), publicAgentPermissions()
 }
 
-func buildAgentContextBrief(portfolioID, holdingsCount, qualityScore int, qualityLevel string, unread int, audience HarnessAudience) string {
+func buildAgentContextBrief(portfolioID, holdingsCount, qualityScore int, qualityLevel string, unread int, audience HarnessAudience, confirmationsAvailable bool) string {
 	boundary := "Permissions and disabled operations are embedded; backup producer remains disabled."
-	if audience != HarnessAudienceOperator {
+	switch {
+	case audience != HarnessAudienceOperator:
 		boundary = "Public discovery is read-only; write/maintenance/confirmation-gated tools are not advertised; backup producer remains disabled."
+	case !confirmationsAvailable:
+		boundary = "Permissions and disabled operations are embedded; confirmation-gated writes are unavailable because the AgentOps confirmation service is not wired; backup producer remains disabled."
 	}
 	return fmt.Sprintf(
 		"AgentContextPack facts only: portfolio %d has %d holdings, quality %d/%s, %d unread source events. %s",

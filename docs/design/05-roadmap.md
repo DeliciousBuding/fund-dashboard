@@ -88,6 +88,7 @@ session 化 `/api/system/*` 工作台 API（状态/任务/审计/爬虫触发）
 | 快照重算三处近重复实现 | 抽取共享实现（顺手做，不阻塞） | W4 |
 | 全局环境变量散落 `os.Getenv` | 收编进 config.Parse（顺手做） | W1 |
 | CHANGELOG 无正式版本段 / 仓库 0 tags | 首个版本发版时按 release.sh 约定切段（**需管理员批准**） | W7 文档收口 |
+| harness 的 `agentCapabilities` 字面量与 agenttools 注册表文案漂移（46 条里 35 条 `UseFor`/`Permission` 措辞不同，另缺 `cash_transfer` 这条 disabled 边界项；注册表推导结果为 47 条） | **名单**已由 `TestAvailableAgentToolsMatchesRegistrySSOT` pin 住、gated 集合已改为注册表推导；把 capability 文案也统一走 `registryAgentCapabilities()` 会改变 `agent_capabilities` 载荷内容，单独一轮做 | backlog |
 
 ## 风险与回滚
 

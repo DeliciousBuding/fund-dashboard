@@ -1,7 +1,7 @@
 # Fund Dashboard — Architecture
 
 > 基金 + 股票投资数据可视化与分析平台  
-> 最后更新：2026-08-30  
+> 最后更新：2026-09-03  
 > 版本：v4 — monorepo（`web/` 内嵌 SPA）+ session 鉴权 + 公网暴露加固
 > 设计与波次定档见 [`docs/design/`](design/README.md)。
 
@@ -89,7 +89,7 @@ internal/httpapi / internal/mcp ── 对外暴露
 | `/oauth/authorize`、`/oauth/consent` | 浏览器面：复用 `fund_session` cookie；无会话 → 302 `/login?next=…`。**首次授权某 client 必过同意页**（开放注册下 client_id 不可信），批准后按 `(client_id, scope)` 记入 `oauth_client_consents`，此后只读授权静默发码；同意页带一次性 `consent_token`（10min、单次消费） |
 | `/oauth/token`、`/oauth/register`、`/oauth/revoke` | 匿名（公有客户端 + PKCE S256，服务端不发也不收 client secret），per-IP 限流 |
 | `/oauth/jwks`、`/oauth/about` | 匿名（只发布公钥） |
-| MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`）。确认流由 AgentOps 服务提供（`FUND_AGENT_OPS_ENABLED=true` + `FUND_AGENT_CONFIRMATION_SECRET`，且 compose 必须透传这两键）；**未接线时这些工具不出现在 `tools/list`**——广告一个永远失败的能力等于向 agent 谎报服务面，与「analyst 不广告写工具」是同一条 fail-closed 原则 |
+| MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`）。确认流由 AgentOps 服务提供（`FUND_AGENT_OPS_ENABLED=true` + `FUND_AGENT_CONFIRMATION_SECRET`，且 compose 必须透传这两键）；**未接线时这些工具不出现在 `tools/list`**——广告一个永远失败的能力等于向 agent 谎报服务面，与「analyst 不广告写工具」是同一条 fail-closed 原则。同一条判据也约束另外两条**带内广告面**——`get_investment_harness_snapshot` 的 `available_agent_tools` 与 agent-context pack：agent 有三条途径了解服务面，任一条谎报都会让它去调一个永远失败的工具（实现 `internal/service/portfolio/harness_availability.go`，接线事实由 `httpapi.NewRouter` 启动时下发；`internal/mcp` 有三面一致性 pin 测试） |
 | `/api/health` | 匿名 |
 
 作用域 → 角色映射只有一处（`oauth.RoleForScopes` + `httpapi.mapOAuthRole`）：`fund.read` → analyst（写/运维工具在 `tools/list` 中**不可见**），`fund.write` → operator（默认不广告，由 `FUND_OAUTH_ALLOW_WRITE_SCOPE` 控制）。

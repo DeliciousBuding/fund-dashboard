@@ -63,7 +63,10 @@ secret is missing or weak, **and** your compose file must actually pass both key
 into the container — `deploy/docker-compose.yml` does, a hand-written compose can
 silently drop them, which is how a deployment ends up advertising write tools it
 can never execute. Leaving the flag unset is fail-closed rather than broken: the
-15 confirmation-gated tools are simply not advertised in `tools/list`, so the
-operator surface is 29 tools instead of 44 while the analyst surface stays at 26.
+15 confirmation-gated tools are then advertised **nowhere** — not in `tools/list`, not in
+`get_investment_harness_snapshot`, not in the agent-context pack — so the operator surface
+is 29 tools instead of 44 while the analyst surface stays at 26, and the harness states the
+reason in `disabled_operations` (`confirmation_gated_tools_unwired`) instead of leaving an
+agent to guess whether the tool is missing, forbidden, or broken.
 
 All are placeholders in `.env.example`; real values must never be committed.
