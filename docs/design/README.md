@@ -15,6 +15,7 @@
 | [04-auth-security.md](04-auth-security.md) | 登录鉴权与安全：session 设计、表结构、CSRF、限流、CSP、MCP 共存矩阵 |
 | [05-roadmap.md](05-roadmap.md) | 实施波次 W0–W7、验收标准、仓库整理清单、技术债登记 |
 | [06-security-hardening.md](06-security-hardening.md) | 公网暴露加固（W1.6）：威胁模型、递增锁定、auth 审计、全 API 限流、可信代理、工作台系统 API |
+| [07-oauth-mcp-connector.md](07-oauth-mcp-connector.md) | OAuth 2.1 授权服务器：远程 MCP 连接器（ChatGPT/Claude/Cursor）接入、发现端点、PKCE、作用域→角色映射、威胁模型与静态 key 兼容边界 |
 
 ## 决策速览
 
@@ -31,6 +32,7 @@
 | D9 | **MCP 保持手写 JSON-RPC**（44 工具生产在跑），修 spec 兼容；官方 Go SDK 迁移进 backlog | 不为正确性之外的动机重写已验证面 |
 | D10 | 范围纪律：**不做**多用户/注册/SaaS 化/券商下单/PG 新增投入 | 单租户边界写死在产品层，防 scope creep |
 | D11 | **公网直接暴露**为正式部署形态：安全按互联网面标准（W1.6），TLS 由边缘终止 | 用户明确要求；加固包与系统审计随之上马 |
+| D12 | **自建 OAuth 2.1 授权服务器**（授权码 + PKCE S256、公有客户端、ES256 JWT），复用现有 Web 会话作资源所有者认证；静态 MCP key 双轨保留 | 单租户接外部 IdP 不划算；连接器走标准发现流程，静态 key 接不上；`MCP_API_KEY` 是既有 operator 消费者在用的契约，不可动 |
 
 ## 关键测绘事实（设计依据摘要）
 
