@@ -87,8 +87,25 @@ func registerStaticRoutes(r interface{ NotFound(http.HandlerFunc) }, staticFS fs
 	})
 }
 
+// isAPIRoute reports whether a path belongs to the machine-facing surface.
+//
+// These paths must never fall through to the SPA HTML shell: a JSON client that
+// receives index.html with HTTP 200 cannot distinguish "endpoint missing" from
+// "endpoint returned garbage", which is exactly how an MCP connector ends up
+// concluding a server has no auth. /oauth/* and /.well-known/* are listed even
+// though they are registered explicitly, so an unmounted OAuth deployment still
+// answers 404 JSON instead of the SPA.
 func isAPIRoute(requestPath string) bool {
-	return strings.HasPrefix(requestPath, "/api/") || requestPath == "/api" || requestPath == "/mcp"
+	switch {
+	case strings.HasPrefix(requestPath, "/api/"), requestPath == "/api":
+		return true
+	case requestPath == "/mcp", strings.HasPrefix(requestPath, "/mcp/"):
+		return true
+	case strings.HasPrefix(requestPath, "/oauth"), strings.HasPrefix(requestPath, "/.well-known"):
+		return true
+	default:
+		return false
+	}
 }
 
 func cleanStaticPath(requestPath string) (string, bool) {

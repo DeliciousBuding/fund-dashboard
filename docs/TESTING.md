@@ -38,6 +38,10 @@ pnpm -C web build
 # Contracts (zod SSOT) wire-shape tests — node:test, no extra deps
 node --test "packages/contracts/**/*.test.ts"
 
+# OAuth / MCP 连接器端到端冒烟（11 节 58 项断言）：先起一个实例
+MCP_API_KEY=ci-test-key PUBLIC_MCP_KEY=ci-public-key \
+  ./scripts/smoke-oauth.sh http://localhost:8080 ci-smoke-password-1
+
 # 浏览器 E2E：先启动 deploy/docker-compose.ci.yml，密码与环境变量一致
 pnpm exec playwright install chromium
 E2E_BASE_URL=http://127.0.0.1:8080 \
@@ -50,7 +54,8 @@ pnpm test:e2e
 | 场景 | 跑什么 |
 |------|--------|
 | 改 Go service / jobs | `go test ./...` 或包级 `go test ./internal/...` |
-| 改鉴权 / MCP 合同 | Go contract tests + container smoke |
+| 改鉴权 / MCP 合同 | Go contract tests + `scripts/smoke-oauth.sh` + container smoke |
+| 改 OAuth / 连接器发现 | `go test ./internal/oauth/ ./internal/httpapi/` + `scripts/smoke-oauth.sh`（discovery 两套路径形式、SPA fallback 不吞 well-known、PKCE、码单次使用、刷新轮换、静态 key 回归） |
 | 改前端路由 / 壳 / 登录 | Vitest + web build + Playwright |
 | 改 Dockerfile / CI 入口 | 完整 `smoke-e2e` |
 | 改生产部署 | 私有运维 smoke + 四层 POSTCHECK |
@@ -63,7 +68,7 @@ pnpm test:e2e
 2. `build-go`：静态 Go build。
 3. `test-web`：Biome + Vitest + contracts node:test（`packages/contracts/**/*.test.ts`，覆盖 zod 契约线上形状）。
 4. `build-web`：TypeScript + Vite + go:embed 输出。
-5. `smoke-e2e`：seed → image → compose → API/MCP auth → Playwright Chromium。
+5. `smoke-e2e`：seed → image → compose → API/MCP auth → **OAuth MCP connector smoke**（`scripts/smoke-oauth.sh`）→ Playwright Chromium。
 6. `build-and-push` 仅在 main push（或仅限 main 的 workflow_dispatch）且上述门禁成功后构建双架构镜像。
 
 Playwright 失败时上传 `test-results/`（trace / screenshot / video / HTML report），保留 7 天。

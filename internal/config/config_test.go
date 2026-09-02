@@ -183,9 +183,10 @@ func TestParseProductionRequiresStrongSecrets(t *testing.T) {
 
 	t.Run("accepts strong keys", func(t *testing.T) {
 		cfg, err := Parse(map[string]string{
-			"FUND_ENV":      "production",
-			"MCP_API_KEY":   strongAdmin,
-			"FUND_EDGE_KEY": strongEdge,
+			"FUND_ENV":             "production",
+			"MCP_API_KEY":          strongAdmin,
+			"FUND_EDGE_KEY":        strongEdge,
+			"FUND_ALLOWED_ORIGINS": "https://fund.example.com",
 		})
 		if err != nil {
 			t.Fatalf("Parse returned error: %v", err)
@@ -197,9 +198,10 @@ func TestParseProductionRequiresStrongSecrets(t *testing.T) {
 
 	t.Run("accepts prod alias", func(t *testing.T) {
 		_, err := Parse(map[string]string{
-			"FUND_ENV":      "prod",
-			"MCP_API_KEY":   strongAdmin,
-			"FUND_EDGE_KEY": strongEdge,
+			"FUND_ENV":             "prod",
+			"MCP_API_KEY":          strongAdmin,
+			"FUND_EDGE_KEY":        strongEdge,
+			"FUND_ALLOWED_ORIGINS": "https://fund.example.com",
 		})
 		if err != nil {
 			t.Fatalf("Parse returned error for FUND_ENV=prod: %v", err)
@@ -268,6 +270,7 @@ func TestParseProductionRequiresStrongSecrets(t *testing.T) {
 			"FUND_EDGE_KEY":                  strongEdge,
 			"FUND_AGENT_OPS_ENABLED":         "true",
 			"FUND_AGENT_CONFIRMATION_SECRET": strongAgent,
+			"FUND_ALLOWED_ORIGINS":           "https://fund.example.com",
 		})
 		if err != nil {
 			t.Fatalf("Parse returned error: %v", err)

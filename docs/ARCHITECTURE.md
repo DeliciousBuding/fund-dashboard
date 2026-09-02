@@ -83,11 +83,17 @@ internal/httpapi / internal/mcp ── 对外暴露
 | 浏览器写路径 | session + `X-Fund-Request` CSRF 头 + Origin 白名单；EdgeKey 为可选兼容层 |
 | `/api/system/*` 工作台 | 读走 SessionAuth，写走 session + CSRF（二次确认在 UI 层） |
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY`（空 key fail-closed） |
-| `/mcp` | `MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst），per-key 限流 |
+| `/mcp` | 静态 key：`MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst），per-key 限流；**或** OAuth 访问令牌（ES256 JWT，`aud` 绑定 `<issuer>/mcp`），per-IP 限流 |
+| `/.well-known/oauth-*`、`/.well-known/openid-configuration` | 匿名（发现文档按定义公开）；**必须先于 SPA fallback 注册**，否则返回 200+HTML 会让客户端静默判定「无认证」 |
+| `/oauth/authorize`、`/oauth/consent` | 浏览器面：复用 `fund_session` cookie；无会话 → 302 `/login?next=…`。同意页带一次性 `consent_token`（10min、单次消费） |
+| `/oauth/token`、`/oauth/register`、`/oauth/revoke` | 匿名（公有客户端 + PKCE S256，服务端不发也不收 client secret），per-IP 限流 |
+| `/oauth/jwks`、`/oauth/about` | 匿名（只发布公钥） |
 | MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`） |
 | `/api/health` | 匿名 |
 
-审计：`auth_events`（登录/锁定/改密/会话，180d 清扫）与 `agent_audit_events`（工具调用，90d 清扫）双流，工作台 `/system/audit` 合并时间线。公网加固细节见 `docs/design/06`。
+作用域 → 角色映射只有一处（`oauth.RoleForScopes` + `httpapi.mapOAuthRole`）：`fund.read` → analyst（写/运维工具在 `tools/list` 中**不可见**），`fund.write` → operator（默认不广告，由 `FUND_OAUTH_ALLOW_WRITE_SCOPE` 控制）。
+
+审计：`auth_events`（登录/锁定/改密/会话，180d 清扫）与 `agent_audit_events`（工具调用，90d 清扫）双流，工作台 `/system/audit` 合并时间线。公网加固细节见 `docs/design/06`；OAuth 授权服务器与连接器接入见 `docs/design/07`。
 
 ## 5. 数据模型
 

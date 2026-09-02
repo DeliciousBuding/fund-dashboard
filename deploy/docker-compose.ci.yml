@@ -13,6 +13,7 @@ services:
       - FUND_DB_PATH=/app/data/fund.db
       - FUND_HTTP_ADDR=0.0.0.0:8765
       - FUND_ENV=ci
+      - FUND_PUBLIC_BASE_URL=http://localhost:${WEB_PORT:-8080}
       - MCP_API_KEY=ci-test-key
       - PUBLIC_MCP_KEY=ci-public-key
       - FUND_EDGE_KEY=ci-edge-key

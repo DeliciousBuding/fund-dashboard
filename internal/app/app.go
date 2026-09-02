@@ -20,6 +20,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
 	"github.com/DeliciousBuding/fund-dashboard/internal/httpapi"
 	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
+	"github.com/DeliciousBuding/fund-dashboard/internal/oauth"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/agentstate"
 	"github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	"github.com/DeliciousBuding/fund-dashboard/internal/webui"
@@ -179,6 +180,34 @@ func buildWithDB(ctx context.Context, cfg config.Config, driver string, dbase *s
 	// Workspace system API: scheduler runtime snapshot for /api/system/jobs.
 	options = append(options, httpapi.WithJobStatus(scheduler.StatusSnapshot))
 
+	// ── OAuth 2.1 authorization server (remote MCP connectors) ────────
+	// Lets ChatGPT/Claude/Cursor authenticate to /mcp with scoped bearer tokens
+	// instead of a shared static key. Static MCP_API_KEY / PUBLIC_MCP_KEY auth is
+	// untouched, so existing operators keep working through the same endpoint.
+	if cfg.OAuthEnabled {
+		oauthStore := oauth.NewStore(dbase)
+		if driver != "pg" {
+			if err := oauthStore.EnsureSchema(ctx); err != nil {
+				return nil, fmt.Errorf("ensure oauth schema: %w", err)
+			}
+		}
+		oauthSvc := oauth.NewService(oauthStore, oauth.Options{
+			PublicBaseURL:   cfg.OAuthPublicBaseURL,
+			SigningKeyPEM:   cfg.OAuthSigningKey,
+			AccessTTL:       cfg.OAuthAccessTTL,
+			RefreshTTL:      cfg.OAuthRefreshTTL,
+			CodeTTL:         cfg.OAuthCodeTTL,
+			AutoApprove:     cfg.OAuthAutoApprove,
+			AllowWriteScope: cfg.OAuthAllowWriteScope,
+			CIMDHosts:       cfg.OAuthCIMDHosts,
+		})
+		// Resolved at boot rather than lazily so a bad FUND_OAUTH_SIGNING_KEY fails
+		// startup loudly instead of turning every later token request into a 500.
+		if err := oauthSvc.EnsureSigningKey(ctx); err != nil {
+			return nil, fmt.Errorf("oauth signing key: %w", err)
+		}
+		options = append(options, httpapi.WithOAuth(oauthSvc))
+	}
 	handler := httpapi.NewRouter(cfg, options...)
 	scheduler.Start()
 

@@ -31,11 +31,13 @@
 | 面 | 鉴权 | 说明 |
 |----|------|------|
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY` | 空 key fail-closed |
-| `/mcp` | `MCP_API_KEY` → Operator；`PUBLIC_MCP_KEY` → Analyst | 双空 fail-closed |
+| `/mcp` | 静态 key：`MCP_API_KEY` → Operator；`PUBLIC_MCP_KEY` → Analyst。**或** OAuth 访问令牌（ES256 JWT，`aud` = `<issuer>/mcp`）：`fund.read` → Analyst，`fund.write` → Operator | 双空且 OAuth 关闭时 fail-closed；作用域→角色映射单一来源（`oauth.RoleForScopes`），设计见 `docs/design/07` |
+| `/.well-known/oauth-*`、`/oauth/token|register|revoke|jwks|about` | 匿名（发现文档按定义公开；公有客户端 + PKCE S256，服务端不发也不收 client secret） | **必须先于 SPA fallback 注册**，否则返回 200+HTML 会让连接器静默判定「无认证」；per-IP 限流 `FUND_OAUTH_RPM`，discovery 不计入 |
+| `/oauth/authorize`、`/oauth/consent` | 复用 `fund_session` cookie；无会话 → 302 `/login?next=…`（回跳目标规范化后二次校验 `/oauth/` 前缀） | 同意页带一次性 `consent_token`（10min、单次消费），零 JS / 零内联样式以符合既有 CSP |
 | MCP 写工具 | `confirmation_id` + `confirmation_token` | **拒绝** bare `confirmed=true` |
 | 浏览器读/写 | session cookie（argon2id 登录，滑动续约）；写加 `X-Fund-Request` 头 + Origin 白名单 | 设计见 `docs/design/04` |
 | 前端写路径（兼容层） | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） | 浏览器 JS 不持 key |
-| 全 `/api/*` | per-IP 限流（`FUND_API_RPM`）；`/mcp` per-key（`FUND_MCP_RPM`） | 公网加固见 `docs/design/06` |
+| 全 `/api/*` | per-IP 限流（`FUND_API_RPM`）；`/mcp` per-key（`FUND_MCP_RPM`）；`/oauth/*` per-IP（`FUND_OAUTH_RPM`） | 公网加固见 `docs/design/06` |
 | `/api/health` | 匿名 | 生产省略 version |
 
 ## 禁止事项

@@ -58,6 +58,41 @@ type Config struct {
 	APIRPM int
 	// MCPRPM caps per-key MCP requests per minute (FUND_MCP_RPM, default 120).
 	MCPRPM int
+	// OAuthRPM caps per-IP OAuth endpoint requests per minute
+	// (FUND_OAUTH_RPM, default 60). The discovery documents sit outside this
+	// bucket so a metadata probe can never be starved by a brute-force scan.
+	OAuthRPM int
+	// ── OAuth 2.1 authorization server (MCP connectors) ─────────────────
+	// OAuthEnabled switches on the /.well-known discovery documents and the
+	// /oauth/* endpoints (FUND_OAUTH_ENABLED, default true). Static MCP key auth
+	// is unaffected either way.
+	OAuthEnabled bool
+	// OAuthPublicBaseURL is the externally visible origin advertised in metadata
+	// and bound into every access token (FUND_PUBLIC_BASE_URL). Production must
+	// set it: deriving the issuer from the Host header behind a proxy is not
+	// trustworthy.
+	OAuthPublicBaseURL string
+	// OAuthSigningKey optionally pins the ES256 private key as PKCS#8 PEM
+	// (FUND_OAUTH_SIGNING_KEY). When empty a key is generated once and persisted
+	// in the database, so a deployment needs no key ceremony.
+	OAuthSigningKey string
+	// OAuthAccessTTL / OAuthRefreshTTL / OAuthCodeTTL tune token lifetimes
+	// (defaults 1h / 720h / 60s).
+	OAuthAccessTTL  time.Duration
+	OAuthRefreshTTL time.Duration
+	OAuthCodeTTL    time.Duration
+	// OAuthAutoApprove skips the consent screen for read-only grants when the
+	// owner already holds a dashboard session (FUND_OAUTH_AUTO_APPROVE, default
+	// true) — "log in and authorization succeeds".
+	OAuthAutoApprove bool
+	// OAuthAllowWriteScope advertises and honours fund.write → operator
+	// (FUND_OAUTH_ALLOW_WRITE_SCOPE, default false). Off by default so a
+	// connector cannot obtain write powers unless an operator enables it.
+	OAuthAllowWriteScope bool
+	// OAuthCIMDHosts allowlists hosts whose client-id metadata documents may be
+	// fetched (FUND_OAUTH_CIMD_HOSTS, default "chatgpt.com"). This is an SSRF
+	// guard: a client_id outside the allowlist is never dereferenced.
+	OAuthCIMDHosts []string
 	// TrustedProxies is the FUND_TRUSTED_PROXIES CIDR allowlist. When non-empty,
 	// X-Forwarded-For is only trusted from direct peers inside these networks
 	// (design 06 §2.4). Nil means no allowlist is configured: X-Forwarded-For is
@@ -89,8 +124,19 @@ func Parse(env map[string]string) (Config, error) {
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
 		APIRPM:            parseRPM(env["FUND_API_RPM"], "FUND_API_RPM", 600),
 		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], "FUND_MCP_RPM", 120),
+		OAuthRPM:          parseRPM(env["FUND_OAUTH_RPM"], "FUND_OAUTH_RPM", 60),
 		TrustedProxies:    parseTrustedProxies(env["FUND_TRUSTED_PROXIES"]),
-		raw:               copyMap(env),
+
+		OAuthEnabled:         parseBoolEnvDefault(env["FUND_OAUTH_ENABLED"], "FUND_OAUTH_ENABLED", true),
+		OAuthPublicBaseURL:   strings.TrimRight(strings.TrimSpace(env["FUND_PUBLIC_BASE_URL"]), "/"),
+		OAuthSigningKey:      strings.TrimSpace(env["FUND_OAUTH_SIGNING_KEY"]),
+		OAuthAccessTTL:       parseDurationEnv(env["FUND_OAUTH_ACCESS_TTL"], "FUND_OAUTH_ACCESS_TTL", time.Hour),
+		OAuthRefreshTTL:      parseDurationEnv(env["FUND_OAUTH_REFRESH_TTL"], "FUND_OAUTH_REFRESH_TTL", 720*time.Hour),
+		OAuthCodeTTL:         parseDurationEnv(env["FUND_OAUTH_CODE_TTL"], "FUND_OAUTH_CODE_TTL", time.Minute),
+		OAuthAutoApprove:     parseBoolEnvDefault(env["FUND_OAUTH_AUTO_APPROVE"], "FUND_OAUTH_AUTO_APPROVE", true),
+		OAuthAllowWriteScope: parseBoolEnv(env["FUND_OAUTH_ALLOW_WRITE_SCOPE"], "FUND_OAUTH_ALLOW_WRITE_SCOPE"),
+		OAuthCIMDHosts:       parseCIMDHosts(env["FUND_OAUTH_CIMD_HOSTS"]),
+		raw:                  copyMap(env),
 	}
 
 	if parseBoolEnv(env["FUND_BACKUP_PRODUCER_ENABLED"], "FUND_BACKUP_PRODUCER_ENABLED") {
@@ -107,6 +153,19 @@ func Parse(env map[string]string) (Config, error) {
 			return Config{}, errors.New("agent ops requires FUND_AGENT_CONFIRMATION_SECRET")
 		}
 	}
+	// Resolve the OAuth issuer origin. An explicit FUND_PUBLIC_BASE_URL always
+	// wins; otherwise fall back to the first FUND_ALLOWED_ORIGINS entry, which is
+	// an operator-declared public origin and far more trustworthy than a Host
+	// header arriving through a reverse proxy. Deriving it means an upgrade cannot
+	// fail to boot just because a new variable was not added to .env.
+	if cfg.OAuthEnabled && cfg.OAuthPublicBaseURL == "" {
+		if derived := originBase(cfg.AllowedOrigins); derived != "" {
+			cfg.OAuthPublicBaseURL = derived
+			slog.Warn("config: FUND_PUBLIC_BASE_URL unset; deriving the OAuth issuer from FUND_ALLOWED_ORIGINS",
+				"origin", derived)
+		}
+	}
+
 	if isProductionEnv(cfg.Environment) {
 		if err := validateProductionSecrets(cfg); err != nil {
 			return Config{}, err
@@ -150,7 +209,74 @@ func validateProductionSecrets(cfg Config) error {
 			return err
 		}
 	}
+	// The OAuth issuer is embedded in every access token and in the discovery
+	// documents a connector caches. Deriving it from the Host header behind a
+	// reverse proxy would let a forged Host mint tokens for an attacker-chosen
+	// issuer, so production must state it explicitly.
+	// The OAuth issuer is embedded in every access token and in the discovery
+	// documents a connector caches. Deriving it from the Host header behind a
+	// reverse proxy would let a forged Host mint tokens for an attacker-chosen
+	// issuer, so production must resolve it from configuration.
+	if cfg.OAuthEnabled {
+		if cfg.OAuthPublicBaseURL == "" {
+			return errors.New("production requires FUND_PUBLIC_BASE_URL (or an https FUND_ALLOWED_ORIGINS entry) when FUND_OAUTH_ENABLED is true")
+		}
+		if !strings.HasPrefix(cfg.OAuthPublicBaseURL, "https://") {
+			return fmt.Errorf("production requires an https OAuth issuer via FUND_PUBLIC_BASE_URL or FUND_ALLOWED_ORIGINS, got %q", cfg.OAuthPublicBaseURL)
+		}
+	}
 	return nil
+}
+
+// originBase returns the scheme://host of the first absolute http(s) origin in
+// the list, or "" when none qualifies. Path, query and credentials are dropped so
+// only an origin can ever become the issuer.
+func originBase(origins []string) string {
+	for _, origin := range origins {
+		trimmed := strings.TrimSpace(origin)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "https://") && !strings.HasPrefix(trimmed, "http://") {
+			continue
+		}
+		scheme, rest, found := strings.Cut(trimmed, "://")
+		if !found {
+			continue
+		}
+		host := rest
+		for _, separator := range []string{"/", "?", "#"} {
+			if index := strings.Index(host, separator); index >= 0 {
+				host = host[:index]
+			}
+		}
+		host = strings.TrimSuffix(host, ":")
+		if host == "" || strings.ContainsAny(host, " 	@") {
+			continue
+		}
+		return scheme + "://" + host
+	}
+	return ""
+}
+
+// parseCIMDHosts splits the FUND_OAUTH_CIMD_HOSTS allowlist (comma-separated
+// hostnames, no scheme). Empty falls back to the OpenAI connector host.
+func parseCIMDHosts(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	hosts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.ToLower(strings.TrimSpace(part))
+		trimmed = strings.TrimPrefix(trimmed, "https://")
+		trimmed = strings.TrimPrefix(trimmed, "http://")
+		trimmed = strings.Trim(trimmed, "/")
+		if trimmed != "" {
+			hosts = append(hosts, trimmed)
+		}
+	}
+	return hosts
 }
 
 func requireStrongSecret(name, value string) error {

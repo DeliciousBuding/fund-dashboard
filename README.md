@@ -15,9 +15,9 @@
 - **量化分析**：XIRR 年化收益率、最大回撤、组合净值走势、盈亏分布、蒙特卡洛模拟、相关性热力图、基金对比雷达、DCA 定投回测
 - **穿透分析**：基金持仓穿透到底层股票，按行业聚合
 - **Web UI**：总览 / 持仓 / 交易台账 / 定投 / 分析套件（对比·回测·相关性·蒙特卡洛·穿透）/ 市场 / 信号 / 报告 / 系统工作台 / 设置，桌面 + 移动端自适应，⌘K 命令面板，PWA 离线兜底
-- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），JSON-RPC over HTTP（单端点 `POST /mcp`），Bearer key 双 scope 认证
+- **MCP server**：AI agent 工具（portfolio / transactions / admin / market / analysis / report），JSON-RPC over HTTP（单端点 `POST /mcp`），Bearer key 双 scope 认证；内置 **OAuth 2.1 授权服务器**，ChatGPT 自定义连接器 / Claude / Cursor 可直接用标准授权码 + PKCE 接入（docs/design/07）
 - **REST API**：`/api/*` 全量读写端点，zod 契约共享（`packages/contracts`）
-- **安全**：argon2id 密码 + 服务端 session（滑动续约）、登录递增锁定、全 API 限流、CSRF 三重防护、CSP/HSTS、认证与 Agent 双审计时间线（docs/design/06）
+- **安全**：argon2id 密码 + 服务端 session（滑动续约）、登录递增锁定、全 API 限流、CSRF 三重防护、CSP/HSTS、认证与 Agent 双审计时间线（docs/design/06）；OAuth 面为公有客户端 + PKCE(S256)、受众绑定令牌、CIMD 主机白名单（SSRF 防护）、刷新令牌轮换（docs/design/07）
 
 ## 技术栈
 
@@ -26,7 +26,7 @@
 | 后端 | Go（`cmd/fund-dashboard` + `internal/*`），`net/http` + `go-chi` |
 | 契约 | zod schemas（`packages/contracts`）——前后端共享的 API 契约 SSOT |
 | 存储 | SQLite（默认），可选 PostgreSQL 双驱动 |
-| 认证 | Web 登录 session（argon2id + cookie，docs/design/04）+ MCP/Admin Bearer key 双轨 |
+| 认证 | Web 登录 session（argon2id + cookie，docs/design/04）+ MCP/Admin Bearer key 双轨 + OAuth 2.1 授权服务器（ES256 JWT / PKCE，docs/design/07） |
 | 前端 | `web/`：React 19 + Vite 7 + Tailwind v4 + Radix + ECharts + TanStack 全家桶（go:embed 内嵌，docs/design/02/03） |
 
 ## 快速开始

@@ -53,6 +53,8 @@ func TestHealthEndpointRedactsVersionInProduction(t *testing.T) {
 		// production secret floors so Parse succeeds
 		"MCP_API_KEY":   "0123456789abcdef",
 		"FUND_EDGE_KEY": "fedcba9876543210",
+		// production also requires a declared public origin for the OAuth issuer
+		"FUND_ALLOWED_ORIGINS": "https://fund.example.com",
 	})
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)

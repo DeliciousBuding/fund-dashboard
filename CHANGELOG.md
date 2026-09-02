@@ -19,6 +19,18 @@
 
 ## [Unreleased]
 
+- **新功能** OAuth 2.1 授权服务器（`internal/oauth`）：远程 MCP 客户端（ChatGPT 自定义连接器 / Claude / Cursor）可用标准授权码 + PKCE(S256) 接入 `/mcp`，不再需要外发静态 key。含 RFC 9728 / RFC 8414 发现文档（两套 well-known 路径形式 + OIDC 别名）、RFC 7591 动态注册、OpenAI client-id 元数据文档（CIMD，主机白名单 + SSRF 防护）、RFC 7009 撤销、ES256 JWT（`aud` 绑定 MCP 资源 URL）与 JWKS。
+- **新功能** 「跳转网站登录后即授权成功」：`/oauth/authorize` 无会话时 302 到 `/login?next=…`（保留 PKCE challenge 等全部原始参数），SPA 登录成功后整页回跳；只读作用域 + 已登录默认免同意页（`FUND_OAUTH_AUTO_APPROVE=true`）。写作用域强制显示服务端渲染同意页（零 JS、零内联样式，符合既有 CSP）。
+- **新功能** 作用域 → 角色映射：`fund.read` → analyst（写/运维工具不可见）、`fund.write` → operator（默认不广告，`FUND_OAUTH_ALLOW_WRITE_SCOPE` 控制）。签名密钥首次启动自动生成并持久化，无需密钥仪式，重启后已签发令牌继续有效。
+- **修复** SPA fallback 会吞掉 `/.well-known/*` 并返回 `200 text/html`（改造前实测），使 OAuth 发现静默失败并被客户端误判为「服务端无认证」。现在 OAuth 路由先于 fallback 注册，且 `/oauth*`、`/.well-known*` 未匹配时返回 JSON 404。
+- **修复** `initialize` 此前硬编码 `protocolVersion: 2025-06-18`；改为协商——回显客户端请求的受支持版本，未知或缺省回本服务端最新版。
+- **修复** `safeOAuthReturn` 与前端同源校验都在路径规范化**之后**重新校验 `/oauth/` 前缀，堵住 `/oauth/../api/admin` 这类会被浏览器规范化后逃逸前缀的开放重定向；并拒绝 redirect_uri 中的 userinfo 与通配符主机。
+- **改进** `tools/call` 响应增量补 `structuredContent`（同一份值的 JSON 对象，供客户端绑定 schema）与 `isError`；`content` 数组为仓库原有形态，对既有静态 key 调用方完全向后兼容。
+- **改进** `/mcp` 401 现在带 `WWW-Authenticate: Bearer resource_metadata=…`（MCP 客户端据此发现并发起 OAuth），描述经清洗防止头注入。静态 `MCP_API_KEY` / `PUBLIC_MCP_KEY` 认证路径与语义完全不变（既有 operator/analyst key 消费者零改动）。
+- **测试** 新增 `internal/oauth`（PKCE、码单次使用、JWT 失败关闭、密钥持久化、CIMD 白名单、作用域协商、完整授权码流程、刷新轮换、元数据）与 `internal/httpapi`（六条 discovery 路径、SPA 兜底回归、authorize 四种决策、同意页流程、令牌端点、MCP 集成、跨受众令牌拒绝、头注入清洗、静态 key 回归）测试；前端 `oauthReturn` 10 例。
+- **测试** 新增 `scripts/smoke-oauth.sh`（11 节 58 项断言的端到端连接器冒烟）并接入 CI `OAuth MCP connector smoke`；本地 Linux 实跑 58/58 通过，`go test ./... -race` 全绿。
+- **文档** 新增 `docs/design/07-oauth-mcp-connector.md`（端点契约、令牌声明、流程时序、威胁模型、兼容硬约束、连接器接入填表指南）；决策表补 D12；`deploy/.env.example` 补 OAuth 段。
+
 - **改进** 系统工作台三个写触发响应（净值抓取/持仓抓取/一致性校验）补齐线型契约 `.strict()` 并接入触发按钮 parse——最后一个未校验写响应面闭环（此前漂移无感知）。
 - **测试** 新增系统写响应线型用例 8 例（system 契约累计 12 例，全仓 108/108）。
 - **chore** 第九轮全域审计：auth（限流升级/PHC 边界/会话存储）、快照重算引擎、确认令牌 HMAC、注册表授权、调度器清扫确认无新缺陷（历轮已加固）。
