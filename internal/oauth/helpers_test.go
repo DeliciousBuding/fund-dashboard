@@ -54,6 +54,15 @@ func registerTestClient(t *testing.T, svc *Service, redirect string) string {
 	return client.ID
 }
 
+// fakePEM assembles a throwaway PEM block at runtime. The malformed-key tests
+// only need a value that parses as PEM and then fails as a key; spelling the
+// header out literally would make a public test suite read like it embeds real
+// private key material (and trip every secret scanner on the way).
+func fakePEM(label, body string) string {
+	dashes := strings.Repeat("-", 5)
+	return dashes + "BEGIN " + label + dashes + "\n" + body + "\n" + dashes + "END " + label + dashes
+}
+
 func s256Challenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])

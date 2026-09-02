@@ -387,7 +387,7 @@ func TestIssuerFallsBackOnlyWhenUnconfigured(t *testing.T) {
 		t.Fatalf("configured issuer was overridden by a request-derived value: %q", got)
 	}
 	unconfigured := newTestService(t, func(o *Options) { o.PublicBaseURL = "" })
-	if got := unconfigured.Issuer("http://127.0.0.1:8765"); got != "http://127.0.0.1:8765" {
+	if got := unconfigured.Issuer("http://localhost:9999"); got != "http://localhost:9999" {
 		t.Fatalf("fallback issuer = %q", got)
 	}
 	if got := unconfigured.Issuer("https://host.example/"); got != "https://host.example" {

@@ -356,8 +356,8 @@ func isPublicUnicast(ip net.IP) bool {
 		ip.IsMulticast() || ip.IsUnspecified() {
 		return false
 	}
-	// Reject CGNAT (100.64.0.0/10) and the IPv4 broadcast address explicitly:
-	// IsPrivate does not cover either.
+	// Reject the RFC 6598 shared address space (carrier-grade NAT) and the IPv4
+	// broadcast address explicitly: IsPrivate covers neither.
 	if v4 := ip.To4(); v4 != nil {
 		if v4[0] == 100 && v4[1]&0xC0 == 64 {
 			return false

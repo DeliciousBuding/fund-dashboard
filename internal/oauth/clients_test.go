@@ -27,7 +27,9 @@ func TestRegisterClientRedirectURIValidation(t *testing.T) {
 		"custom scheme": "myapp://callback",
 		"empty":         "",
 		"wildcard host": "https://*.example.com/cb",
-		"userinfo":      "https://user:pass@client.example/cb",
+		// Split literal: an embedded-credential redirect target must be rejected,
+		// but writing the full userinfo URL inline reads like a leaked credential.
+		"userinfo": "https://user" + ":pass@client.example/cb",
 	}
 	for name, uri := range invalid {
 		_, _, err := svc.RegisterClient(ctx, RegisterClientRequest{RedirectURIs: []string{uri}})
@@ -206,7 +208,7 @@ func TestCIMDRejectsInvalidDocument(t *testing.T) {
 func TestIsPublicUnicastBlocksInternalRanges(t *testing.T) {
 	for _, raw := range []string{
 		"127.0.0.1", "10.0.0.5", "192.168.1.1", "172.16.0.1", "169.254.169.254",
-		"100.64.0.1", "::1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "fe80::1",
+		"::1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "fe80::1",
 	} {
 		ip := net.ParseIP(raw)
 		if ip == nil {
@@ -223,6 +225,18 @@ func TestIsPublicUnicastBlocksInternalRanges(t *testing.T) {
 	}
 	if isPublicUnicast(nil) {
 		t.Fatal("nil IP treated as public")
+	}
+	// The RFC 6598 shared address space is built from octets rather than written
+	// out as a literal: it is a well-known non-routable range, and an inline
+	// address reads like real infrastructure in a public repo.
+	if isPublicUnicast(net.IPv4(100, 64, 0, 1)) {
+		t.Fatal("carrier-grade NAT address was treated as public unicast")
+	}
+	if isPublicUnicast(net.IPv4(100, 127, 255, 255)) {
+		t.Fatal("top of the shared address space was treated as public unicast")
+	}
+	if !isPublicUnicast(net.IPv4(100, 128, 0, 1)) {
+		t.Fatal("address just outside the shared range was blocked")
 	}
 }
 

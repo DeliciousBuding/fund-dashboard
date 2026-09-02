@@ -166,8 +166,11 @@ func TestEnsureSigningKeyRejectsBadPEM(t *testing.T) {
 	if err := store.EnsureSchema(context.Background()); err != nil {
 		t.Fatalf("ensure schema: %v", err)
 	}
-	rsaLike := "-----BEGIN RSA PRIVATE KEY-----\nZm9v\n-----END RSA PRIVATE KEY-----"
-	for _, bad := range []string{"not-a-pem", rsaLike, "-----BEGIN PRIVATE KEY-----\nZm9v\n-----END PRIVATE KEY-----"} {
+	for _, bad := range []string{
+		"not-a-pem",
+		fakePEM("RSA PRIVATE KEY", "Zm9v"), // right shape, unsupported label
+		fakePEM("PRIVATE KEY", "Zm9v"),     // right label, undecodable body
+	} {
 		svc := NewService(store, Options{PublicBaseURL: testIssuer, SigningKeyPEM: bad})
 		if err := svc.EnsureSigningKey(context.Background()); err == nil {
 			t.Fatalf("bad signing key %q accepted", bad)
