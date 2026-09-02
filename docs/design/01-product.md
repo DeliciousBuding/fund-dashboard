@@ -11,7 +11,7 @@
 | 角色 | 入口 | 鉴权 |
 |------|------|------|
 | 我（唯一人类用户） | Web UI（浏览器/PWA） | 登录密码 + session cookie |
-| AI agent（Claude / Codex 等） | MCP `POST /mcp` | Bearer key（operator/analyst 双 scope，现状保留） |
+| AI agent（Claude / Codex / ChatGPT 连接器等） | MCP `POST /mcp` | 双轨：静态 Bearer key（operator/analyst 双 scope）或 OAuth 2.1 授权码 + PKCE（design 07）——第三方客户端走 OAuth，不外发 key |
 
 产品哲学：**数据是我的，界面是安静的，agent 是一等公民**。
 后端已有的 agentops 确认流（写操作必须 confirmation_id + token）是这个产品最独特的资产——UI 与 MCP 共享同一套 service 层，AI 能做的事人不能做得更少，反之亦然。

@@ -63,7 +63,7 @@ Cookie：`fund_session=<base64url(32B random)>`；`HttpOnly; Secure; SameSite=La
 | `/api/auth/*` `/api/health` | 公开 | login/setup 强限流 |
 | 其余 `/api/*` 读路径 | **SessionAuth**（cookie） | 现状 public 读全部收进门内——单租户语义 |
 | 浏览器写路径（transactions 等） | **SessionAuth**；EdgeAuth 兼容 fallback（session 优先） | 退出条件：`FUND_EDGE_AUTH_ENABLED`（W1 默认兼容开启、新部署建议关闭），W7+ 评估拆除代码 |
-| `/mcp` | Bearer 双 key（**不变**） | agent 面零改动 |
+| `/mcp` | Bearer 双 key（本波次不变） | agent 面零改动。**后续演进**：design 07 在此之上加 OAuth 2.1 访问令牌，成为并行的第二条鉴权轨 |
 | `/api/admin/*` `/api/agent/*` | Bearer `MCP_API_KEY`（**不变**） | 运维/agent 面零改动；W6 起 `/api/agent/tools*` 只读面额外接受 SessionAuth（供设置页） |
 | SPA（HTML + `/assets/*` + manifest/sw/favicon） | 公开 | 代码本身是开源的，静态资源无敏感数据；**数据面全部收在 `/api/*` 门后**——这是更简洁且不会白屏登录页的模型（实现时精炼） |
 
