@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 import type { ApiError } from "../lib/api";
 import { login } from "../lib/auth";
 import { refreshAuthStatus } from "../lib/authQuery";
+import { oauthReturnTarget } from "../lib/oauthReturn";
 import { queryClient } from "../lib/queryClient";
 
 const errorText: Record<string, string> = {
@@ -19,6 +20,16 @@ export function LoginPage() {
     mutationFn: login,
     onSuccess: async () => {
       await refreshAuthStatus(queryClient);
+      // An OAuth authorize request that found no dashboard session is bounced
+      // here with ?next=/oauth/authorize?... — finishing the login must resume
+      // that authorization instead of dumping the owner on the overview page.
+      // The target is a backend route the SPA router does not own, so this is a
+      // real navigation, and it is validated before use (lib/oauthReturn).
+      const next = oauthReturnTarget();
+      if (next) {
+        window.location.assign(next);
+        return;
+      }
       await router.navigate({ to: "/" });
     },
   });
