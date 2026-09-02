@@ -17,6 +17,38 @@ import (
 
 const jsonrpcVersion = "2.0"
 
+// latestProtocolVersion is the newest MCP revision this server implements.
+const latestProtocolVersion = "2025-06-18"
+
+// supportedProtocolVersions lists the revisions we can speak. A client that asks
+// for one of them gets it echoed back; anything else (missing, older, or from the
+// future) is answered with our latest, which is what the MCP spec tells a server
+// to do rather than failing the handshake.
+var supportedProtocolVersions = []string{
+	"2025-06-18",
+	"2025-03-26",
+	"2024-11-05",
+}
+
+// negotiateProtocolVersion picks the protocol revision for an initialize result.
+func negotiateProtocolVersion(params json.RawMessage) string {
+	if len(params) == 0 {
+		return latestProtocolVersion
+	}
+	var request struct {
+		ProtocolVersion string `json:"protocolVersion"`
+	}
+	if err := json.Unmarshal(params, &request); err != nil {
+		return latestProtocolVersion
+	}
+	for _, version := range supportedProtocolVersions {
+		if version == request.ProtocolVersion {
+			return version
+		}
+	}
+	return latestProtocolVersion
+}
+
 var processStartedAt = time.Now()
 
 type Server struct {
@@ -148,7 +180,7 @@ func (s *Server) Handle(ctx context.Context, request Request) (response Response
 	switch request.Method {
 	case "initialize":
 		response.Result = map[string]any{
-			"protocolVersion": "2025-06-18",
+			"protocolVersion": negotiateProtocolVersion(request.Params),
 			"serverInfo": map[string]any{
 				"name":    "fund-dashboard-go",
 				"version": "dev",

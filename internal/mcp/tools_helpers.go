@@ -75,11 +75,30 @@ func textJSONResult(payload any) (map[string]any, *Error) {
 		)
 		return nil, jsonrpcError(-32000, "tool_result_too_large")
 	}
-	return map[string]any{
+	result := map[string]any{
 		"content": []map[string]any{
 			{"type": "text", "text": string(encoded)},
 		},
-	}, nil
+		"isError": false,
+	}
+	// structuredContent carries the same value as a JSON object so a client can
+	// bind it to a schema instead of re-parsing the text part. Remote MCP clients
+	// (ChatGPT connectors, deep research) read it; it is purely additive, so
+	// consumers that only look at content are unaffected.
+	result["structuredContent"] = asJSONObject(encoded)
+	return result, nil
+}
+
+// asJSONObject decodes an encoded payload into a JSON object, nesting anything
+// that is not already an object under "result". The MCP spec requires
+// structuredContent to be an object, and a null there is indistinguishable from
+// "no result", so this never returns nil.
+func asJSONObject(encoded []byte) map[string]any {
+	var object map[string]any
+	if err := json.Unmarshal(encoded, &object); err == nil && object != nil {
+		return object
+	}
+	return map[string]any{"result": json.RawMessage(encoded)}
 }
 
 func intArg(args map[string]any, key string, fallback int) int {
