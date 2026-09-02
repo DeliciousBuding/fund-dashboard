@@ -72,3 +72,65 @@ export const SystemAgentResponseSchema = z.object({
   }),
 });
 export type SystemAgentResponse = z.infer<typeof SystemAgentResponseSchema>;
+
+// --- /api/system/* 写触发端点响应（crawl-nav / crawl-holdings / verify）---
+// Go 侧 admin_crawl.go 两个 resp 结构：status/mode/added 无 omitempty 恒下发；
+// 其余字段 omitempty 条件出现。verify 复用 adminsvc.IntegrityReport（全字段
+// 无 omitempty，唯 foreign_key_check.detail 例外）。
+
+export const SystemNavCrawlResponseSchema = z
+  .object({
+    status: z.string(),
+    mode: z.string(),
+    added: z.number(),
+    fund_code: z.string().optional(),
+    securities: z.number().optional(),
+    latest: z.string().optional(),
+    codes: z.array(z.string()).optional(),
+    failed_codes: z.array(z.string()).optional(),
+    message: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .strict();
+export type SystemNavCrawlResponse = z.infer<typeof SystemNavCrawlResponseSchema>;
+
+export const SystemHoldingsCrawlResponseSchema = z
+  .object({
+    status: z.string(),
+    mode: z.string(),
+    added: z.number(),
+    fund_code: z.string().optional(),
+    funds: z.number().optional(),
+    report_date: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .strict();
+export type SystemHoldingsCrawlResponse = z.infer<typeof SystemHoldingsCrawlResponseSchema>;
+
+export const SystemIntegrityReportSchema = z
+  .object({
+    timestamp: z.string(),
+    overall: z.string(),
+    checks: z
+      .object({
+        integrity_check: z.object({ passed: z.boolean(), detail: z.string() }).strict(),
+        foreign_key_check: z
+          .object({
+            passed: z.boolean(),
+            violations: z.number(),
+            detail: z.string().optional(),
+          })
+          .strict(),
+        quick_check: z.object({ passed: z.boolean(), result: z.string() }).strict(),
+        freelist_count: z
+          .object({ passed: z.boolean(), freelist: z.number(), detail: z.string() })
+          .strict(),
+      })
+      .strict(),
+    table_checksums: z.record(z.string(), z.string()),
+    row_counts: z.record(z.string(), z.number()),
+    recommendations: z.array(z.string()),
+    decision_boundary: z.string(),
+  })
+  .strict();
+export type SystemIntegrityReport = z.infer<typeof SystemIntegrityReportSchema>;

@@ -1,7 +1,13 @@
 // 工作台 /system —— 系统状态卡 + 调度任务（触发/最近运行）+ 告警扫描。
 // 写操作（抓取/校验）全部二次确认（06 §3）。
 
-import { SystemJobsResponseSchema, SystemStatusSchema } from "@fund-dashboard/contracts";
+import {
+  SystemHoldingsCrawlResponseSchema,
+  SystemIntegrityReportSchema,
+  SystemJobsResponseSchema,
+  SystemNavCrawlResponseSchema,
+  SystemStatusSchema,
+} from "@fund-dashboard/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Database, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { useState } from "react";
@@ -75,7 +81,18 @@ export function SystemPage() {
   const [confirmAction, setConfirmAction] = useState<ActionKey | null>(null);
   const queryClient = useQueryClient();
   const trigger = useMutation({
-    mutationFn: (key: ActionKey) => api(`/api/system/${key}`, { method: "POST" }),
+    mutationFn: async (key: ActionKey) => {
+      const data = await api<unknown>(`/api/system/${key}`, { method: "POST" });
+      // 写响应按端点契约校验（漂移即时失败而非静默吞掉）。
+      switch (key) {
+        case "crawl-nav":
+          return SystemNavCrawlResponseSchema.parse(data);
+        case "crawl-holdings":
+          return SystemHoldingsCrawlResponseSchema.parse(data);
+        default:
+          return SystemIntegrityReportSchema.parse(data);
+      }
+    },
     onSuccess: async (_d, key) => {
       toast.success(`${ACTIONS.find((a) => a.key === key)?.label} 已触发`);
       setConfirmAction(null);

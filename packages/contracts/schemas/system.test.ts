@@ -4,7 +4,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { AgentToolSummarySchema, SystemAgentResponseSchema } from "./system.ts";
+import {
+  AgentToolSummarySchema,
+  SystemAgentResponseSchema,
+  SystemHoldingsCrawlResponseSchema,
+  SystemIntegrityReportSchema,
+  SystemNavCrawlResponseSchema,
+} from "./system.ts";
 
 const summaryWire = {
   schema_version: "tool-registry-v1",
@@ -60,4 +66,86 @@ test("AgentToolSummarySchema passes disabled_boundaries arrays through", () => {
 
 test("SystemAgentResponseSchema rejects a missing tools summary", () => {
   assert.throws(() => SystemAgentResponseSchema.parse({ endpoint: "/mcp" }));
+});
+
+// --- 系统写触发端点响应（crawl-nav / crawl-holdings / verify）---
+
+const navCrawlWire = {
+  status: "complete",
+  mode: "stale_only",
+  added: 12,
+  codes: ["161725", "000198"],
+  failed_codes: [],
+  message: "ok",
+};
+
+test("SystemNavCrawlResponseSchema parses the real crawl-nav shape", () => {
+  const parsed = SystemNavCrawlResponseSchema.parse(navCrawlWire);
+  assert.equal(parsed.added, 12);
+  assert.equal(parsed.codes?.length, 2);
+});
+
+test("SystemNavCrawlResponseSchema tolerates omitempty keys absent", () => {
+  const parsed = SystemNavCrawlResponseSchema.parse({
+    status: "complete",
+    mode: "single",
+    added: 1,
+  });
+  assert.equal(parsed.fund_code, undefined);
+});
+
+test("SystemNavCrawlResponseSchema rejects unknown fields (contract drift)", () => {
+  assert.throws(() => SystemNavCrawlResponseSchema.parse({ ...navCrawlWire, extra: true }));
+});
+
+const holdingsCrawlWire = {
+  status: "complete",
+  mode: "held",
+  added: 3,
+  funds: 8,
+};
+
+test("SystemHoldingsCrawlResponseSchema parses the real crawl-holdings shape", () => {
+  const parsed = SystemHoldingsCrawlResponseSchema.parse(holdingsCrawlWire);
+  assert.equal(parsed.funds, 8);
+});
+
+test("SystemHoldingsCrawlResponseSchema rejects a missing always-emitted key", () => {
+  assert.throws(() =>
+    SystemHoldingsCrawlResponseSchema.parse({ status: "complete", mode: "held" }),
+  );
+});
+
+const integrityWire = {
+  timestamp: "2026-09-02T00:00:00Z",
+  overall: "ok",
+  checks: {
+    integrity_check: { passed: true, detail: "ok" },
+    foreign_key_check: { passed: true, violations: 0 },
+    quick_check: { passed: true, result: "ok" },
+    freelist_count: { passed: true, freelist: 0, detail: "0 pages" },
+  },
+  table_checksums: { transactions: "abc123" },
+  row_counts: { transactions: 572 },
+  recommendations: [],
+  decision_boundary: "facts_only",
+};
+
+test("SystemIntegrityReportSchema parses the real verify shape", () => {
+  const parsed = SystemIntegrityReportSchema.parse(integrityWire);
+  assert.equal(parsed.row_counts.transactions, 572);
+});
+
+test("SystemIntegrityReportSchema tolerates omitempty foreign_key detail absent", () => {
+  const parsed = SystemIntegrityReportSchema.parse(integrityWire);
+  assert.equal(parsed.checks.foreign_key_check.detail, undefined);
+});
+
+test("SystemIntegrityReportSchema rejects unknown nested fields", () => {
+  assert.throws(() =>
+    SystemIntegrityReportSchema.parse({
+      ...integrityWire,
+      checks: { ...integrityWire.checks, extra: true },
+    }),
+  );
 });
