@@ -90,7 +90,9 @@ type Config struct {
 	// connector cannot obtain write powers unless an operator enables it.
 	OAuthAllowWriteScope bool
 	// OAuthCIMDHosts allowlists hosts whose client-id metadata documents may be
-	// fetched (FUND_OAUTH_CIMD_HOSTS, default "chatgpt.com"). This is an SSRF
+	// fetched (FUND_OAUTH_CIMD_HOSTS). Empty means "unset at this layer", NOT
+	// "allow nothing": oauth.Options.withDefaults applies the shipped default
+	// (["chatgpt.com"]) beside the resolver that enforces it. This is an SSRF
 	// guard: a client_id outside the allowlist is never dereferenced.
 	OAuthCIMDHosts []string
 	// TrustedProxies is the FUND_TRUSTED_PROXIES CIDR allowlist. When non-empty,
@@ -260,7 +262,12 @@ func originBase(origins []string) string {
 }
 
 // parseCIMDHosts splits the FUND_OAUTH_CIMD_HOSTS allowlist (comma-separated
-// hostnames, no scheme). Empty falls back to the OpenAI connector host.
+// hostnames; a stray scheme or trailing slash is trimmed and the host is
+// lowercased). Empty returns nil on purpose -- the default allowlist is applied
+// in oauth.Options.withDefaults, so the SSRF guard's default lives next to the
+// code that enforces it. A second default here would only give the two a way to
+// drift, and would silently widen the fetch surface for anyone reading this file
+// alone. See oauth_config_test.go, which pins nil-until-configured.
 func parseCIMDHosts(value string) []string {
 	if strings.TrimSpace(value) == "" {
 		return nil
