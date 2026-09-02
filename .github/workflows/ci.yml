@@ -158,6 +158,17 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q 'get_portfolio_summary'
 
+      # Full remote-connector path: discovery -> DCR -> authorize with the
+      # session from the step above -> PKCE token exchange -> authenticated MCP
+      # call -> refresh rotation, plus the negative cases (unregistered
+      # redirect_uri must not redirect, code single-use, read scope hides write
+      # tools, legacy static keys unchanged).
+      - name: OAuth MCP connector smoke
+        run: |
+          chmod +x scripts/smoke-oauth.sh
+          MCP_API_KEY=ci-test-key PUBLIC_MCP_KEY=ci-public-key \
+            ./scripts/smoke-oauth.sh http://localhost:8080 ci-smoke-password-1
+
       - name: Browser E2E (Chromium)
         run: pnpm test:e2e
         env:
