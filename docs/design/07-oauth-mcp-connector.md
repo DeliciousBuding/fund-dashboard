@@ -2,7 +2,7 @@
 
 > 本文档定档 fund-dashboard 作为**远程 MCP 资源服务器**接入 ChatGPT 自定义连接器
 > （以及 Claude / Cursor 等任意标准 MCP 客户端）的认证设计与安全边界。
-> 事实基线：2026-09-03 实现与验证（`scripts/smoke-oauth.sh` 58/58 通过）。
+> 事实基线：2026-09-03 实现与验证（CI `scripts/smoke-oauth.sh` 58/58；公网反代 + CDN 形态下生产实测 48/48）。
 
 ## 1. 问题与决策
 
@@ -184,6 +184,19 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 - 端到端：`scripts/smoke-oauth.sh <base-url> <password>`，11 节 58 项断言，
   已接入 CI（`OAuth MCP connector smoke`）。本地 Linux 实跑 58/58 通过。
 - race：`go test ./... -race` 全绿（`keySet`/`codeStore`/`consentStore`/CIMD 缓存四把锁）。
+- 生产实测（真实反代 + CDN 公网路径，2026-09-03）48 项断言全通过：
+  discovery 两形态、DCR、`/login?next=` 跳转、已登录 auto-approve 直发码、PKCE 换
+  ES256 JWT（iss/aud/scope/kid 四项对 JWKS）、错误 verifier 与重放码 400、篡改令牌
+  401、`/mcp` initialize+tools/list+tools/call、refresh 轮换后旧令牌 400、revoke。
+  只读令牌的工具面与只读静态 key **逐工具一致**（零写工具）。一次性合成会话与
+  测试 client 用后即删；部署形态与验收证据在运维面（本仓不记录 live 主机）。
+- **边缘互操作 gotcha**：CDN 的 bot 规则会先于应用拦机器客户端。若部署在开了
+  Browser Integrity Check / bot fight 类防护的 CDN 后，部分 UA 签名会在边缘直接 403
+  （响应体是 CDN 的 `error code: 10xx` 而非本应用的 JSON 错误），表现为「连接器发现失败」。
+  实测 20 个真实客户端 UA：Go/node/undici/axios/httpx/aiohttp/Java/okhttp/Deno/curl/Wget/
+  空 UA 与自定义 UA 均放行，只有裸 `Python-urllib/3.x` 被拦——主流 MCP SDK 不受影响。
+  排查顺序：先分辨 403 来自边缘还是源站，再考虑是否给 `/mcp`、`/oauth/*`、
+  `/.well-known/*` 加豁免；不要先怀疑应用令牌或旋转 key。
 
 ## 10. 未做与后续
 

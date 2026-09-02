@@ -20,7 +20,7 @@ edge proxy ── TLS 终止 + HSTS + 限流（边缘）  │
       ├── SPA 静态面（go:embed，公开）        │
       ├── REST /api/*（SessionAuth 收门）◄────┘
       ├── /api/system/* 工作台面（session + CSRF）
-      └── MCP /mcp（Bearer key 双 scope，per-key 限流）
+      └── MCP /mcp（静态 key 双 scope 或 OAuth 2.1 JWT）
       │
       ▼
 SQLite（FUND_DB_PATH）或 PostgreSQL（FUND_DB_DRIVER=pg）
@@ -31,7 +31,7 @@ SQLite（FUND_DB_PATH）或 PostgreSQL（FUND_DB_DRIVER=pg）
 | 后端 | Go 1.26+ · `go-chi` · `cmd/fund-dashboard` + `internal/*` |
 | 契约 | zod schemas 前后端共享 · `packages/contracts` |
 | 存储 | SQLite（默认）；可选 PostgreSQL 双驱动（`FUND_DB_DRIVER=pg`） |
-| MCP | JSON-RPC over HTTP（单端点 `POST /mcp`）；operator / analyst 双 scope |
+| MCP | JSON-RPC over HTTP（单端点 `POST /mcp`，GET 返 405）；operator / analyst 双 scope；鉴权双轨 = 静态 Bearer key 或 OAuth 2.1 ES256 JWT（`aud` 绑定 `<issuer>/mcp`） |
 | 前端 | `web/`：React 19 + Vite 7 + Tailwind v4 + Radix + ECharts + TanStack（go:embed 内嵌）——见 `docs/design/02/03` |
 
 > 运行时：`web/` + go:embed 内嵌（dist 缺失时回退占位页，`FUND_STATIC_DIR` 为 dev 覆盖口）；旧 `packages/web` 前端移出历史见 `CHANGELOG.md`。
@@ -45,6 +45,7 @@ internal/
 ├── config               配置解析与校验（fail-closed）
 ├── httpapi              REST 薄封装（路由、SessionAuth/Bearer 鉴权、限流、JSON 写回）
 ├── auth                 argon2id 密码、session 签发/滑动/吊销、登录递增锁定、auth_events 审计
+├── oauth                OAuth 2.1 授权服务器（PKCE、授权码、ES256 JWT/JWKS、DCR/CIMD、刷新轮换）
 ├── mcp                  MCP 工具薄封装（委托 services）
 ├── service              业务逻辑（portfolio / admin / …）
 ├── jobs                 定时任务（NAV 刷新、持仓抓取、快照重算）
