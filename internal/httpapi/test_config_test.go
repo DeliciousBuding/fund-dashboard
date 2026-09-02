@@ -16,5 +16,9 @@ func testCfg() config.Config {
 		EdgeKey:          testEdgeKey,
 		EdgeAuthEnabled:  true,
 		AuthSecureCookie: true,
+		// High enough that OAuth flow tests never trip the per-IP bucket.
+		OAuthRPM:         60000,
+		OAuthEnabled:     true,
+		OAuthAutoApprove: true,
 	}
 }

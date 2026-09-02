@@ -12,18 +12,19 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
+	"github.com/DeliciousBuding/fund-dashboard/internal/oauth"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	"github.com/go-chi/chi/v5"
 )
 
-func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.Service, db *sql.DB, agentOps *agentops.Service, driver string, nav mcp.NavCrawler, snapshots mcp.SnapshotRecalculator, holdings mcp.HoldingsCrawler, mcpLimiter *RateLimiter) {
+func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.Service, db *sql.DB, agentOps *agentops.Service, driver string, nav mcp.NavCrawler, snapshots mcp.SnapshotRecalculator, holdings mcp.HoldingsCrawler, mcpLimiter *RateLimiter, oauthSvc *oauth.Service) {
 	admin := adminsvc.NewServiceWithDriver(db, driver)
 
 	// Fail-closed bearer auth: MCP_API_KEY (operator) and/or PUBLIC_MCP_KEY (analyst).
 	// Per-key limiter is mounted AFTER auth (chi middleware order) so failed
 	// auth (401) requests never burn the key's bucket (design 06 §2.3).
-	r.With(MCPAuth(cfg.AdminKey, cfg.PublicMCPKey), RateLimit(mcpLimiter, mcpRateLimitKeyFn)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
+	r.With(MCPAuth(cfg.AdminKey, cfg.PublicMCPKey, oauthSvc), RateLimit(mcpLimiter, mcpRateLimitKeyFn)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
 		role := agenttools.RoleAnalyst
 		if scope, ok := mcpAuthFromContext(req.Context()); ok {
 			role = scope.Role

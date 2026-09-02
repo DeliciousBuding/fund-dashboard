@@ -14,6 +14,7 @@ import (
 	"github.com/DeliciousBuding/fund-dashboard/internal/config"
 	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
+	"github.com/DeliciousBuding/fund-dashboard/internal/oauth"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,7 @@ type routerDeps struct {
 	snapshots  mcp.SnapshotRecalculator
 	holdings   mcp.HoldingsCrawler
 	jobStatus  func() []jobs.JobStatus // optional, scheduler runtime snapshot
+	oauthSvc   *oauth.Service          // optional, OAuth 2.1 server for MCP connectors
 }
 
 func WithDB(db *sql.DB) RouterOption {
@@ -73,6 +75,13 @@ func WithSnapshotRecalculator(s mcp.SnapshotRecalculator) RouterOption {
 
 func WithHoldingsCrawler(h mcp.HoldingsCrawler) RouterOption {
 	return func(deps *routerDeps) { deps.holdings = h }
+}
+
+// WithOAuth wires the OAuth 2.1 authorization server that lets remote MCP
+// clients (ChatGPT custom connectors, Claude, Cursor) authenticate with scoped
+// bearer tokens instead of static API keys.
+func WithOAuth(svc *oauth.Service) RouterOption {
+	return func(deps *routerDeps) { deps.oauthSvc = svc }
 }
 
 // WithJobStatus wires the scheduler runtime snapshot for GET /api/system/jobs.
@@ -198,11 +207,20 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 		})
 	})
 
+	// OAuth discovery + endpoints. Mounted before the SPA fallback: the fallback
+	// answers any unknown path with index.html, which would turn a well-known
+	// metadata probe into "HTTP 200 + HTML" and silently break connector setup.
+	if deps.oauthSvc != nil {
+		oauthLimiter := NewRateLimiter(float64(cfg.OAuthRPM), 30)
+		oauthIPKey := func(req *http.Request) string { return "ip:" + clientIP(req, cfg.TrustedProxies) }
+		registerOAuthRoutes(r, deps.oauthSvc, deps.auth, oauthLimiter, oauthIPKey)
+	}
+
 	// MCP stays outside the per-IP group: it has its own per-key limiter
 	// (see registerMCPRoutes), mounted after Bearer auth so 401s don't burn tokens.
 	if deps.portfolio != nil && deps.db != nil {
 		mcpLimiter := NewRateLimiter(float64(cfg.MCPRPM), 60)
-		registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings, mcpLimiter)
+		registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings, mcpLimiter, deps.oauthSvc)
 	}
 
 	// SPA fallback — must be last.
