@@ -561,3 +561,113 @@ func TestEnsurePGSchemaUniqueIndexFailureDoesNotFailBoot(t *testing.T) {
 		t.Fatalf("exec count = %d, want %d", len(execs), len(pgSchemaStatements)+1)
 	}
 }
+
+// ── transactions column defaults ───────────────────────────────────────────
+//
+// Legacy SQLite databases received these defaults from
+// ALTER TABLE transactions ADD COLUMN portfolio_id INTEGER DEFAULT 1; the PG
+// CREATE TABLE never declared them, so insert paths that omit both columns
+// (admin.Service.ImportTransactions has never listed them) wrote NULL. Most
+// reads defend with COALESCE(portfolio_id,1), but a strict portfolio_id filter
+// silently hides such rows from the ledger. Pin the defaults and the repair.
+
+// txDefaultsQuery answers the migrateTransactionsDefaults probes alongside the
+// portfolio_snapshot PK probes, so both migrations run in one fake.
+func txDefaultsQuery(condef string, dups int64, portfolioDefault, securityDefault driver.Value, nulls int64) func(string) ([]string, [][]driver.Value, error) {
+	base := condefQuery(condef, dups)
+	return func(q string) ([]string, [][]driver.Value, error) {
+		switch {
+		case strings.Contains(q, "information_schema.columns"):
+			return []string{"portfolio_default", "security_default"},
+				[][]driver.Value{{portfolioDefault, securityDefault}}, nil
+		case strings.Contains(q, "COUNT(*) FROM transactions"):
+			return []string{"nulls"}, [][]driver.Value{{nulls}}, nil
+		default:
+			return base(q)
+		}
+	}
+}
+
+func TestPGSchemaDeclaresTransactionsColumnDefaults(t *testing.T) {
+	var found string
+	for _, stmt := range pgSchemaStatements {
+		if strings.HasPrefix(stmt, "CREATE TABLE IF NOT EXISTS transactions (") {
+			found = stmt
+			break
+		}
+	}
+	if found == "" {
+		t.Fatal("transactions CREATE TABLE not found in pgSchemaStatements")
+	}
+	if !strings.Contains(found, "portfolio_id BIGINT DEFAULT 1") {
+		t.Fatalf("transactions.portfolio_id lost DEFAULT 1:\n%s", found)
+	}
+	if !strings.Contains(found, "security_type TEXT DEFAULT 'fund'") {
+		t.Fatalf("transactions.security_type lost DEFAULT 'fund':\n%s", found)
+	}
+}
+
+func TestEnsurePGSchemaBackfillsTransactionsDefaultsOnLegacyDB(t *testing.T) {
+	ctx := context.Background()
+	// Legacy shape: no column defaults declared, three rows already written NULL.
+	dbi, conn := newFakePGDB(t, nil, txDefaultsQuery("PRIMARY KEY (fund_code, portfolio_id)", 0, nil, nil, 3))
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsurePGSchema: %v", err)
+	}
+	execs := conn.execSnapshot()
+	steps := []struct {
+		name string
+		at   int
+	}{
+		{"portfolio_id backfill", indexOfSubstr(execs, "UPDATE transactions SET portfolio_id = 1 WHERE portfolio_id IS NULL")},
+		{"security_type backfill", indexOfSubstr(execs, "UPDATE transactions SET security_type = 'fund' WHERE security_type IS NULL")},
+		{"portfolio_id default", indexOfSubstr(execs, "ALTER TABLE transactions ALTER COLUMN portfolio_id SET DEFAULT 1")},
+		{"security_type default", indexOfSubstr(execs, "ALTER TABLE transactions ALTER COLUMN security_type SET DEFAULT 'fund'")},
+	}
+	for _, step := range steps {
+		if step.at < 0 {
+			t.Fatalf("%s missing: %v", step.name, execs)
+		}
+	}
+	if steps[0].at > steps[2].at || steps[1].at > steps[3].at {
+		t.Fatalf("backfill must run before declaring the default: %v", execs)
+	}
+}
+
+func TestEnsurePGSchemaTransactionsDefaultsAreIdempotent(t *testing.T) {
+	ctx := context.Background()
+	// Already-migrated shape: both defaults declared and no NULL rows left.
+	dbi, conn := newFakePGDB(t, nil, txDefaultsQuery("PRIMARY KEY (fund_code, portfolio_id)", 0, "1", "'fund'::text", 0))
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsurePGSchema: %v", err)
+	}
+	execs := conn.execSnapshot()
+	if len(execs) != len(pgSchemaStatements)+1 {
+		t.Fatalf("exec count = %d, want %d (no migration side effects)", len(execs), len(pgSchemaStatements)+1)
+	}
+	for _, q := range execs {
+		if strings.Contains(q, "UPDATE transactions") || strings.Contains(q, "ALTER TABLE transactions") {
+			t.Fatalf("unexpected transactions migration side effect: %q", q)
+		}
+	}
+}
+
+func TestEnsurePGSchemaTransactionsDefaultsProbeTolerance(t *testing.T) {
+	ctx := context.Background()
+	// A catalog error must degrade to a warning and leave the table untouched,
+	// exactly like the portfolio_snapshot migration: never block boot.
+	dbi, conn := newFakePGDB(t, nil, func(q string) ([]string, [][]driver.Value, error) {
+		if strings.Contains(q, "pg_get_constraintdef") {
+			return []string{"condef"}, [][]driver.Value{{"PRIMARY KEY (fund_code, portfolio_id)"}}, nil
+		}
+		return nil, nil, errors.New("catalog probe exploded")
+	})
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsurePGSchema with failing probe must not fail boot: %v", err)
+	}
+	for _, q := range conn.execSnapshot() {
+		if strings.Contains(q, "UPDATE transactions") || strings.Contains(q, "ALTER TABLE transactions") {
+			t.Fatalf("transactions migration ran despite failing probe: %q", q)
+		}
+	}
+}

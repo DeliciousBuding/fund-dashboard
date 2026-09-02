@@ -80,7 +80,12 @@ func (s Service) ListTransactions(ctx context.Context, opts ListTransactionsOpti
 	var where []string
 	var args []any
 	if opts.PortfolioID > 0 && has("portfolio_id") {
-		where = append(where, "portfolio_id = ?")
+		// COALESCE matches every other portfolio-scoped read path (snapshot.go,
+		// allocation.go, summary.go, detail.go, adjust_position.go). A bare
+		// portfolio_id = ? silently hides rows whose portfolio_id is NULL --
+		// what an insert path omitting the column produces on a database created
+		// before that column carried a DEFAULT.
+		where = append(where, "COALESCE(portfolio_id,1) = ?")
 		args = append(args, opts.PortfolioID)
 	}
 	if code := strings.TrimSpace(opts.FundCode); code != "" {

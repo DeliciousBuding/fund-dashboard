@@ -347,8 +347,8 @@ var sqliteSchemaTables = []string{
 		export_seq INTEGER,
 		settlement_days INTEGER,
 		anomaly TEXT,
-		security_type TEXT,
-		portfolio_id INTEGER
+		security_type TEXT DEFAULT 'fund',
+		portfolio_id INTEGER DEFAULT 1
 	)`,
 }
 

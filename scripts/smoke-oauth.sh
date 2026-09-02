@@ -203,7 +203,18 @@ if [ -n "${MCP_API_KEY:-}" ]; then
   legacy="$(curl -fsS -X POST "$BASE/mcp" -H "Authorization: Bearer $MCP_API_KEY" \
             -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
   has "operator key lists tools" "$legacy" "get_portfolio_summary"
-  has "operator key still sees write tools" "$legacy" "add_transaction"
+  # Confirmation-gated tools are advertised only when the confirmation flow can
+  # actually be completed, i.e. when FUND_AGENT_OPS_ENABLED wired the agentops
+  # service. Without it every gated call fails closed in claimWriteConfirmation
+  # with tool_denied: confirmation_service_unavailable, so advertising
+  # add_transaction would misreport the capability surface to the agent. The
+  # operator still leads the analyst by the maintenance scope.
+  if [ "${FUND_AGENT_OPS_ENABLED:-}" = "true" ]; then
+    has "operator key sees write tools when AgentOps is wired" "$legacy" "add_transaction"
+  else
+    hasnt "operator key is not advertised dead write tools without AgentOps" "$legacy" "add_transaction"
+    has "operator key keeps the maintenance scope" "$legacy" "crawl_nav"
+  fi
 fi
 if [ -n "${PUBLIC_MCP_KEY:-}" ]; then
   pub="$(curl -fsS -X POST "$BASE/mcp" -H "Authorization: Bearer $PUBLIC_MCP_KEY" \
