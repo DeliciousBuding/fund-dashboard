@@ -159,7 +159,7 @@ func (s Service) GetAgentContextPackFor(ctx context.Context, options AgentContex
 
 	quality := buildAgentContextDataQuality(harness.DataQuality)
 	holdings := agentContextHoldings(harness.HoldingSignals)
-	capabilities, permissions := agentContextDiscovery(audience)
+	capabilities, permissions := agentContextDiscovery(audience, s.confirmationsAvailable)
 	dataVersion := "no-nav"
 	if summary.LastNAVDate != nil && *summary.LastNAVDate != "" {
 		dataVersion = "nav:" + *summary.LastNAVDate
@@ -193,7 +193,7 @@ func (s Service) GetAgentContextPackFor(ctx context.Context, options AgentContex
 		Maintenance: AgentContextMaintenance{
 			RecommendedActions: append([]RecommendedAgentAction(nil), harness.RecommendedAgentActions...),
 		},
-		AgentBrief: buildAgentContextBrief(portfolioID, len(holdings), quality.OverallScore, quality.Level, eventSummary.Unread, audience),
+		AgentBrief: buildAgentContextBrief(portfolioID, len(holdings), quality.OverallScore, quality.Level, eventSummary.Unread, audience, s.confirmationsAvailable),
 	}
 	pack.PublicProjection = &AgentContextProjection{
 		PortfolioID:        portfolioID,

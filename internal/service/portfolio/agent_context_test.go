@@ -113,7 +113,9 @@ func TestServiceGetAgentContextPackAssemblesVersionedFactsOnlyPack(t *testing.T)
 		t.Fatalf("PublicProjection = %#v, want low-sensitive counts", pack.PublicProjection)
 	}
 
-	// Operator audience restores full registry discovery.
+	// Operator audience restores full registry discovery (AgentOps wired; see
+	// harness_availability_test.go for the unwired shape).
+	service.SetConfirmationFlowAvailable(true)
 	op, err := service.GetAgentContextPackFor(context.Background(), AgentContextOptions{
 		PortfolioID: 1,
 		SourceLimit: 4,

@@ -1,7 +1,10 @@
 package portfolio
 
 // availableAgentTools is the agent-facing subset advertised in harness snapshots.
-// It tracks implemented MCP tools that agents commonly chain; full tools/list is 44.
+// It must stay equal to the agenttools registry minus its disabled boundary tools;
+// TestAvailableAgentToolsMatchesRegistrySSOT pins that, so this literal is an ordered
+// projection of the SSOT and not a second source of truth. What a given deployment may
+// actually advertise is decided in harness_availability.go.
 var availableAgentTools = []string{
 	"get_full_dashboard",
 	"get_portfolio_summary",
@@ -122,10 +125,13 @@ func defaultAgentPermissions() AgentPermissions {
 }
 
 // harnessDiscovery returns tools/permissions/capabilities for the given audience.
-// Public matches PUBLIC MCP least privilege (#60/#61/#64); operator restores full harness surface (#65).
-func harnessDiscovery(audience HarnessAudience) ([]string, AgentPermissions, []AgentCapability) {
+// Public matches PUBLIC MCP least privilege (#60/#61/#64); operator restores the full
+// harness surface (#65) minus whatever this deployment cannot execute.
+func harnessDiscovery(audience HarnessAudience, confirmationsAvailable bool) ([]string, AgentPermissions, []AgentCapability) {
 	if audience == HarnessAudienceOperator {
-		return append([]string(nil), availableAgentTools...), defaultAgentPermissions(), append([]AgentCapability(nil), agentCapabilities...)
+		return toolsWithConfirmationAvailability(append([]string(nil), availableAgentTools...), confirmationsAvailable),
+			permissionsWithConfirmationAvailability(defaultAgentPermissions(), confirmationsAvailable),
+			capabilitiesWithConfirmationAvailability(append([]AgentCapability(nil), agentCapabilities...), confirmationsAvailable)
 	}
 	return publicAvailableAgentTools(), publicAgentPermissions(), publicAgentCapabilities()
 }

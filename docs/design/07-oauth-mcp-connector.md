@@ -83,9 +83,25 @@ RFC 8615 的路径感知 well-known 构造规定：资源为 `https://host/mcp` 
 未接线时 `app.go` 根本不构建该服务，`claimWriteConfirmation` 对每个 confirmation-gated
 工具 fail-closed 返回 `tool_denied: confirmation_service_unavailable`，因此 `tools/list`
 也**不广告**它们——广告一个永远无法成功调用的工具等于向 agent 谎报服务面，与
-「analyst 不广告写工具」是同一条原则，两处判据收敛为 `Server.confirmationCompletable()`。
+「analyst 不广告写工具」是同一条原则，判据收敛为 `Server.confirmationCompletable()`。
 operator 静态 key 同理：接线时 44 个工具（25 read + 3 maintenance + 3 external_context
 + 13 write），未接线时 29 个（去掉 15 个 confirmation-gated），仍严格多于 analyst 的 26 个。
+
+同一条不变量还覆盖另外两条**带内广告面**：`get_investment_harness_snapshot` 的
+`available_agent_tools`，以及 agent-context pack 的 capabilities / permissions 块。它们由
+portfolio service 生成，看不到 MCP 手里的 AgentOps 指针，所以接线事实由
+`httpapi.NewRouter` 在启动时交给 service（`SetConfirmationFlowAvailable(deps.agentOps != nil)`），
+一个事实、三个面。未接线时：隐去 15 个 gated 工具、`requires_confirmation` 变成 `[]`（不是
+`null`）、`write_scope` 收敛为 `data_refresh`（crawl_nav / recalculate_snapshot /
+crawl_fund_holdings 是 maintenance，不需要确认，也是此时 operator 仍严格多于 analyst 的原因），
+并在 `disabled_operations` 写明 `confirmation_gated_tools_unwired`——让 agent 看见「为什么没有」
+而不是自己猜。gated 工具的 capability 条目**保留**（它是策略：这个工具存在、且高风险），只把
+`permission` 从 `requires_confirmation` 改述为 `disabled`（本次部署做不到）。
+gated 集合从 agenttools 注册表推导，不再第三处硬编码；判据是
+`Permission == requires_confirmation` **或** `Confirmation.Required`——`mark_source_event`
+属于后者，只看 Permission 会漏掉它，于是继续广告一个永远 fail-closed 的工具。
+`internal/mcp` 有三面一致性测试：analyst 26/26、接线 operator 44/44、未接线 operator 29/29，
+`tools/list` 与 `available_agent_tools` 两个集合逐一相等。
 
 ### 3.1 签名密钥
 

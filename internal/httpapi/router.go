@@ -96,6 +96,15 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 		opt(deps)
 	}
 
+	// One fact, three surfaces. MCP tools/list derives its advertisement guard from
+	// the AgentOps pointer it is handed; the harness snapshot and the agent-context
+	// pack are built inside the portfolio service, so hand the same fact to it here
+	// rather than letting each surface guess. Nil AgentOps means every
+	// confirmation-gated tool would fail closed, so none of them may be advertised.
+	if deps.portfolio != nil {
+		deps.portfolio.SetConfirmationFlowAvailable(deps.agentOps != nil)
+	}
+
 	r := chi.NewRouter()
 	r.Use(RequestID)
 	r.Use(Recoverer)

@@ -48,7 +48,7 @@ func (s Service) GetHarnessSnapshotFor(ctx context.Context, portfolioID int, aud
 		return nil, err
 	}
 
-	tools, permissions, capabilities := harnessDiscovery(audience)
+	tools, permissions, capabilities := harnessDiscovery(audience, s.confirmationsAvailable)
 	recommended := filterRecommendedAgentActions(
 		buildRecommendedAgentActions(
 			dataQuality.StalePriceCount,
@@ -71,7 +71,7 @@ func (s Service) GetHarnessSnapshotFor(ctx context.Context, portfolioID int, aud
 		AgentPermissions:        permissions,
 		AgentCapabilities:       capabilities,
 		RecommendedAgentActions: recommended,
-		AgentBrief:              buildHarnessAgentBrief(len(holdingSignals), allocation, dataQuality, audience),
+		AgentBrief:              buildHarnessAgentBrief(len(holdingSignals), allocation, dataQuality, audience, s.confirmationsAvailable),
 	}, nil
 }
 
@@ -215,10 +215,14 @@ func signalTags(changePct *float64, deviationPct *float64) []string {
 	return tags
 }
 
-func buildHarnessAgentBrief(holdingsCount int, allocation *Allocation, quality HarnessDataQuality, audience HarnessAudience) string {
+func buildHarnessAgentBrief(holdingsCount int, allocation *Allocation, quality HarnessDataQuality, audience HarnessAudience, confirmationsAvailable bool) string {
 	boundary := "Agent can read facts and run maintenance refreshes; transaction writes require confirmation; broker execution and backup producer are disabled."
-	if audience != HarnessAudienceOperator {
+	switch {
+	case audience != HarnessAudienceOperator:
 		boundary = "Public discovery is read-only: write/maintenance/confirmation-gated tools are not advertised; broker execution and backup producer are disabled."
+	case !confirmationsAvailable:
+		// Never promise a confirmation flow this deployment does not have.
+		boundary = "Agent can read facts and run maintenance refreshes; confirmation-gated writes are unavailable on this deployment because the AgentOps confirmation service is not wired; broker execution and backup producer are disabled."
 	}
 	return fmt.Sprintf(
 		"Investment Harness facts only: %d held assets, total value %.2f. Allocation: %s Data gaps: price %d, cost basis %d, change pct %d. %s",

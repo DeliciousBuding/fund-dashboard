@@ -14,10 +14,28 @@ import (
 type Service struct {
 	db     *sql.DB
 	schema *schemaMetaCache // process-local table/column probe cache
+	// confirmationsAvailable records whether this deployment wired the AgentOps
+	// confirmation service. Harness and agent-context discovery must not advertise
+	// confirmation-gated tools when no confirmation flow exists to complete them,
+	// which is the same invariant internal/mcp enforces for tools/list through
+	// Server.confirmationCompletable(). The zero value is false: a Service built
+	// without the wiring fact hides those tools instead of promising them.
+	confirmationsAvailable bool
 }
 
 func NewService(db *sql.DB) Service {
 	return Service{db: db, schema: newSchemaMetaCache()}
+}
+
+// SetConfirmationFlowAvailable records whether the AgentOps confirmation service is
+// wired in this deployment. httpapi.NewRouter calls it once at startup from the same
+// fact that decides whether MCP advertises confirmation-gated tools, so the three
+// agent-facing discovery surfaces cannot disagree.
+func (s *Service) SetConfirmationFlowAvailable(available bool) {
+	if s == nil {
+		return
+	}
+	s.confirmationsAvailable = available
 }
 
 type Summary struct {

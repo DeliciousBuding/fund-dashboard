@@ -1490,6 +1490,10 @@ func newMCPServerWithRole(t *testing.T, db *sql.DB, role agenttools.Role) *Serve
 	if role == agenttools.RoleOperator {
 		confirmations = allowConfirmationConsumer{}
 	}
+	// Mirror httpapi.NewRouter: the portfolio service must learn the same wiring fact
+	// the MCP advertisement guard uses, otherwise harness/agent-context discovery and
+	// tools/list would describe two different servers.
+	portfolio.SetConfirmationFlowAvailable(confirmations != nil)
 	server, err := NewServer(ServerDeps{Portfolio: &portfolio, Admin: &admin, AgentOps: confirmations, Role: role})
 	if err != nil {
 		t.Fatalf("NewServer returned error: %v", err)
