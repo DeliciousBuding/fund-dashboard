@@ -93,6 +93,10 @@ func asFailure(err error) (*Failure, bool) {
 }
 
 // authorizeForTest runs a read-scope authorize and returns the issued code.
+//
+// A client's first authorization shows the consent screen, so the helper approves
+// it the way the owner would and returns the resulting code. Tests that need to
+// observe the screen itself call svc.Authorize directly.
 func authorizeForTest(t *testing.T, svc *Service, clientID, verifier string) string {
 	t.Helper()
 	decision := svc.Authorize(context.Background(), testIssuer, AuthorizeRequest{
@@ -106,12 +110,40 @@ func authorizeForTest(t *testing.T, svc *Service, clientID, verifier string) str
 		Resource:            svc.Resource(testIssuer),
 		Authenticated:       true,
 	})
-	if decision.Kind != DecisionRedirect {
-		t.Fatalf("authorize kind = %s, want redirect", decision.Kind)
+	switch decision.Kind {
+	case DecisionRedirect:
+		code := queryParam(t, decision.RedirectURI, "code")
+		if code == "" {
+			t.Fatal("no code in redirect")
+		}
+		return code
+	case DecisionConsent:
+		return approveConsentForTest(t, svc, decision.Grant, "st-1")
+	default:
+		t.Fatalf("authorize kind = %s, want redirect or consent", decision.Kind)
+		return ""
 	}
-	code := queryParam(t, decision.RedirectURI, "code")
+}
+
+// approveConsentForTest walks the consent screen round trip and returns the code
+// the approval redirect carries.
+func approveConsentForTest(t *testing.T, svc *Service, grant AuthorizationGrant, state string) string {
+	t.Helper()
+	token, err := svc.BeginConsent(grant, state)
+	if err != nil {
+		t.Fatalf("begin consent: %v", err)
+	}
+	consumed, consumedState, ok := svc.ConsumeConsent(token)
+	if !ok {
+		t.Fatal("consent token was not consumable")
+	}
+	target, err := svc.ApproveGrant(context.Background(), consumed, consumedState)
+	if err != nil {
+		t.Fatalf("approve grant: %v", err)
+	}
+	code := queryParam(t, target, "code")
 	if code == "" {
-		t.Fatal("no code in redirect")
+		t.Fatalf("consent approval issued no code: %q", target)
 	}
 	return code
 }

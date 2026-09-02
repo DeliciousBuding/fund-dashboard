@@ -260,7 +260,7 @@ func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerF
 			http.Redirect(w, r, target, http.StatusFound)
 			return
 		}
-		target, err := svc.ApproveGrant(grant, state)
+		target, err := svc.ApproveGrant(r.Context(), grant, state)
 		if err != nil {
 			writeOAuthServerError(w, r, err)
 			return

@@ -2,7 +2,7 @@
 
 > 本文档定档 fund-dashboard 作为**远程 MCP 资源服务器**接入 ChatGPT 自定义连接器
 > （以及 Claude / Cursor 等任意标准 MCP 客户端）的认证设计与安全边界。
-> 事实基线：2026-09-03 实现与验证（CI `scripts/smoke-oauth.sh` 58/58；公网反代 + CDN 形态下生产实测 48/48）。
+> 事实基线：2026-09-03 实现与验证（CI `scripts/smoke-oauth.sh` 全绿；公网反代 + CDN 形态下生产实测全部断言通过）。断言数以脚本自身输出为准，不在文档里硬编码。
 
 ## 1. 问题与决策
 
@@ -97,8 +97,11 @@ ChatGPT ──浏览器打开 /oauth/authorize?…&code_challenge=…
         ◄─302 /login?next=/oauth/authorize?…（原始参数含 PKCE challenge 全部保留）
 用户    ──输密码登录─────────────────────► fund   （复用现有 Web 登录，不新建账号体系）
         ◄─SPA 整页跳转到 next
-                                            fund：会话有效 + 只读作用域 + auto-approve
+                                            fund：会话有效 + 只读作用域
+                                            ├─ 首次见此 client → 渲染同意页（显示连接器名称）
+用户    ──POST /oauth/consent（approve）──► fund   （一次性 consent_token，单次消费）
         ◄─302 https://chatgpt.com/…?code=…&state=…
+                                            └─ 已批准过 → 跳过同意页，直接 302 发码
 ChatGPT ──POST /oauth/token（code + code_verifier，**不带 client_id**）
         ◄─{access_token, refresh_token, token_type:"Bearer", scope:"fund.read"}
 ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
@@ -112,9 +115,15 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 - **回跳目标双侧校验**：Go `safeOAuthReturn` 与 TS `safeOAuthReturn` 独立实现同一套规则，
   且都在 `path.Clean` / `new URL()` **规范化之后**重新校验 `/oauth/` 前缀——
   只校验原始字符串会被 `/oauth/../api/admin` 绕过（浏览器导航时会规范化）。
-- **auto-approve**：已登录 + 纯只读作用域 → 直接发码，不显示同意页
-  （`FUND_OAUTH_AUTO_APPROVE=true`，默认）。这就是「登录后即授权成功」。
-- **同意页仍然存在**，用于写作用域或关闭 auto-approve 时；服务端渲染，
+- **首次同意，之后静默**：已登录 + 纯只读作用域 + **该 client 已被所有者批准过** →
+  直接发码，不显示同意页（`FUND_OAUTH_AUTO_APPROVE=true`，默认）。这就是「登录后即授权成功」：
+  一个连接器只在第一次接入时让你看到同意页，此后每次都是登录即通过。
+- **为什么首次必须问**：注册是开放的（RFC 7591），任何人都能取得 `client_id` 并造一条
+  指向本站 `/oauth/authorize` 的链接——域名是真的，链接看起来也可信。若首次即静默发码，
+  所有者一旦登录就等于把只读组合数据交给了一个从没见过的客户端。同意页显示
+  连接器名称，是所有者唯一能察觉异常的地方。批准记录按 `(client_id, scope)` 持久化在
+  `oauth_client_consents`，删除 client 注册即清除；无持久化存储时 fail-closed 为「每次都问」。
+- **同意页仍然存在**，用于首次授权、写作用域或关闭 auto-approve 时；服务端渲染，
   零 JS、零内联样式（CSP `style-src 'self'` / `script-src 'self'`），
   带一次性 `consent_token`（10 分钟、单次消费）作为 SameSite=Lax 之外的第三层 CSRF 防线。
 - **令牌端点不要求 `client_id`**：OpenAI 连接器的 `/token` 请求不带该参数，
@@ -136,6 +145,7 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 | 密钥泄露 | JWKS 只发布公钥（测试断言不含 `d` 与 PEM 私钥）；`FUND_OAUTH_SIGNING_KEY` 命中 `isSecretKey` 自动脱敏 |
 | WWW-Authenticate 头注入 | `sanitizeChallengeDescription` 剥除引号/反斜杠/CR/LF 并截断 160 字符 |
 | 同意页 CSRF | 一次性 `consent_token` + SameSite=Lax + `form-action 'self'` |
+| 钓鱼 authorize 链接借开放注册偷读 | 首次授权强制同意页（显示 client 名称）；批准按 `(client_id, scope)` 记忆，仅在所有者显式点过之后才静默；写作用域永远询问；记忆不可读时 fail-closed 为「问」 |
 | 暴力/扫描 | `/oauth/*` per-IP 限流（默认 60/min，burst 30）；discovery 文档在限流桶**之外**，探测不会被饿死 |
 
 ## 6. 与既有面的兼容性（硬约束）
@@ -149,7 +159,7 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
   > 单一契约优于可用配置项切换的双契约。
 - **`initialize` 协议版本协商**：此前硬编码 `2025-06-18`。现在回显客户端请求的版本
   （限 `2025-06-18` / `2025-03-26` / `2024-11-05`），未知或缺省则回本服务端最新版。
-- **生产 schema**：PG 侧三张表进 `schema_pg.go`（幂等 `CREATE … IF NOT EXISTS`），
+- **生产 schema**：PG 侧四张表进 `schema_pg.go`（幂等 `CREATE … IF NOT EXISTS`），
   SQLite 侧由 `oauth.Store.EnsureSchema` 建，沿用 `internal/auth` 的既有分工，
   `TestPGAndSQLiteSchemaParity` 的单向约束（SQLite ⊆ PG）不受影响。
 
@@ -181,11 +191,13 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
   `internal/httpapi`（六条 discovery 路径、SPA 兜底不吞 well-known、
   authorize 四种决策、同意页流程、令牌端点、MCP 集成、静态 key 回归、
   跨受众令牌拒绝、`safeOAuthReturn`、头注入清洗）。
-- 端到端：`scripts/smoke-oauth.sh <base-url> <password>`，11 节 58 项断言，
-  已接入 CI（`OAuth MCP connector smoke`）。本地 Linux 实跑 58/58 通过。
+- 端到端：`scripts/smoke-oauth.sh <base-url> <password>`，11 节全量断言（数以脚本
+  输出为准），已接入 CI（`OAuth MCP connector smoke`）。除发现/注册/PKCE/令牌/刷新/静态 key
+  回归外，还覆盖首次同意页、`consent_token` 单次消费、二次授权静默、未注册
+  redirect_uri 不跳转。
 - race：`go test ./... -race` 全绿（`keySet`/`codeStore`/`consentStore`/CIMD 缓存四把锁）。
 - 生产实测（真实反代 + CDN 公网路径，2026-09-03）48 项断言全通过：
-  discovery 两形态、DCR、`/login?next=` 跳转、已登录 auto-approve 直发码、PKCE 换
+  discovery 两形态、DCR、`/login?next=` 跳转、首次同意→二次静默直发码、PKCE 换
   ES256 JWT（iss/aud/scope/kid 四项对 JWKS）、错误 verifier 与重放码 400、篡改令牌
   401、`/mcp` initialize+tools/list+tools/call、refresh 轮换后旧令牌 400、revoke。
   只读令牌的工具面与只读静态 key **逐工具一致**（零写工具）。一次性合成会话与
