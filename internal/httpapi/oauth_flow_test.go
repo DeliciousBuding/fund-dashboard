@@ -42,13 +42,28 @@ func TestOAuthAuthorizeRedirectsToLoginWhenUnauthenticated(t *testing.T) {
 	}
 }
 
-func TestOAuthAuthorizeAutoApprovesForAuthenticatedOwner(t *testing.T) {
+func TestOAuthAuthorizeShowsConsentOnFirstUseThenGoesSilent(t *testing.T) {
 	env := newOAuthEnv(t, testCfg(), nil)
-	res := env.get(t, env.authorizeURL(nil), true)
-	if res.Code != http.StatusFound {
-		t.Fatalf("status = %d, want 302; body=%s", res.Code, firstN(res.Body.String(), 200))
+
+	first := env.get(t, env.authorizeURL(nil), true)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want the consent screen; body=%s", first.Code, firstN(first.Body.String(), 200))
 	}
-	location := res.Header().Get("Location")
+	if strings.Contains(first.Body.String(), "<script") {
+		t.Fatal("consent page embedded script, which the app CSP forbids")
+	}
+	token := regexp.MustCompile(`name="consent_token" value="([^"]+)"`).FindStringSubmatch(first.Body.String())
+	if len(token) != 2 {
+		t.Fatal("no consent_token rendered")
+	}
+
+	form := url.Values{"consent_token": {token[1]}, "decision": {"approve"}}
+	approved := env.do(t, http.MethodPost, "/oauth/consent", true,
+		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
+	if approved.Code != http.StatusFound {
+		t.Fatalf("approve status = %d, want 302", approved.Code)
+	}
+	location := approved.Header().Get("Location")
 	if !strings.HasPrefix(location, testOAuthRedirect) {
 		t.Fatalf("location = %q, want the registered redirect_uri", location)
 	}
@@ -64,6 +79,16 @@ func TestOAuthAuthorizeAutoApprovesForAuthenticatedOwner(t *testing.T) {
 	}
 	if strings.Contains(location, "access_token") {
 		t.Fatalf("front channel leaked a token: %q", location)
+	}
+
+	// The owner's steady state: an already-approved connector needs no click, so
+	// logging in is the whole interaction.
+	second := env.get(t, env.authorizeURL(nil), true)
+	if second.Code != http.StatusFound {
+		t.Fatalf("second status = %d, want a silent 302; body=%s", second.Code, firstN(second.Body.String(), 200))
+	}
+	if !strings.HasPrefix(second.Header().Get("Location"), testOAuthRedirect) {
+		t.Fatalf("second location = %q, want the registered redirect_uri", second.Header().Get("Location"))
 	}
 }
 

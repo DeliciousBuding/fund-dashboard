@@ -21,6 +21,8 @@
 
 - **新功能** OAuth 2.1 授权服务器（`internal/oauth`）：远程 MCP 客户端（ChatGPT 自定义连接器 / Claude / Cursor）可用标准授权码 + PKCE(S256) 接入 `/mcp`，不再需要外发静态 key。含 RFC 9728 / RFC 8414 发现文档（两套 well-known 路径形式 + OIDC 别名）、RFC 7591 动态注册、OpenAI client-id 元数据文档（CIMD，主机白名单 + SSRF 防护）、RFC 7009 撤销、ES256 JWT（`aud` 绑定 MCP 资源 URL）与 JWKS。
 - **新功能** 「跳转网站登录后即授权成功」：`/oauth/authorize` 无会话时 302 到 `/login?next=…`（保留 PKCE challenge 等全部原始参数），SPA 登录成功后整页回跳；只读作用域 + 已登录默认免同意页（`FUND_OAUTH_AUTO_APPROVE=true`）。写作用域强制显示服务端渲染同意页（零 JS、零内联样式，符合既有 CSP）。
+- **改进** 首次授权显示同意页，之后静默：`/oauth/authorize` 对**未批准过的 client** 先渲染同意页（显示连接器名称与作用域），所有者批准一次后，同一 client + 同一作用域的后续授权恢复「登录即通过」。理由：动态注册是开放的（RFC 7591），任何人都能取得 `client_id` 并造一条指向本站 `/oauth/authorize` 的可信看似链接；若首次即静默发码，所有者一旦登录就把只读组合数据交给了陌生客户端。`FUND_OAUTH_AUTO_APPROVE` 语义相应变为「允许对已批准 client 静默重授权」（仍默认 true）。
+- **新功能** 同意记忆持久化：新表 `oauth_client_consents`（`(client_id, scope)` 主键，SQLite 与 PostgreSQL 双方言幂等建表）。删除 client 注册时连带清除其同意记忆；无持久化存储（DB-less 启动）或记忆不可读时 **fail-closed 为「每次都问」**，未被证明的批准永不会变成静默授权。
 - **新功能** 作用域 → 角色映射：`fund.read` → analyst（写/运维工具不可见）、`fund.write` → operator（默认不广告，`FUND_OAUTH_ALLOW_WRITE_SCOPE` 控制）。签名密钥首次启动自动生成并持久化，无需密钥仪式，重启后已签发令牌继续有效。
 - **修复** SPA fallback 会吞掉 `/.well-known/*` 并返回 `200 text/html`（改造前实测），使 OAuth 发现静默失败并被客户端误判为「服务端无认证」。现在 OAuth 路由先于 fallback 注册，且 `/oauth*`、`/.well-known*` 未匹配时返回 JSON 404。
 - **修复** `initialize` 此前硬编码 `protocolVersion: 2025-06-18`；改为协商——回显客户端请求的受支持版本，未知或缺省回本服务端最新版。

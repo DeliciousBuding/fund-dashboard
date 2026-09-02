@@ -86,7 +86,7 @@ internal/httpapi / internal/mcp ── 对外暴露
 | `/api/admin/*` | `Authorization: Bearer MCP_API_KEY`（空 key fail-closed） |
 | `/mcp` | 静态 key：`MCP_API_KEY`（operator）或 `PUBLIC_MCP_KEY`（analyst），per-key 限流；**或** OAuth 访问令牌（ES256 JWT，`aud` 绑定 `<issuer>/mcp`），per-IP 限流 |
 | `/.well-known/oauth-*`、`/.well-known/openid-configuration` | 匿名（发现文档按定义公开）；**必须先于 SPA fallback 注册**，否则返回 200+HTML 会让客户端静默判定「无认证」 |
-| `/oauth/authorize`、`/oauth/consent` | 浏览器面：复用 `fund_session` cookie；无会话 → 302 `/login?next=…`。同意页带一次性 `consent_token`（10min、单次消费） |
+| `/oauth/authorize`、`/oauth/consent` | 浏览器面：复用 `fund_session` cookie；无会话 → 302 `/login?next=…`。**首次授权某 client 必过同意页**（开放注册下 client_id 不可信），批准后按 `(client_id, scope)` 记入 `oauth_client_consents`，此后只读授权静默发码；同意页带一次性 `consent_token`（10min、单次消费） |
 | `/oauth/token`、`/oauth/register`、`/oauth/revoke` | 匿名（公有客户端 + PKCE S256，服务端不发也不收 client secret），per-IP 限流 |
 | `/oauth/jwks`、`/oauth/about` | 匿名（只发布公钥） |
 | MCP 写工具 | `confirmation_id` + `confirmation_token`（拒绝 bare `confirmed=true`） |

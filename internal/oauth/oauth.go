@@ -109,7 +109,10 @@ type Options struct {
 	// CodeTTL is the authorization code lifetime (default 60s).
 	CodeTTL time.Duration
 	// AutoApprove skips the consent screen for read-only grants when the caller
-	// already holds a dashboard session — "log in and authorization succeeds".
+	// already holds a dashboard session AND has approved that client before —
+	// "log in and authorization succeeds" for every authorization after the first.
+	// A client's first authorization always shows the consent screen: registration
+	// is open, so a silent first grant would be a phishing shortcut to read access.
 	AutoApprove bool
 	// AllowWriteScope advertises and honours fund.write. Off by default so a
 	// connector can never obtain operator powers unless explicitly enabled.

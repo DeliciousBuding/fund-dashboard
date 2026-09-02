@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 // Client is a registered OAuth client. Public clients only: this server never
@@ -105,6 +106,12 @@ func (s *Store) EnsureSchema(ctx context.Context) error {
 			private_key_pem TEXT NOT NULL,
 			public_jwk_json TEXT NOT NULL,
 			created_at BIGINT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS oauth_client_consents (
+			client_id TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			approved_at BIGINT NOT NULL,
+			PRIMARY KEY (client_id, scope)
 		)`,
 	}
 	for _, stmt := range statements {
@@ -234,13 +241,72 @@ func (s *Store) ClientByID(ctx context.Context, clientID string) (*Client, error
 	return &client, nil
 }
 
-// DeleteClient removes a registration (used by tests and admin cleanup).
+// DeleteClient removes a registration (used by tests and admin cleanup) together
+// with the consent memory attached to it, so a deleted client can never leave a
+// stale silent-approval behind.
 func (s *Store) DeleteClient(ctx context.Context, clientID string) error {
 	if s == nil {
 		return nil
 	}
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM oauth_clients WHERE client_id = ?`, clientID); err != nil {
 		return fmt.Errorf("delete oauth client: %w", err)
+	}
+	return s.DeleteClientConsent(ctx, clientID)
+}
+
+// ── client consents ───────────────────────────────────────────────────────────────────────────────────
+
+// RecordClientConsent stores that the resource owner explicitly approved this
+// client for this scope at the consent screen.
+//
+// There is deliberately no owner column: auth_credentials is declared
+// `id INTEGER PRIMARY KEY CHECK (id = 1)`, so this deployment has exactly one
+// resource owner (decision D10, single tenant). An owner column here would be a
+// fake multi-user abstraction; if multi-user ever lands, this primary key is the
+// place to extend.
+func (s *Store) RecordClientConsent(ctx context.Context, clientID, scope string, approvedAt int64) error {
+	if s == nil {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO oauth_client_consents (client_id, scope, approved_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(client_id, scope) DO NOTHING
+	`, clientID, scope, approvedAt); err != nil {
+		return fmt.Errorf("record oauth client consent: %w", err)
+	}
+	return nil
+}
+
+// HasClientConsent reports whether every requested scope was already approved for
+// this client. A nil store answers false: without durable memory the server
+// cannot prove a prior approval, and an unproven approval must never turn into a
+// silent grant.
+func (s *Store) HasClientConsent(ctx context.Context, clientID string, scopes []string) (bool, error) {
+	if s == nil || len(scopes) == 0 {
+		return false, nil
+	}
+	args := make([]any, 0, len(scopes)+1)
+	args = append(args, clientID)
+	for _, scope := range scopes {
+		args = append(args, scope)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(scopes)), ",")
+	query := `SELECT COUNT(*) FROM oauth_client_consents WHERE client_id = ? AND scope IN (` + placeholders + `)`
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, fmt.Errorf("look up oauth client consent: %w", err)
+	}
+	return count == len(scopes), nil
+}
+
+// DeleteClientConsent forgets every approval recorded for a client.
+func (s *Store) DeleteClientConsent(ctx context.Context, clientID string) error {
+	if s == nil {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM oauth_client_consents WHERE client_id = ?`, clientID); err != nil {
+		return fmt.Errorf("delete oauth client consents: %w", err)
 	}
 	return nil
 }

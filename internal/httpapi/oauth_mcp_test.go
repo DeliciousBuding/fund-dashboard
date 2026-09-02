@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -14,9 +15,16 @@ import (
 )
 
 // authorizeCode drives the browser half of the flow and returns the code.
+//
+// A client's first authorization renders the consent screen, so the helper
+// approves it the way the owner would and follows the resulting redirect. Tests
+// that need to observe the screen itself drive env.get directly.
 func authorizeCode(t *testing.T, env *oauthEnv) string {
 	t.Helper()
 	res := env.get(t, env.authorizeURL(nil), true)
+	if res.Code == http.StatusOK {
+		res = approveConsentScreen(t, env, res.Body.String())
+	}
 	if res.Code != http.StatusFound {
 		t.Fatalf("authorize status = %d, want 302", res.Code)
 	}
@@ -29,6 +37,19 @@ func authorizeCode(t *testing.T, env *oauthEnv) string {
 		t.Fatalf("no code in redirect: %q", parsed.String())
 	}
 	return code
+}
+
+// approveConsentScreen submits the rendered consent form as an approval and
+// returns the redirect response it produces.
+func approveConsentScreen(t *testing.T, env *oauthEnv, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	token := regexp.MustCompile(`name="consent_token" value="([^"]+)"`).FindStringSubmatch(body)
+	if len(token) != 2 {
+		t.Fatalf("consent screen rendered no consent_token: %s", firstN(body, 300))
+	}
+	form := url.Values{"consent_token": {token[1]}, "decision": {"approve"}}
+	return env.do(t, http.MethodPost, "/oauth/consent", true,
+		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 }
 
 // postForm posts a urlencoded body and decodes the JSON response.
@@ -530,10 +551,22 @@ func TestMCPRejectsTokenMintedForAnotherResource(t *testing.T) {
 		CodeChallengeMethod: "S256", Resource: testOAuthIssuer + "/other-resource",
 		Authenticated: true,
 	})
-	if decision.Kind != oauth.DecisionRedirect {
-		t.Fatalf("authorize kind = %s", decision.Kind)
+	if decision.Kind != oauth.DecisionConsent {
+		t.Fatalf("authorize kind = %s, want consent on first use", decision.Kind)
 	}
-	parsed, err := url.Parse(decision.RedirectURI)
+	consentToken, err := other.BeginConsent(decision.Grant, "")
+	if err != nil {
+		t.Fatalf("begin consent: %v", err)
+	}
+	grant, grantState, ok := other.ConsumeConsent(consentToken)
+	if !ok {
+		t.Fatal("consent token was not consumable")
+	}
+	redirectURI, err := other.ApproveGrant(context.Background(), grant, grantState)
+	if err != nil {
+		t.Fatalf("approve grant: %v", err)
+	}
+	parsed, err := url.Parse(redirectURI)
 	if err != nil {
 		t.Fatalf("parse redirect: %v", err)
 	}

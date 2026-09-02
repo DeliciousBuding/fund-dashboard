@@ -35,30 +35,61 @@ func TestAuthorizeRequiresLogin(t *testing.T) {
 	}
 }
 
-func TestAuthorizeAutoApprovesReadOnlyGrant(t *testing.T) {
-	svc := newTestService(t, nil)
-	clientID := registerTestClient(t, svc, "https://chatgpt.com/cb")
-	decision := svc.Authorize(context.Background(), testIssuer, AuthorizeRequest{
+// authorizeReadOnlyForOwner issues an already-authenticated read-scope authorize
+// request, the shape a connector produces after the owner has logged in.
+func authorizeReadOnlyForOwner(t *testing.T, svc *Service, clientID, state string) AuthorizeDecision {
+	t.Helper()
+	return svc.Authorize(context.Background(), testIssuer, AuthorizeRequest{
 		ClientID: clientID, RedirectURI: "https://chatgpt.com/cb", ResponseType: "code",
 		Scope: ScopeRead, CodeChallenge: s256Challenge(testVerifier),
-		CodeChallengeMethod: "S256", State: "xyz",
+		CodeChallengeMethod: "S256", State: state,
 		Resource: svc.Resource(testIssuer), Authenticated: true, SessionID: "sess-1",
 	})
-	if decision.Kind != DecisionRedirect {
-		t.Fatalf("kind = %s, want redirect (auto-approve)", decision.Kind)
+}
+
+func TestAuthorizeShowsConsentOnFirstUse(t *testing.T) {
+	svc := newTestService(t, nil)
+	clientID := registerTestClient(t, svc, "https://chatgpt.com/cb")
+	decision := authorizeReadOnlyForOwner(t, svc, clientID, "xyz")
+	// Registration is open, so an unknown client_id proves nothing. The consent
+	// screen is the only place the owner can notice an unfamiliar connector before
+	// it can read the portfolio.
+	if decision.Kind != DecisionConsent {
+		t.Fatalf("kind = %s, want consent on first use", decision.Kind)
 	}
-	if !strings.HasPrefix(decision.RedirectURI, "https://chatgpt.com/cb?") {
-		t.Fatalf("redirect target wrong: %q", decision.RedirectURI)
+	if decision.Client == nil || decision.Client.ID != clientID {
+		t.Fatalf("consent decision lost the client: %+v", decision.Client)
 	}
-	if queryParam(t, decision.RedirectURI, "state") != "xyz" {
-		t.Fatalf("state not echoed: %q", decision.RedirectURI)
+}
+
+func TestAuthorizeIsSilentAfterTheOwnerApprovedOnce(t *testing.T) {
+	svc := newTestService(t, nil)
+	clientID := registerTestClient(t, svc, "https://chatgpt.com/cb")
+
+	first := authorizeReadOnlyForOwner(t, svc, clientID, "xyz")
+	if first.Kind != DecisionConsent {
+		t.Fatalf("first kind = %s, want consent", first.Kind)
 	}
-	if queryParam(t, decision.RedirectURI, "code") == "" {
-		t.Fatalf("code missing: %q", decision.RedirectURI)
+	approveConsentForTest(t, svc, first.Grant, "xyz")
+
+	// Every later authorization for the same client and scopes is silent, which is
+	// the "log in and authorization succeeds" behaviour the owner experiences.
+	second := authorizeReadOnlyForOwner(t, svc, clientID, "xyz")
+	if second.Kind != DecisionRedirect {
+		t.Fatalf("second kind = %s, want redirect (already approved)", second.Kind)
+	}
+	if !strings.HasPrefix(second.RedirectURI, "https://chatgpt.com/cb?") {
+		t.Fatalf("redirect target wrong: %q", second.RedirectURI)
+	}
+	if queryParam(t, second.RedirectURI, "state") != "xyz" {
+		t.Fatalf("state not echoed: %q", second.RedirectURI)
+	}
+	if queryParam(t, second.RedirectURI, "code") == "" {
+		t.Fatalf("code missing: %q", second.RedirectURI)
 	}
 	// The code must never leak an access token through the front channel.
-	if strings.Contains(decision.RedirectURI, "access_token") {
-		t.Fatalf("front channel leaked a token: %q", decision.RedirectURI)
+	if strings.Contains(second.RedirectURI, "access_token") {
+		t.Fatalf("front channel leaked a token: %q", second.RedirectURI)
 	}
 }
 
@@ -149,7 +180,7 @@ func TestAuthorizeConsentRequiredForWriteScope(t *testing.T) {
 	if !ok || state != "st" || grant.ClientID != clientID {
 		t.Fatalf("consume failed: ok=%v state=%q grant=%+v", ok, state, grant)
 	}
-	target, err := svc.ApproveGrant(grant, state)
+	target, err := svc.ApproveGrant(context.Background(), grant, state)
 	if err != nil {
 		t.Fatalf("approve: %v", err)
 	}

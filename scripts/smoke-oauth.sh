@@ -3,8 +3,9 @@
 #
 # Exercises the whole remote-connector path against a running instance exactly as
 # ChatGPT would: discovery -> dynamic registration -> authorize with an existing
-# dashboard session -> PKCE token exchange -> authenticated MCP call -> refresh
-# rotation, and confirms the legacy static-key path is untouched.
+# dashboard session (consent screen on first use, silent afterwards) -> PKCE token
+# exchange -> authenticated MCP call -> refresh rotation, and confirms the legacy
+# static-key path is untouched.
 #
 # Usage: scripts/smoke-oauth.sh <base-url> <password>
 #   base-url  e.g. http://localhost:8080  (must match FUND_PUBLIC_BASE_URL)
@@ -104,7 +105,7 @@ badreg="$(status -X POST "$REG_EP" -H 'Content-Type: application/json' \
           -d '{"redirect_uris":["http://evil.example/cb"]}')"
 check "insecure redirect_uri rejected" "$badreg" "400"
 
-# ── 7. Authorize with PKCE ──
+# ── 7. Authorize with PKCE (first-use consent, then silence) ──
 echo "[7] authorize (PKCE S256)"
 VERIFIER="smoke-verifier-0123456789abcdefghijklmnopqrstuvwxyz-ABC"
 CHALLENGE="$(printf '%s' "$VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')"
@@ -116,12 +117,36 @@ urlencode() { python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.a
 # parameter would silently keep testing the legitimate URI.
 Q="client_id=$CLIENT_ID&response_type=code&scope=fund.read&state=smoke-state&code_challenge=$CHALLENGE&code_challenge_method=S256"
 
-loc="$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "$AUTH_EP?$Q&redirect_uri=$(urlencode "$REDIRECT")")"
-has "authorize redirected" "$loc" "$REDIRECT"
-CODE="$(python3 -c "import urllib.parse,sys;print(urllib.parse.parse_qs(urllib.parse.urlparse(sys.argv[1]).query).get('code',[''])[0])" "$loc")"
+AUTH_URL="$AUTH_EP?$Q&redirect_uri=$(urlencode "$REDIRECT")"
+codefrom() { python3 -c "import urllib.parse,sys;print(urllib.parse.parse_qs(urllib.parse.urlparse(sys.argv[1]).query).get('code',[''])[0])" "$1"; }
+
+# Registration is open (RFC 7591), so an unknown client_id proves nothing: the
+# first authorization must put the connector's name in front of the owner.
+screen="$(curl -s -b "$JAR" "$AUTH_URL")"
+has "first use renders the consent screen" "$screen" 'name="consent_token"'
+hasnt "consent screen carries no script" "$screen" "<script"
+CONSENT_TOKEN="$(python3 -c "import re,sys;m=re.search(r'name=\"consent_token\" value=\"([^\"]+)\"',sys.argv[1]);print(m.group(1) if m else '')" "$screen")"
+has "one-time consent token issued" "$CONSENT_TOKEN" "."
+
+loc="$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" -X POST "$BASE/oauth/consent" \
+       --data-urlencode "consent_token=$CONSENT_TOKEN" --data-urlencode "decision=approve")"
+has "approval redirected to the client" "$loc" "$REDIRECT"
+CODE="$(codefrom "$loc")"
 has "authorization code issued" "$CODE" "."
 has "state echoed" "$loc" "state=smoke-state"
 hasnt "no token in the front channel" "$loc" "access_token"
+
+# The consent token is single-use: replaying it must not mint a second code.
+replayconsent="$(status -b "$JAR" -X POST "$BASE/oauth/consent" \
+                 --data-urlencode "consent_token=$CONSENT_TOKEN" --data-urlencode "decision=approve")"
+check "consent token is single-use" "$replayconsent" "400"
+
+# Steady state, i.e. what the owner actually experiences from now on: an approved
+# connector needs no click, so logging in is the whole interaction.
+loc2="$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "$AUTH_URL")"
+has "second authorization is silent" "$loc2" "$REDIRECT"
+hasnt "second authorization shows no consent screen" "$loc2" "consent"
+has "second authorization still issues a code" "$(codefrom "$loc2")" "."
 
 # An unregistered redirect target must never be redirected to.
 evil="$(curl -s -o /dev/null -w '%{redirect_url}' -b "$JAR" "$AUTH_EP?$Q&redirect_uri=$(urlencode "https://evil.example/cb")")"

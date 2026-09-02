@@ -116,7 +116,11 @@ func (s *Service) Authorize(ctx context.Context, issuer string, req AuthorizeReq
 		}
 	}
 
-	if !s.consentRequired(scopes) {
+	required, err := s.consentRequired(ctx, client.ID, scopes)
+	if err != nil {
+		return s.unsafeFailure(issuer, req, err)
+	}
+	if !required {
 		target, err := s.issueCode(redirectURI, req.State, grant)
 		if err != nil {
 			return s.unsafeFailure(issuer, req, err)
@@ -126,25 +130,46 @@ func (s *Service) Authorize(ctx context.Context, issuer string, req AuthorizeReq
 	return AuthorizeDecision{Kind: DecisionConsent, Client: client, Scopes: scopes, Grant: grant, Resource: resource}
 }
 
-// ApproveGrant issues the authorization code for a consent-screen approval.
-func (s *Service) ApproveGrant(grant AuthorizationGrant, state string) (string, error) {
+// ApproveGrant issues the authorization code for a consent-screen approval and
+// remembers the approval, so the next authorization for the same client and
+// scopes can be silent. Recording before issuing matters: a code that reaches the
+// client must never correspond to an approval the server forgot.
+func (s *Service) ApproveGrant(ctx context.Context, grant AuthorizationGrant, state string) (string, error) {
+	for _, scope := range grant.Scopes {
+		if err := s.store.RecordClientConsent(ctx, grant.ClientID, scope, s.opts.Now().Unix()); err != nil {
+			return "", fail(ErrServerError, http.StatusInternalServerError, "%v", err)
+		}
+	}
 	return s.issueCode(grant.RedirectURI, state, grant)
 }
 
-// consentRequired reports whether an explicit click is needed. Read-only grants
-// for an already-authenticated owner are auto-approved when configured, which is
-// what makes "log in and authorization succeeds" true. Anything that could
-// mutate portfolio data always asks.
-func (s *Service) consentRequired(scopes []string) bool {
+// consentRequired reports whether an explicit click is needed.
+//
+// Read-only grants for an already-authenticated owner are silent only once that
+// owner has approved this client for these scopes before, which is what makes
+// "log in and authorization succeeds" true for every authorization after the
+// first. Two things always ask: anything that could mutate portfolio data, and a
+// client being authorized for the first time. The first-use screen is the whole
+// point — registration is open (RFC 7591), so anyone can mint a client_id, and a
+// silent first grant would let a phishing authorize URL on the legitimate origin
+// leave with read access to the portfolio as soon as the owner logs in. The
+// consent page names the client, which is the only place the owner can notice.
+//
+// An unreadable consent memory fails closed to "ask", never to "allow".
+func (s *Service) consentRequired(ctx context.Context, clientID string, scopes []string) (bool, error) {
 	if !s.opts.AutoApprove {
-		return true
+		return true, nil
 	}
 	for _, scope := range scopes {
 		if scope != ScopeRead {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	approved, err := s.store.HasClientConsent(ctx, clientID, scopes)
+	if err != nil {
+		return true, err
+	}
+	return !approved, nil
 }
 
 func (s *Service) issueCode(redirectURI, state string, grant AuthorizationGrant) (string, error) {

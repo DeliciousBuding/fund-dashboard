@@ -38,7 +38,7 @@ pnpm -C web build
 # Contracts (zod SSOT) wire-shape tests — node:test, no extra deps
 node --test "packages/contracts/**/*.test.ts"
 
-# OAuth / MCP 连接器端到端冒烟（11 节 58 项断言）：先起一个实例
+# OAuth / MCP 连接器端到端冒烟（11 节全量断言，数以脚本输出为准）：先起一个实例
 MCP_API_KEY=ci-test-key PUBLIC_MCP_KEY=ci-public-key \
   ./scripts/smoke-oauth.sh http://localhost:8080 ci-smoke-password-1
 
