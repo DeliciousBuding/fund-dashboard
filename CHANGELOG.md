@@ -22,6 +22,9 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-03
+
+
 - **修复** harness 与 agent-context 仍会广告无法执行的确认类工具。上一轮只收了 MCP `tools/list`，但 agent 还有两条带内途径读服务面：`get_investment_harness_snapshot` 的 `available_agent_tools` 与 agent-context pack 的 capabilities/permissions。生产实测（未接线 AgentOps 的 jp1）两者都仍报 44 个工具、含全部 15 个 confirmation-gated，而真去调一律 `tool_denied: confirmation_service_unavailable`。现在接线事实由 `httpapi.NewRouter` 启动时交给 portfolio service（与 MCP 广告面同源、同一个事实），未接线时隐去 gated 工具、`requires_confirmation` 变成 `[]`（而非 `null`）、`write_scope` 收敛为 `data_refresh`，并在 `disabled_operations` 写明 `confirmation_gated_tools_unwired`；gated 工具的 capability 条目保留但 `permission` 改述为 `disabled`（策略仍在，承诺撤回）。public/analyst 面不受影响，也不泄露部署接线细节。
 - **改进** confirmation-gated 集合改为从 agenttools 注册表推导（`confirmationGatedToolNames`），不再第三处硬编码；判据与 MCP 广告守卫逐字一致（`Permission == requires_confirmation` **或** `Confirmation.Required`——`mark_source_event` 属于后者，只看 Permission 会漏掉它）。注册表不可读时 fail-closed 为「全部视为 gated」，即宁可少广告也不谎报。`availableAgentTools` 字面量保留（它是有序投影，改动会变更载荷顺序），但由新测试 pin 成注册表去掉 3 条 disabled 边界工具后的名单。
 - **测试** 新增跨面一致性 pin：analyst 26/26、接线 operator 44/44、未接线 operator 29/29，`tools/list` 与 `available_agent_tools` 两个集合逐一相等；未接线时 harness 必须自己解释原因（marker + 空 `requires_confirmation` + `write_scope` 只剩 `data_refresh` + brief 不再承诺确认流）。另加 `availableAgentTools` 与注册表的名单 pin、gated 集合 15 条金标（含 `mark_source_event` 陷阱）、过滤保序、capability 不被原地修改、`NewService` 默认 fail-closed、public 面对接线事实无感。既有两例 operator 断言显式声明「这是接线形态」。
