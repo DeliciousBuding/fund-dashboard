@@ -22,6 +22,10 @@
 
 ## [Unreleased]
 
+- [修复] OAuth 同意页一次性 token 被浏览器二次提交消耗后返回 400 `consent session expired or was already used`，导致 ChatGPT 自定义连接器登录失败（授权成功但从未走到 token exchange）。现在同意最终化为幂等：同一 token 重放返回同一个 callback（同一个 code），POST 改 303 See Other，真正过期/未知 token 渲染人类可读错误页；并给 authorize/token 拒绝路径加无 secret 结构化日志（#33）。
+- [新功能] OAuth 401 `WWW-Authenticate` 广告完整 scope（`fund.read fund.write`），使 ChatGPT 在授权时请求写 scope 而非仅默认 `fund.read`；只读部署仍只广告 `fund.read`（#34）。
+- [新功能] MCP `prepare_confirmation` 工具（operator-only，非 gated）：让 MCP-only 客户端（ChatGPT 连接器）在协议内走 prepare→claim 两步写确认，写入工具报错提示同步指向该工具；接线 operator tools/list 44→45，analyst 26、未接线 operator 29 不变（#34）。
+
 ## [2.1.0] - 2026-09-03
 
 
