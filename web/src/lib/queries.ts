@@ -190,13 +190,17 @@ export function useCompare(codes: string[], portfolioId?: number) {
   });
 }
 
+// 市场指数缓存键单一来源：REST 首拉（useIndices）与 SSE 帧回写
+// （hooks/useMarketStream → queryClient.setQueryData）共用，形状同为
+// z.array(MarketIndexSchema) 的输出。
+export const MARKET_INDICES_QUERY_KEY = ["market-indices"] as const;
+
 export function useIndices() {
   return useQuery({
-    queryKey: ["market-indices"],
+    queryKey: MARKET_INDICES_QUERY_KEY,
     queryFn: ({ signal }) =>
       fetchValidated("/api/market/indices", z.array(MarketIndexSchema), signal),
     staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
   });
 }
 
