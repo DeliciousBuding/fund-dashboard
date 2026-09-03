@@ -78,14 +78,17 @@ RFC 8615 的路径感知 well-known 构造规定：资源为 `https://host/mcp` 
 `fund.write` **默认不对外广告**（`FUND_OAUTH_ALLOW_WRITE_SCOPE=false`）。
 即使打开了，写作用域也强制走同意页，不会被 auto-approve。
 
-二次确认流还有一个**部署前提**：它由 AgentOps 服务提供
+二次确认流（prepare→claim）还有一个**部署前提**：它由 AgentOps 服务提供
 （`FUND_AGENT_OPS_ENABLED=true` + `FUND_AGENT_CONFIRMATION_SECRET`，compose 需透传这两键）。
 未接线时 `app.go` 根本不构建该服务，`claimWriteConfirmation` 对每个 confirmation-gated
 工具 fail-closed 返回 `tool_denied: confirmation_service_unavailable`，因此 `tools/list`
 也**不广告**它们——广告一个永远无法成功调用的工具等于向 agent 谎报服务面，与
 「analyst 不广告写工具」是同一条原则，判据收敛为 `Server.confirmationCompletable()`。
-operator 静态 key 同理：接线时 44 个工具（25 read + 3 maintenance + 3 external_context
-+ 13 write），未接线时 29 个（去掉 15 个 confirmation-gated），仍严格多于 analyst 的 26 个。
+operator 静态 key 同理：接线时 45 个工具（25 read + 3 maintenance + 3 external_context
++ 13 write + 1 `prepare_confirmation`），未接线时 29 个（去掉 15 个 confirmation-gated 与
+`prepare_confirmation`），仍严格多于 analyst 的 26 个。`prepare_confirmation` 是 prepare→claim
+两步确认的前半段，让 MCP-only 客户端（如 ChatGPT 连接器）不必走 HTTP `/api/agent/confirmations/prepare`
+也能在协议内拿确认凭证；它本身 permission=allowed、非 gated，但仅在 AgentOps 接线时广告。
 
 同一条不变量还覆盖另外两条**带内广告面**：`get_investment_harness_snapshot` 的
 `available_agent_tools`，以及 agent-context pack 的 capabilities / permissions 块。它们由
@@ -100,7 +103,7 @@ crawl_fund_holdings 是 maintenance，不需要确认，也是此时 operator �
 gated 集合从 agenttools 注册表推导，不再第三处硬编码；判据是
 `Permission == requires_confirmation` **或** `Confirmation.Required`——`mark_source_event`
 属于后者，只看 Permission 会漏掉它，于是继续广告一个永远 fail-closed 的工具。
-`internal/mcp` 有三面一致性测试：analyst 26/26、接线 operator 44/44、未接线 operator 29/29，
+`internal/mcp` 有三面一致性测试：analyst 26/26、接线 operator 45/45、未接线 operator 29/29，
 `tools/list` 与 `available_agent_tools` 两个集合逐一相等。
 
 ### 3.1 签名密钥
@@ -244,3 +247,4 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 - 令牌撤销列表（access token 提前失效）未做：访问令牌 1h 短寿，
   撤销语义由 refresh token 撤销 + 会话失效覆盖。
 - 多用户/多主体不在范围内（D10 单租户边界）。
+
