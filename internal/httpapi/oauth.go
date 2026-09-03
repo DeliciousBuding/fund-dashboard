@@ -167,7 +167,7 @@ func handleOAuthAuthorize(svc *oauth.Service, authSvc *auth.Service) http.Handle
 				ConsentToken: token,
 				State:        request.State,
 				AutoApproved: false,
-			})
+			}, redirectOrigin(decision.Grant.RedirectURI))
 		case oauth.DecisionErrorPage:
 			renderOAuthError(w, r, issuer, decision.Error)
 		default:
@@ -238,6 +238,18 @@ func optionalQuery(parsed *url.URL) string {
 		return ""
 	}
 	return "?" + parsed.RawQuery
+}
+
+// redirectOrigin extracts scheme://host from a validated redirect URI for the
+// consent-page CSP. ValidateRedirectURI already accepted it, so it carries an
+// absolute origin; on any surprise the helper returns "" and the consent page
+// falls back to the strict baseline CSP (fail-closed, no redirect surface added).
+func redirectOrigin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerFunc {
