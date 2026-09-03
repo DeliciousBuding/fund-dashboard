@@ -260,7 +260,7 @@ func (s *Scheduler) Start() {
 	// The catch-up goroutine is tracked separately so Stop waits for it too:
 	// graceful shutdown covers every background goroutine, not just the tick loop.
 	s.startStartupCatchUp(stopCh, s.startupTimer)
-	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day, daily 20:00 CST price full-refresh held + DCA weekdays, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
+	slog.Info("scheduler started", "schedule", "startup catch-up stale_only once/day + DCA 7d backfill, 06:00-09:59 CST DCA backfill once/day, daily 20:00 CST price full-refresh held + DCA weekdays, Saturdays 10:00 CST holdings once/day, daily 03:00 CST WAL once/day")
 }
 
 // Stop terminates periodic execution and waits for the background loop to
@@ -350,6 +350,12 @@ func (s *Scheduler) runStartupCatchUp(now time.Time) {
 		slog.Error("startup price refresh failed", "error", err)
 	}
 	s.recordJob("startup_refresh", now, err)
+	// Startup DCA backfill: same once-per-day claim cycle, so a process that was
+	// down during a 20:00 DCA window replays the missed due dates right after
+	// start (weekday-gated; idempotent per due date via the service ledger).
+	if err := s.runDCABackfill(ctx, now); err != nil {
+		slog.Error("startup dca backfill failed", "as_of", now.Format("2006-01-02"), "error", err)
+	}
 }
 
 func (s *Scheduler) isStopped() bool {
@@ -430,6 +436,13 @@ func (s *Scheduler) tick(now time.Time) {
 			return
 		}
 		slog.Info("holdings refresh complete", "funds", funds, "added", added)
+
+	// Morning catch-up band (06:00-09:59 CST, once per day) — replays DCA due
+	// dates missed while the process was down (restart during yesterday's 20:00
+	// window, host suspend). Per-date idempotency lives in the service ledger;
+	// today itself is never touched here (stays with the 20:00 window).
+	case hour >= 6 && hour <= 9:
+		s.runDCABackfillWindow(now)
 
 	// Daily 03:00 hour — WAL checkpoint (SQLite only) + expired-state sweep, once per day.
 	case hour == 3:
