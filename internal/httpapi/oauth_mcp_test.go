@@ -534,6 +534,35 @@ func TestMCPUnauthenticatedRequestAdvertisesDiscovery(t *testing.T) {
 // load-bearing. The token is correctly signed by this deployment's own key, so
 // only the "aud" claim stands between it and full access — which is exactly the
 // situation when one issuer fronts several resource servers.
+func TestMCPChallengeAdvertisesWriteScopeWhenEnabled(t *testing.T) {
+	cfg := testCfg()
+	cfg.OAuthAllowWriteScope = true
+	env := newOAuthEnv(t, cfg, func(o *oauth.Options) { o.AllowWriteScope = true })
+	res := callMCP(t, env, "", `{"jsonrpc":"2.0","id":"1","method":"tools/list"}`)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", res.Code)
+	}
+	challenge := res.Header().Get("WWW-Authenticate")
+	if !strings.Contains(challenge, `scope="fund.read fund.write"`) {
+		t.Fatalf("challenge must advertise the full supported scope set: %q", challenge)
+	}
+}
+
+func TestMCPChallengeAdvertisesReadOnlyScopeByDefault(t *testing.T) {
+	env := newOAuthEnv(t, testCfg(), nil)
+	res := callMCP(t, env, "", `{"jsonrpc":"2.0","id":"1","method":"tools/list"}`)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", res.Code)
+	}
+	challenge := res.Header().Get("WWW-Authenticate")
+	if !strings.Contains(challenge, `scope="fund.read"`) {
+		t.Fatalf("challenge must advertise the read scope: %q", challenge)
+	}
+	if strings.Contains(challenge, "fund.write") {
+		t.Fatalf("challenge must not advertise write scope when it is disabled: %q", challenge)
+	}
+}
+
 func TestMCPRejectsTokenMintedForAnotherResource(t *testing.T) {
 	env := newOAuthEnv(t, testCfg(), nil)
 

@@ -66,8 +66,8 @@ func TestServerListsRegistryToolsInMCPShape(t *testing.T) {
 	result := decodeResult(t, response)
 	tools := result["tools"].([]any)
 	// tools/list only advertises implemented tools (not the full 44 registry matrix).
-	if len(tools) < 20 || len(tools) > 44 {
-		t.Fatalf("tools length = %d, want implemented subset (20-44 full)", len(tools))
+	if len(tools) < 20 || len(tools) > 45 {
+		t.Fatalf("tools length = %d, want implemented subset (20-45 full)", len(tools))
 	}
 	body := toJSONString(t, result)
 	if !strings.Contains(body, `"name":"get_portfolio_summary"`) {
@@ -119,8 +119,8 @@ func TestServerListsRegistryToolsInMCPShape(t *testing.T) {
 		t.Fatalf("tools/list missing MCP camelCase annotations: %s", body)
 	}
 	// Full registry parity: no registry-only phantoms expected at 44.
-	if len(tools) < 44 {
-		t.Fatalf("tools length = %d, want >= 44 full registry", len(tools))
+	if len(tools) < 45 {
+		t.Fatalf("tools length = %d, want >= 45 full registry", len(tools))
 	}
 }
 
@@ -1487,24 +1487,31 @@ func newMCPServerWithRole(t *testing.T, db *sql.DB, role agenttools.Role) *Serve
 	portfolio := portfoliosvc.NewService(db)
 	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	var confirmations confirmationConsumer
+	var confirmationPrep confirmationPreparer
 	if role == agenttools.RoleOperator {
-		confirmations = allowConfirmationConsumer{}
+		svc := allowConfirmationService{}
+		confirmations = svc
+		confirmationPrep = svc
 	}
 	// Mirror httpapi.NewRouter: the portfolio service must learn the same wiring fact
 	// the MCP advertisement guard uses, otherwise harness/agent-context discovery and
 	// tools/list would describe two different servers.
 	portfolio.SetConfirmationFlowAvailable(confirmations != nil)
-	server, err := NewServer(ServerDeps{Portfolio: &portfolio, Admin: &admin, AgentOps: confirmations, Role: role})
+	server, err := NewServer(ServerDeps{Portfolio: &portfolio, Admin: &admin, AgentOps: confirmations, ConfirmationPrep: confirmationPrep, Role: role})
 	if err != nil {
 		t.Fatalf("NewServer returned error: %v", err)
 	}
 	return server
 }
 
-type allowConfirmationConsumer struct{}
+type allowConfirmationService struct{}
 
-func (allowConfirmationConsumer) ClaimConfirmation(_ context.Context, input agentops.ConsumeConfirmationInput) (agentops.ConsumedConfirmation, error) {
+func (allowConfirmationService) ClaimConfirmation(_ context.Context, input agentops.ConsumeConfirmationInput) (agentops.ConsumedConfirmation, error) {
 	return agentops.ConsumedConfirmation{ConfirmationID: input.ConfirmationID, Tool: input.Tool}, nil
+}
+
+func (allowConfirmationService) PrepareConfirmation(_ context.Context, input agentops.PrepareConfirmationInput) (agentops.PreparedConfirmation, error) {
+	return agentops.PreparedConfirmation{ConfirmationID: 1, Token: "fake-token", Tool: input.Tool}, nil
 }
 
 func openMCPFixture(t *testing.T) *sql.DB {

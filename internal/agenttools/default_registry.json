@@ -3,6 +3,79 @@
   "generated_at": "2026-07-06T22:55:00+08:00",
   "tools": [
     {
+      "name": "prepare_confirmation",
+      "category": "admin",
+      "description": "为写操作准备一次性确认。写工具（如 add_transaction/update_transaction/delete_fund 等）都要求 confirmation_id + confirmation_token。先调用本工具，传入目标写工具名 tool 和与其最终调用一致的 payload，拿到 confirmation_id 与 token；随后把这两个字段原样传给写工具完成落库。token 单次有效，过期需重新准备。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "要执行的写工具名，例如 add_transaction"
+          },
+          "payload": {
+            "type": "object",
+            "description": "将传给写工具的参数（不含 confirmation_id/confirmation_token），需与最终调用保持一致"
+          },
+          "caller": {
+            "type": "string",
+            "description": "调用方标识，默认 mcp"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "可选请求 ID"
+          },
+          "enforce_reviewed": {
+            "type": "boolean",
+            "description": "是否强制 review 门禁"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "tool"
+        ]
+      },
+      "output_envelope": {
+        "kind": "json",
+        "json_root": null
+      },
+      "capability": {
+        "tool": "prepare_confirmation",
+        "scope": "write",
+        "permission": "allowed",
+        "risk_level": "medium",
+        "use_for": "为 confirmation-gated 写工具准备一次性确认凭证"
+      },
+      "confirmation": {
+        "required": false,
+        "reason": null,
+        "token_ttl_seconds": null
+      },
+      "audit": {
+        "event_type": "write",
+        "record_attempt": false,
+        "record_result": false,
+        "redact_args": [
+          "token",
+          "confirmation_token",
+          "authorization",
+          "api_key",
+          "password",
+          "secret"
+        ]
+      },
+      "mcp_annotations": {
+        "read_only_hint": false,
+        "destructive_hint": false,
+        "open_world_hint": false
+      },
+      "migration": {
+        "source_file": "packages/server/mcp/tools/agentops.ts",
+        "permission_source": "harness",
+        "review_required": false
+      }
+    },
+    {
       "name": "add_fund",
       "category": "securities",
       "description": "添加新基金到系统",
@@ -3122,7 +3195,10 @@
           "active": {
             "type": "integer",
             "description": "启用状态：1 启用，0 停用；缺省 1",
-            "enum": [0, 1]
+            "enum": [
+              0,
+              1
+            ]
           },
           "start_date": {
             "type": "string",

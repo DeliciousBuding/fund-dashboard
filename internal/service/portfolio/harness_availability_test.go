@@ -70,15 +70,24 @@ func TestAvailableAgentToolsMatchesRegistrySSOT(t *testing.T) {
 func TestConfirmationGatedToolNamesCoversEveryGatedRegistryTool(t *testing.T) {
 	gated := confirmationGatedToolNames()
 	want := registryGatedNames(t)
-	if len(gated) != len(want) {
-		t.Fatalf("gated count = %d, want %d", len(gated), len(want))
+	// prepare_confirmation is the one intentional extra: it is permission
+	// "allowed" (it prepares the boundary, it is not itself a gated write), but
+	// it is still useless without the confirmation service wired.
+	if len(gated) != len(want)+1 {
+		t.Fatalf("gated count = %d, want %d (+prepare_confirmation)", len(gated), len(want)+1)
 	}
 	for name := range want {
 		if _, ok := gated[name]; !ok {
 			t.Fatalf("gated set is missing %q", name)
 		}
 	}
+	if _, ok := gated["prepare_confirmation"]; !ok {
+		t.Fatal("prepare_confirmation must be treated as confirmation-service-dependent")
+	}
 	for name := range gated {
+		if name == "prepare_confirmation" {
+			continue
+		}
 		if !want[name] {
 			t.Fatalf("gated set has extra %q", name)
 		}
@@ -98,7 +107,7 @@ func TestConfirmationGatedToolNamesCoversEveryGatedRegistryTool(t *testing.T) {
 
 func TestToolsWithConfirmationAvailability(t *testing.T) {
 	all := append([]string(nil), availableAgentTools...)
-	gated := registryGatedNames(t)
+	gated := confirmationGatedToolNames()
 
 	// Wired: identity, same slice contents and order.
 	if got := toolsWithConfirmationAvailability(all, true); len(got) != len(all) {
@@ -111,7 +120,7 @@ func TestToolsWithConfirmationAvailability(t *testing.T) {
 		t.Fatalf("unwired listing has %d tools, want %d (%d minus %d gated)", len(unwired), wantLen, len(all), len(gated))
 	}
 	for _, name := range unwired {
-		if gated[name] {
+		if _, isGated := gated[name]; isGated {
 			t.Fatalf("unwired listing still advertises gated %q", name)
 		}
 	}
@@ -125,7 +134,7 @@ func TestToolsWithConfirmationAvailability(t *testing.T) {
 	// Order preserved for consumers that diff the listing.
 	cursor := 0
 	for _, name := range all {
-		if gated[name] {
+		if _, isGated := gated[name]; isGated {
 			continue
 		}
 		if unwired[cursor] != name {
