@@ -1,0 +1,38 @@
+{
+  "change": 2.35,
+  "change_pct": 1.2,
+  "code": "AAPL",
+  "currency": "USD",
+  "decision_boundary": "facts_only",
+  "external_fetch": "not_performed",
+  "high": 199,
+  "history": [
+    {
+      "change_pct": 1.2,
+      "close": 198.25,
+      "date": "2026-06-18"
+    },
+    {
+      "change_pct": 0.7,
+      "close": 195.9,
+      "date": "2026-06-17"
+    }
+  ],
+  "low": 195.8,
+  "market": "us",
+  "market_time": "2099-01-01 12:00:00",
+  "name": "Apple Inc.",
+  "open": 196.5,
+  "previous_close": 0,
+  "price": 198.25,
+  "profile": {
+    "description": "Consumer hardware and services",
+    "industry": "Consumer Electronics",
+    "market_cap": 3000000000000,
+    "pe": 31.2,
+    "sector": "Technology"
+  },
+  "side_effects": "none",
+  "source": "cache",
+  "volume": 45000000
+}

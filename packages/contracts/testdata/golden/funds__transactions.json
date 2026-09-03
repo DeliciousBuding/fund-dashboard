@@ -1,0 +1,37 @@
+{
+  "total": 2,
+  "transactions": [
+    {
+      "amount": 300,
+      "anomaly": null,
+      "confirm_date": "2026-06-02",
+      "direction": "buy",
+      "fee": 0.1,
+      "fund_code": "AAPL",
+      "fund_name": "Apple Inc.",
+      "order_id": "TX002",
+      "portfolio_id": 1,
+      "seq": 2,
+      "settlement_days": 2,
+      "shares": 2,
+      "trade_time": "2026-06-01T09:00:00Z",
+      "trade_type": "用户买入"
+    },
+    {
+      "amount": 120,
+      "anomaly": null,
+      "confirm_date": "2026-06-02",
+      "direction": "buy",
+      "fee": 0.1,
+      "fund_code": "019173",
+      "fund_name": "纳斯达克100指数(QDII)C",
+      "order_id": "TX001",
+      "portfolio_id": 1,
+      "seq": 1,
+      "settlement_days": 2,
+      "shares": 100,
+      "trade_time": "2026-06-01T09:00:00Z",
+      "trade_type": "用户买入"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "equity_fund_count": 1,
+  "penetration": [
+    {
+      "held_by_funds": [
+        {
+          "fund_code": "019173",
+          "fund_name": "纳斯达克100指数(QDII)C",
+          "fund_value_cny": 150,
+          "weight_pct": 8.5
+        }
+      ],
+      "stock_code": "NVDA",
+      "stock_name": "NVIDIA",
+      "total_exposure_cny": 12.75,
+      "weight_pct": 8.5
+    }
+  ],
+  "total_portfolio_value": 150,
+  "unique_stocks": 1
+}

@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "event": "setup",
+      "ip": "127.0.0.1",
+      "ts": 0,
+      "user_agent": "test-agent"
+    },
+    {
+      "event": "login_ok",
+      "ip": "127.0.0.1",
+      "ts": 0,
+      "user_agent": "test-agent"
+    }
+  ]
+}
