@@ -25,10 +25,19 @@
 
 ### 2.1 传输安全头（`internal/httpapi/security_headers.go` 扩展）
 
-- 新增 `Cross-Origin-Opener-Policy: same-origin`。
+- 新增 `Cross-Origin-Opener-Policy: same-origin`（默认所有路径）。
+  **例外**：远端 MCP 客户端（ChatGPT/Claude/Cursor）在弹出窗口打开 `/oauth/authorize`、
+  `/login` 等授权面。带 `same-origin` 的弹出文档会从跨源 opener 断开——客户端看到
+  `popup.closed == true`（窗口明明还在屏上），于是判定授权被取消。这些面改发
+  `Cross-Origin-Opener-Policy: unsafe-none`（授权页无跨源秘密数据，其他面仍保持 same-origin）。
+- CSP 拆为共享常量 `baseContentSecurityPolicy`；**同意页**（GET /oauth/authorize）额外把
+  `form-action` 向后追加已校验的客户端重定向源（如 `https://chatgpt.com`）。Chrome 对
+  「表单提交重定向链」的每一跳都检查 `form-action`，基线 `form-action 'self'` 会静默拦掉
+  同意 POST 后的 303 回跳到客户端回调——表现为点「授权」无反应、未跳转。追加的源只取
+  scheme://host（不经路径/查询），无法扩大重定向面；其他所有响应维持严格基线。
 - HSTS：`Strict-Transport-Security: max-age=31536000; includeSubDomains`，**仅当**
   `FUND_SECURE_COOKIES=true`（= 公网 TLS 部署信号）时下发；本地/HTTP 冒烟不受影响。
-- 既有 CSP/nosniff/DENY/Referrer-Policy/Permissions-Policy/CORP 不动。
+- 既有 nosniff/DENY/Referrer-Policy/Permissions-Policy/CORP 不动。
 
 ### 2.2 认证加固（`internal/auth/`）
 

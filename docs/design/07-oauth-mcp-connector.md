@@ -154,6 +154,9 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 - **同意页仍然存在**，用于首次授权、写作用域或关闭 auto-approve 时；服务端渲染，
   零 JS、零内联样式（CSP `style-src 'self'` / `script-src 'self'`），
   带一次性 `consent_token`（10 分钟、单次消费）作为 SameSite=Lax 之外的第三层 CSRF 防线。
+  这是 ChatGPT 在弹出窗口打开的页面：其 CSP 会向后追加已校验的客户端重定向源
+  （如 `https://chatgpt.com`），否则 Chrome 的 `form-action 'self'` 会拦掉同意 POST
+  后的 303 回跳；COOP 也用 `unsafe-none`，否则同源弹窗会被跨源 opener 判为已关闭。
 - **令牌端点不要求 `client_id`**：OpenAI 连接器的 `/token` 请求不带该参数，
   客户端身份从授权码记录中取。带了就必须与授权时一致，否则拒绝（防换客户端洗码）。
 
@@ -172,7 +175,7 @@ ChatGPT ──POST /mcp  Authorization: Bearer <access_token>
 | Host 头伪造签发者 | `FUND_PUBLIC_BASE_URL` 显式配置优先；production 必须解析出 https 源，否则**启动失败**；请求派生仅用于本地开发 |
 | 密钥泄露 | JWKS 只发布公钥（测试断言不含 `d` 与 PEM 私钥）；`FUND_OAUTH_SIGNING_KEY` 命中 `isSecretKey` 自动脱敏 |
 | WWW-Authenticate 头注入 | `sanitizeChallengeDescription` 剥除引号/反斜杠/CR/LF 并截断 160 字符 |
-| 同意页 CSRF | 一次性 `consent_token` + SameSite=Lax + `form-action 'self'` |
+| 同意页 CSRF | 一次性 `consent_token` + SameSite=Lax + `form-action 'self' <客户端源>`（同意页 CSP 单独扩展；信任来自已校验的 redirect_uri，不扩大重定向面） |
 | 钓鱼 authorize 链接借开放注册偷读 | 首次授权强制同意页（显示 client 名称）；批准按 `(client_id, scope)` 记忆，仅在所有者显式点过之后才静默；写作用域永远询问；记忆不可读时 fail-closed 为「问」 |
 | 暴力/扫描 | `/oauth/*` per-IP 限流（默认 60/min，burst 30）；discovery 文档在限流桶**之外**，探测不会被饿死 |
 

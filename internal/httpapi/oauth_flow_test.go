@@ -92,6 +92,24 @@ func TestOAuthAuthorizeShowsConsentOnFirstUseThenGoesSilent(t *testing.T) {
 	}
 }
 
+func TestOAuthConsentPageCSPAllowsRedirectOriginAndRelaxesCOOP(t *testing.T) {
+	env := newOAuthEnv(t, testCfg(), nil)
+	res := env.get(t, env.authorizeURL(nil), true)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, want the consent screen", res.Code)
+	}
+	csp := res.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "form-action 'self' https://chatgpt.com") {
+		t.Fatalf("consent CSP must allow the validated redirect origin, got: %s", csp)
+	}
+	if got := res.Header().Get("Cross-Origin-Opener-Policy"); got != "unsafe-none" {
+		t.Fatalf("COOP = %q, want unsafe-none so the ChatGPT popup keeps its opener", got)
+	}
+	if got := res.Header().Get("X-Frame-Options"); got != "DENY" {
+		t.Fatalf("X-Frame-Options = %q, want DENY unchanged", got)
+	}
+}
+
 func TestOAuthAuthorizeUnknownClientRendersErrorPageWithoutRedirecting(t *testing.T) {
 	env := newOAuthEnv(t, testCfg(), nil)
 	target := env.authorizeURL(url.Values{"client_id": {"not-registered"}})

@@ -205,9 +205,23 @@ func oauthTemplateSet() *template.Template {
 	return oauthTemplates
 }
 
-func renderOAuthConsent(w http.ResponseWriter, r *http.Request, view consentView) {
+// oauthConsentCSP extends the strict baseline CSP for the consent page only.
+// Chrome enforces form-action against every hop of a form-submission redirect
+// chain, so the baseline form-action 'self' silently blocks the consent form's
+// 303 to the client callback (e.g. https://chatgpt.com/connector/oauth/...).
+// redirectOrigin is scheme://host of the already-validated client redirect URI,
+// never a path or query, so it can only ever allow that client origin.
+func oauthConsentCSP(redirectOrigin string) string {
+	if redirectOrigin == "" {
+		return baseContentSecurityPolicy
+	}
+	return baseContentSecurityPolicy + " " + redirectOrigin
+}
+
+func renderOAuthConsent(w http.ResponseWriter, r *http.Request, view consentView, redirectOrigin string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", oauthConsentCSP(redirectOrigin))
 	w.WriteHeader(http.StatusOK)
 	if err := oauthTemplateSet().ExecuteTemplate(w, "consent", view); err != nil {
 		slog.Warn("oauth consent render failed", "request_id", RequestIDFromContext(r.Context()), "error", err.Error())

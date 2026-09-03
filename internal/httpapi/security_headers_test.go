@@ -73,3 +73,24 @@ func TestSecurityHeadersHSTSOnSecureOnly(t *testing.T) {
 		t.Fatalf("insecure HSTS = %q, want unset", got)
 	}
 }
+
+func TestSecurityHeadersCOOPRelaxesForOAuthPopupPaths(t *testing.T) {
+	cases := map[string]string{
+		"/api/health":      "same-origin",
+		"/oauth/authorize": "unsafe-none",
+		"/oauth/consent":   "unsafe-none",
+		"/login":           "unsafe-none",
+		"/":                "same-origin",
+	}
+	for path, want := range cases {
+		h := SecurityHeaders(false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if got := rr.Header().Get("Cross-Origin-Opener-Policy"); got != want {
+			t.Fatalf("%s COOP = %q, want %q", path, got, want)
+		}
+	}
+}
