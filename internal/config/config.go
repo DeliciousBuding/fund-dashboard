@@ -58,6 +58,13 @@ type Config struct {
 	APIRPM int
 	// MCPRPM caps per-key MCP requests per minute (FUND_MCP_RPM, default 120).
 	MCPRPM int
+	// MCPPreAuthRPM caps per-IP /mcp requests per minute BEFORE authentication
+	// (FUND_MCP_PREAUTH_RPM, default 600, burst 60). It is a coarse CPU guard:
+	// without it an attacker spraying random bearer tokens forces one full ECDSA
+	// signature verification per request with no limiting at all. It is
+	// independent of the post-auth per-key bucket (FUND_MCP_RPM), which stays
+	// mounted after Bearer auth so 401s never burn key buckets.
+	MCPPreAuthRPM int
 	// OAuthRPM caps per-IP OAuth endpoint requests per minute
 	// (FUND_OAUTH_RPM, default 60). The discovery documents sit outside this
 	// bucket so a metadata probe can never be starved by a brute-force scan.
@@ -125,6 +132,7 @@ func Parse(env map[string]string) (Config, error) {
 		EdgeAuthEnabled:   parseBoolEnvDefault(env["FUND_EDGE_AUTH_ENABLED"], "FUND_EDGE_AUTH_ENABLED", true),
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
 		APIRPM:            parseRPM(env["FUND_API_RPM"], "FUND_API_RPM", 600),
+		MCPPreAuthRPM:     parseRPM(env["FUND_MCP_PREAUTH_RPM"], "FUND_MCP_PREAUTH_RPM", 600),
 		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], "FUND_MCP_RPM", 120),
 		OAuthRPM:          parseRPM(env["FUND_OAUTH_RPM"], "FUND_OAUTH_RPM", 60),
 		TrustedProxies:    parseTrustedProxies(env["FUND_TRUSTED_PROXIES"]),

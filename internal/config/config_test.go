@@ -353,6 +353,32 @@ func TestParseRateLimitEnvs(t *testing.T) {
 	}
 }
 
+func TestParseMCPPreAuthRPM(t *testing.T) {
+	cfg, err := Parse(map[string]string{"FUND_MCP_PREAUTH_RPM": "300"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 300 {
+		t.Fatalf("MCPPreAuthRPM = %d, want 300", cfg.MCPPreAuthRPM)
+	}
+	// 非法值回退默认 600。
+	cfg, err = Parse(map[string]string{"FUND_MCP_PREAUTH_RPM": "-1"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 600 {
+		t.Fatalf("fallback MCPPreAuthRPM = %d, want 600", cfg.MCPPreAuthRPM)
+	}
+	// 未设置默认 600。
+	cfg, err = Parse(map[string]string{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 600 {
+		t.Fatalf("default MCPPreAuthRPM = %d, want 600", cfg.MCPPreAuthRPM)
+	}
+}
+
 func TestParseTrustedProxies(t *testing.T) {
 	cfg, err := Parse(map[string]string{
 		"FUND_TRUSTED_PROXIES": "10.0.0.0/8, 192.168.1.5, 2001:db8::/32, not-an-ip, ,",

@@ -225,8 +225,11 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 		registerOAuthRoutes(r, deps.oauthSvc, deps.auth, oauthLimiter, oauthIPKey)
 	}
 
-	// MCP stays outside the per-IP group: it has its own per-key limiter
-	// (see registerMCPRoutes), mounted after Bearer auth so 401s don't burn tokens.
+	// MCP stays outside the per-IP /api group: it carries its own coarse pre-auth
+	// per-IP bucket (FUND_MCP_PREAUTH_RPM, mounted first in registerMCPRoutes so
+	// token-spray floods cannot force unlimited ECDSA verifications) plus the
+	// per-key limiter mounted after Bearer auth, so 401s still never burn key
+	// buckets.
 	if deps.portfolio != nil && deps.db != nil {
 		mcpLimiter := NewRateLimiter(float64(cfg.MCPRPM), 60)
 		registerMCPRoutes(r, cfg, deps.portfolio, deps.db, deps.agentOps, deps.dbDriver, deps.navCrawler, deps.snapshots, deps.holdings, mcpLimiter, deps.oauthSvc)
