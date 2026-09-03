@@ -136,10 +136,12 @@ has "authorization code issued" "$CODE" "."
 has "state echoed" "$loc" "state=smoke-state"
 hasnt "no token in the front channel" "$loc" "access_token"
 
-# The consent token is single-use: replaying it must not mint a second code.
-replayconsent="$(status -b "$JAR" -X POST "$BASE/oauth/consent" \
+# A double submit must replay the same callback (same code), never strand the
+# owner on an error page after the code was already issued.
+replayconsent="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$JAR" -X POST "$BASE/oauth/consent" \
                  --data-urlencode "consent_token=$CONSENT_TOKEN" --data-urlencode "decision=approve")"
-check "consent token is single-use" "$replayconsent" "400"
+check "consent replay returns a redirect" "${replayconsent%% *}" "303"
+check "consent replay carries the same code" "$(codefrom "${replayconsent#* }")" "$CODE"
 
 # Steady state, i.e. what the owner actually experiences from now on: an approved
 # connector needs no click, so logging in is the whole interaction.
@@ -226,3 +228,4 @@ fi
 echo
 echo "== smoke result: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
+
