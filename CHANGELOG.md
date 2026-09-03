@@ -22,6 +22,9 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-03
+
+
 - [修复] ChatGPT 自定义连接器授权页点「授权」无反应/不跳转：基线 `form-action 'self'` 被 Chrome 对表单提交重定向链逐跳校验，拦掉了同意 POST 之后的 303 回跳客户端回调（`chatgpt.com/connector/oauth/...`）。同意页现在按其已校验的客户端重定向源单独扩展 CSP `form-action`；同时 `/oauth/authorize`、`/oauth/consent`、`/login` 这些被远端 MCP 客户端弹窗打开的授权面改发 `Cross-Origin-Opener-Policy: unsafe-none`，避免同源 COOP 把弹窗从跨源 opener 断开（客户端误判 `popup.closed == true`、判定授权被取消）。其余所有响应维持 `same-origin` 与严格 CSP 基线（#38）。
 
 ## [2.2.0] - 2026-09-03
