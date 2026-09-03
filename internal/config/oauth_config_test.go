@@ -39,10 +39,10 @@ func TestOAuthDefaults(t *testing.T) {
 
 func TestOAuthIssuerResolution(t *testing.T) {
 	t.Run("explicit base URL wins and is normalized", func(t *testing.T) {
-		cfg, err := Parse(map[string]string{
+		cfg, err := Parse(withHardenedKeys(map[string]string{
 			"FUND_PUBLIC_BASE_URL": "https://fund.example.com/",
 			"FUND_ALLOWED_ORIGINS": "https://other.example.com",
-		})
+		}))
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
@@ -52,9 +52,9 @@ func TestOAuthIssuerResolution(t *testing.T) {
 	})
 
 	t.Run("falls back to the first allowed origin", func(t *testing.T) {
-		cfg, err := Parse(map[string]string{
+		cfg, err := Parse(withHardenedKeys(map[string]string{
 			"FUND_ALLOWED_ORIGINS": "https://fund.example.com, http://localhost:5173",
-		})
+		}))
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
@@ -64,9 +64,9 @@ func TestOAuthIssuerResolution(t *testing.T) {
 	})
 
 	t.Run("fallback keeps only scheme and host", func(t *testing.T) {
-		cfg, err := Parse(map[string]string{
+		cfg, err := Parse(withHardenedKeys(map[string]string{
 			"FUND_ALLOWED_ORIGINS": "https://fund.example.com:8443/some/path?x=1#frag",
-		})
+		}))
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
@@ -76,9 +76,9 @@ func TestOAuthIssuerResolution(t *testing.T) {
 	})
 
 	t.Run("non-absolute origins are skipped", func(t *testing.T) {
-		cfg, err := Parse(map[string]string{
+		cfg, err := Parse(withHardenedKeys(map[string]string{
 			"FUND_ALLOWED_ORIGINS": "localhost:5173, fund.example.com, https://good.example.com",
-		})
+		}))
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
@@ -88,10 +88,10 @@ func TestOAuthIssuerResolution(t *testing.T) {
 	})
 
 	t.Run("no fallback when OAuth is disabled", func(t *testing.T) {
-		cfg, err := Parse(map[string]string{
+		cfg, err := Parse(withHardenedKeys(map[string]string{
 			"FUND_OAUTH_ENABLED":   "false",
 			"FUND_ALLOWED_ORIGINS": "https://fund.example.com",
-		})
+		}))
 		if err != nil {
 			t.Fatalf("Parse: %v", err)
 		}
@@ -205,10 +205,10 @@ func TestOAuthSigningKeyIsRedacted(t *testing.T) {
 	// material to every secret scanner.
 	dashes := strings.Repeat("-", 5)
 	fakeKey := dashes + "BEGIN PRIVATE KEY" + dashes + "\nsecret\n" + dashes + "END PRIVATE KEY" + dashes
-	cfg, err := Parse(map[string]string{
+	cfg, err := Parse(withHardenedKeys(map[string]string{
 		"FUND_OAUTH_SIGNING_KEY": fakeKey,
 		"FUND_PUBLIC_BASE_URL":   "https://fund.example.com",
-	})
+	}))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

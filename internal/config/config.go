@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -176,13 +177,67 @@ func Parse(env map[string]string) (Config, error) {
 		}
 	}
 
-	if isProductionEnv(cfg.Environment) {
+	// Production hardening is decoupled from FUND_ENV alone: a deployment that
+	// forgot FUND_ENV but points at a public origin must not silently skip the
+	// secret floors (weak MCP_API_KEY, missing issuer, ...). The signals are
+	// evaluated after the OAuth issuer derivation above, so a public origin
+	// declared via FUND_ALLOWED_ORIGINS counts through the derived issuer too.
+	if needsProductionHardening(cfg) {
 		if err := validateProductionSecrets(cfg); err != nil {
 			return Config{}, err
 		}
 	}
 
 	return cfg, nil
+}
+
+// needsProductionHardening reports whether this process must satisfy the
+// production secret checks: either FUND_ENV says production, or the operator
+// declared a public exposure — a non-loopback FUND_PUBLIC_BASE_URL host, or a
+// FUND_ALLOWED_ORIGINS entry on a non-loopback host. Loopback-only setups
+// (local development, CI smoke with placeholder keys on localhost) stay exempt:
+// the trigger only widens on evidence of a public surface, never guesses.
+func needsProductionHardening(cfg Config) bool {
+	if isProductionEnv(cfg.Environment) {
+		return true
+	}
+	if hostIsNonLoopback(cfg.OAuthPublicBaseURL) {
+		return true
+	}
+	for _, origin := range cfg.AllowedOrigins {
+		if hostIsNonLoopback(origin) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostIsNonLoopback reports whether an absolute http(s) URL points at a host
+// outside this machine. Loopback (localhost, 127.0.0.0/8, ::1) and anything
+// that is not an absolute http(s) URL return false — a relative or garbage
+// value is no evidence of public exposure, and validateProductionSecrets still
+// rejects such issuer values when hardening applies for other reasons.
+func hostIsNonLoopback(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	scheme, _, found := strings.Cut(raw, "://")
+	if !found || (scheme != "http" && scheme != "https") {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" || host == "localhost" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsLoopback()
+	}
+	return true
 }
 
 func isProductionEnv(env string) bool {
