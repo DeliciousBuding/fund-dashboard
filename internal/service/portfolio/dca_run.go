@@ -192,7 +192,11 @@ func (s Service) RunDCAAutoInvest(ctx context.Context, in RunDCAAutoInvestInput)
 			continue
 		}
 		navVal := nav.Float64
-		shares := amount / navVal
+		// Buy shares are rounded to 4 decimal places at the execution boundary —
+		// the same precision the ledger stores unit NAV at (round4) — so the last
+		// full-float money path stops writing dust digits (e.g. 33.333333333333336).
+		// Preview reports the identical rounded value that execution will store.
+		shares := round4(amount / navVal)
 		item.NAV = &navVal
 		item.Shares = &shares
 
