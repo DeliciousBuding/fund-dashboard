@@ -25,10 +25,13 @@ const HeldSharesDust = 0.001
 // (symmetric with NAV parsing in internal/datasource), money and percentage
 // fields round to 2dp (symmetric with the display layer). Both helpers
 // normalize -0 to 0 so a residue like -1e-7 cannot surface as "-0" through
-// the API. Share drift reconciliation (admin integrity, T2) compares against
-// the same 4dp basis, so rounding here and reconciling there can never
-// disagree about what the ledger says.
-func roundShares(v float64) float64 {
+// the API.
+//
+// RoundShares is exported because share-drift reconciliation
+// (internal/service/admin integrity check) must compare the transaction
+// ledger against portfolio_snapshot on exactly the same 4dp basis Recalc
+// persists with — two different precision bases would manufacture drift.
+func RoundShares(v float64) float64 {
 	r := math.Round(v*1e4) / 1e4
 	if r == 0 {
 		return 0
@@ -98,7 +101,7 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 		// Round the ledger sum to the 4dp share basis before the dust check so
 		// pure float residue (1e-15 class) is settled to exactly 0 and the
 		// dust threshold judges genuinely small positions, not float noise.
-		heldShares = roundShares(shares.Float64)
+		heldShares = RoundShares(shares.Float64)
 	}
 	if cost.Valid {
 		totalCost = roundAmount(cost.Float64)

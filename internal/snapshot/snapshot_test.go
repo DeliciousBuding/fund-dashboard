@@ -319,12 +319,12 @@ func TestRoundHelpersNormalizeNegativeZero(t *testing.T) {
 		got  float64
 		want float64
 	}{
-		{"shares residue", roundShares(1e-15), 0},
-		{"negative shares residue", roundShares(-1e-15), 0},
+		{"shares residue", RoundShares(1e-15), 0},
+		{"negative shares residue", RoundShares(-1e-15), 0},
 		{"amount residue", roundAmount(-1e-7), 0},
-		{"shares 4dp", roundShares(10.123456), 10.1235},
+		{"shares 4dp", RoundShares(10.123456), 10.1235},
 		{"amount 2dp", roundAmount(1234.567), 1234.57},
-		{"shares exact passthrough", roundShares(100), 100},
+		{"shares exact passthrough", RoundShares(100), 100},
 		{"amount exact passthrough", roundAmount(-1000.5), -1000.5},
 	}
 	for _, tc := range cases {
