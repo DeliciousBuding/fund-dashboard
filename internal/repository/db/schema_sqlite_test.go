@@ -123,15 +123,22 @@ func TestEnsureSQLiteSchemaNoSideEffectsOnLegacyDB(t *testing.T) {
 
 	// legacy Python-era shapes: single-column portfolio_snapshot PK and a
 	// transactions table that already violates (order_id, fund_code) uniqueness.
+	// The snapshot table carries the indexed portfolio_id column: indexes are
+	// mandatory since versioning landed, so a legacy table missing an indexed
+	// column now fails boot (pinned by TestEnsureSQLiteSchemaEnforcesIndexes);
+	// this fixture represents a DB the mandatory indexes can still build on.
+	// intentionally legacy schema for pre-versioning single-PK snapshot shape
 	if _, err := dbi.ExecContext(ctx, `
 		CREATE TABLE portfolio_snapshot (
 			fund_code TEXT PRIMARY KEY,
 			fund_name TEXT,
-			held_shares REAL
+			held_shares REAL,
+			portfolio_id INTEGER NOT NULL DEFAULT 1
 		)
 	`); err != nil {
 		t.Fatalf("create legacy snapshot: %v", err)
 	}
+	// intentionally legacy schema for pre-uniqueness transactions shape
 	if _, err := dbi.ExecContext(ctx, `
 		CREATE TABLE transactions (
 			seq INTEGER PRIMARY KEY AUTOINCREMENT,
