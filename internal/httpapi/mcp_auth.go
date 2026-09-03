@@ -133,8 +133,17 @@ func rejectMCP(w http.ResponseWriter, r *http.Request, svc *oauth.Service, code,
 		// the advertised metadata location carries the resource path suffix.
 		paths := oauth.WellKnownPathProtectedResource(svc.Options().ResourcePath)
 		metadataURL := issuer + paths[len(paths)-1]
-		w.Header().Set("WWW-Authenticate",
-			`Bearer resource_metadata="`+metadataURL+`", error="`+code+`", error_description="`+sanitizeChallengeDescription(description)+`"`)
+		challenge := `Bearer resource_metadata="` + metadataURL + `", error="` + code + `", error_description="` + sanitizeChallengeDescription(description) + `"`
+		// The challenge scope tells the MCP client which scopes it must request
+		// during authorization. Without it ChatGPT requests only the first
+		// supported scope (fund.read), which strands write-capable connectors on
+		// the analyst role. Advertising the full supported set lets a connector
+		// ask for read+write in one pass; a read-only deployment advertises only
+		// fund.read.
+		if scopes := svc.Options().ScopesSupported(); len(scopes) > 0 {
+			challenge += `, scope="` + strings.Join(scopes, " ") + `"`
+		}
+		w.Header().Set("WWW-Authenticate", challenge)
 	}
 	WriteJSON(w, http.StatusUnauthorized, map[string]any{
 		"error":             "unauthorized",

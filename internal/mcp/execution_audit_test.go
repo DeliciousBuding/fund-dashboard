@@ -39,7 +39,7 @@ func newExecutionAuditServer(t *testing.T, db *sql.DB, role agenttools.Role, sin
 	admin := adminsvc.NewServiceWithDriver(db, "sqlite")
 	var confirmations confirmationConsumer
 	if role == agenttools.RoleOperator {
-		confirmations = allowConfirmationConsumer{}
+		confirmations = allowConfirmationService{}
 	}
 	server, err := NewServer(ServerDeps{
 		Portfolio:      &portfolio,

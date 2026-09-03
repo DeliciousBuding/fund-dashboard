@@ -42,6 +42,7 @@ func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.
 		// (makes iface==nil false and panics on method dispatch).
 		if agentOps != nil {
 			deps.AgentOps = agentOps
+			deps.ConfirmationPrep = agentOps
 			// Same service implements mcp.ExecutionAuditSink: execution
 			// outcomes persist as event_type "execution" audit rows.
 			deps.ExecutionAudit = agentOps

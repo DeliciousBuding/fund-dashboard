@@ -49,6 +49,11 @@ func confirmationGatedToolNames() map[string]struct{} {
 			gated[tool.Name] = struct{}{}
 		}
 	}
+	// prepare_confirmation is permission "allowed" (it is the preparation half of
+	// the confirmation boundary, not a gated write itself), but it is useless --
+	// and must therefore not be advertised -- when the confirmation service is not
+	// wired. Treat it as gated for advertisement purposes.
+	gated["prepare_confirmation"] = struct{}{}
 	return gated
 }
 

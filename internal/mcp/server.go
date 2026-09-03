@@ -52,21 +52,30 @@ func negotiateProtocolVersion(params json.RawMessage) string {
 var processStartedAt = time.Now()
 
 type Server struct {
-	registry       *agenttools.Registry
-	portfolio      *portfoliosvc.Service
-	admin          *adminsvc.Service
-	agentOps       confirmationConsumer
-	nav            NavCrawler
-	snapshots      SnapshotRecalculator
-	holdings       HoldingsCrawler
-	executionAudit ExecutionAuditSink
-	role           agenttools.Role
+	registry         *agenttools.Registry
+	portfolio        *portfoliosvc.Service
+	admin            *adminsvc.Service
+	agentOps         confirmationConsumer
+	confirmationPrep confirmationPreparer
+	nav              NavCrawler
+	snapshots        SnapshotRecalculator
+	holdings         HoldingsCrawler
+	executionAudit   ExecutionAuditSink
+	role             agenttools.Role
 }
 
 // confirmationConsumer claims (verify + atomic MarkUsed) before write side-effects.
 // Claim must happen before tool execution so concurrent tools/call cannot double-write.
 type confirmationConsumer interface {
 	ClaimConfirmation(context.Context, agentops.ConsumeConfirmationInput) (agentops.ConsumedConfirmation, error)
+}
+
+// confirmationPreparer issues a one-time confirmation token for a write tool,
+// the first half of the prepare -> claim two-step write boundary. It is kept
+// separate from confirmationConsumer so write execution stays the only call site
+// that can consume a token.
+type confirmationPreparer interface {
+	PrepareConfirmation(context.Context, agentops.PrepareConfirmationInput) (agentops.PreparedConfirmation, error)
 }
 
 // NavCrawler is the optional price/NAV refresh surface for crawl_nav.
@@ -91,13 +100,14 @@ type HoldingsCrawler interface {
 }
 
 type ServerDeps struct {
-	Registry  *agenttools.Registry
-	Portfolio *portfoliosvc.Service
-	Admin     *adminsvc.Service
-	AgentOps  confirmationConsumer
-	Nav       NavCrawler
-	Snapshots SnapshotRecalculator
-	Holdings  HoldingsCrawler
+	Registry         *agenttools.Registry
+	Portfolio        *portfoliosvc.Service
+	Admin            *adminsvc.Service
+	AgentOps         confirmationConsumer
+	ConfirmationPrep confirmationPreparer
+	Nav              NavCrawler
+	Snapshots        SnapshotRecalculator
+	Holdings         HoldingsCrawler
 	// ExecutionAudit optionally persists sanitized tool execution outcomes
 	// (ok/errored/panic-recovered) as a best-effort side channel. When nil,
 	// execution audit is skipped. Audit failures never affect the tools/call
@@ -158,7 +168,7 @@ func NewServer(deps ServerDeps) (*Server, error) {
 	if role == "" {
 		role = agenttools.RoleAnalyst
 	}
-	return &Server{registry: registry, portfolio: deps.Portfolio, admin: deps.Admin, agentOps: deps.AgentOps, nav: deps.Nav, snapshots: deps.Snapshots, holdings: deps.Holdings, executionAudit: deps.ExecutionAudit, role: role}, nil
+	return &Server{registry: registry, portfolio: deps.Portfolio, admin: deps.Admin, agentOps: deps.AgentOps, confirmationPrep: deps.ConfirmationPrep, nav: deps.Nav, snapshots: deps.Snapshots, holdings: deps.Holdings, executionAudit: deps.ExecutionAudit, role: role}, nil
 }
 
 func (s *Server) Handle(ctx context.Context, request Request) (response Response) {
@@ -225,6 +235,13 @@ func (s *Server) listTools() map[string]any {
 		// every gated call closed with confirmation_service_unavailable. Either
 		// way such a tool can never succeed, so advertising it would misreport
 		// this server's capability surface to the agent.
+		// prepare_confirmation is the first half of the write confirmation flow,
+		// so it is advertised only when that flow is actually wired; otherwise it
+		// would report a tool that can never succeed.
+		if tool.Name == "prepare_confirmation" && (s.confirmationPrep == nil || !s.confirmationCompletable()) {
+			continue
+		}
+
 		if !s.confirmationCompletable() &&
 			(tool.Capability.Permission == agenttools.PermissionRequiresConfirmation || tool.Confirmation.Required) {
 			continue
@@ -254,6 +271,7 @@ func (s *Server) confirmationCompletable() bool {
 // implementedMCPTools is the SSOT for tools/call switch cases below.
 func implementedMCPTools() map[string]struct{} {
 	return map[string]struct{}{
+		"prepare_confirmation":            {},
 		"get_portfolio_summary":           {},
 		"get_portfolio_xirr":              {},
 		"get_portfolio_timeline":          {},
@@ -450,6 +468,8 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 		result, callErr = s.callRunBacktest(ctx, args)
 	case "get_full_dashboard":
 		result, callErr = s.callFullDashboard(ctx, args)
+	case "prepare_confirmation":
+		result, callErr = s.callPrepareConfirmation(ctx, args)
 	case "add_transaction":
 		result, callErr = s.callAddTransaction(ctx, args)
 	case "import_transactions":
@@ -508,7 +528,7 @@ func (s *Server) claimWriteConfirmation(ctx context.Context, name string, args m
 	if confirmationID <= 0 || token == "" {
 		// Point agents at the prepare HTTP endpoint and field map (token -> confirmation_token).
 		// Bare confirmed=true is not accepted (fail closed).
-		return jsonrpcError(-32602, "invalid_params: confirmation_id and confirmation_token required; prepare via POST /api/agent/confirmations/prepare then pass confirmation_id + confirmation_token (prepare returns token)")
+		return jsonrpcError(-32602, "invalid_params: confirmation_id and confirmation_token required; prepare them with the prepare_confirmation tool first, then pass confirmation_id + confirmation_token")
 	}
 	payload := confirmationPayload(args)
 	in := agentops.ConsumeConfirmationInput{

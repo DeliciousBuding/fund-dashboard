@@ -77,7 +77,7 @@ func TestHarnessSurfaceMatchesToolsList(t *testing.T) {
 		wantCount int
 	}{
 		{"analyst static key", func() *Server { return newMCPServer(t, db) }, 26},
-		{"operator with AgentOps wired", func() *Server { return newMCPServerWithRole(t, db, agenttools.RoleOperator) }, 44},
+		{"operator with AgentOps wired", func() *Server { return newMCPServerWithRole(t, db, agenttools.RoleOperator) }, 45},
 		{"operator without AgentOps", func() *Server { return newOperatorServerWithoutAgentOps(t, db) }, 29},
 	}
 	for _, tc := range cases {
