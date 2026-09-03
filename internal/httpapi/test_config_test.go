@@ -17,7 +17,10 @@ func testCfg() config.Config {
 		EdgeAuthEnabled:  true,
 		AuthSecureCookie: true,
 		// High enough that OAuth flow tests never trip the per-IP bucket.
-		OAuthRPM:         60000,
+		OAuthRPM: 60000,
+		// High enough that general tests never trip the /mcp pre-auth per-IP
+		// bucket; the dedicated pre-auth tests build a small config themselves.
+		MCPPreAuthRPM:    60000,
 		OAuthEnabled:     true,
 		OAuthAutoApprove: true,
 	}

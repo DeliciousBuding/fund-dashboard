@@ -21,10 +21,21 @@ import (
 func registerMCPRoutes(r chi.Router, cfg config.Config, portfolio *portfoliosvc.Service, db *sql.DB, agentOps *agentops.Service, driver string, nav mcp.NavCrawler, snapshots mcp.SnapshotRecalculator, holdings mcp.HoldingsCrawler, mcpLimiter *RateLimiter, oauthSvc *oauth.Service) {
 	admin := adminsvc.NewServiceWithDriver(db, driver)
 
+	// Coarse per-IP bucket BEFORE auth (design 06 §2.3, FUND_MCP_PREAUTH_RPM,
+	// default 600/min): without it an attacker spraying random bearer tokens gets
+	// one full ECDSA verification per request, unlimited, for free. /mcp is pure
+	// JSON-RPC over POST (notifications answer 202 and end the request), so
+	// counting per request cannot starve a long-lived connection.
+	preAuthLimiter := NewRateLimiter(float64(cfg.MCPPreAuthRPM), 60)
+	mcpPreAuthKeyFn := func(req *http.Request) string {
+		return "mcpip:" + clientIP(req, cfg.TrustedProxies)
+	}
+
 	// Fail-closed bearer auth: MCP_API_KEY (operator) and/or PUBLIC_MCP_KEY (analyst).
-	// Per-key limiter is mounted AFTER auth (chi middleware order) so failed
-	// auth (401) requests never burn the key's bucket (design 06 §2.3).
-	r.With(MCPAuth(cfg.AdminKey, cfg.PublicMCPKey, oauthSvc), RateLimit(mcpLimiter, mcpRateLimitKeyFn)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
+	// Middleware order: pre-auth per-IP → MCPAuth → per-key limiter, so failed
+	// auth (401) requests never burn the key's bucket (design 06 §2.3) while the
+	// flood itself still hits the coarse per-IP ceiling.
+	r.With(RateLimit(preAuthLimiter, mcpPreAuthKeyFn), MCPAuth(cfg.AdminKey, cfg.PublicMCPKey, oauthSvc), RateLimit(mcpLimiter, mcpRateLimitKeyFn)).Post("/mcp", func(w http.ResponseWriter, req *http.Request) {
 		role := agenttools.RoleAnalyst
 		if scope, ok := mcpAuthFromContext(req.Context()); ok {
 			role = scope.Role

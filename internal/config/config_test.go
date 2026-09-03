@@ -7,6 +7,29 @@ import (
 	"testing"
 )
 
+// hardenedKeys returns secret env entries that satisfy the production floors.
+// Public-exposure signals (a non-loopback FUND_PUBLIC_BASE_URL or
+// FUND_ALLOWED_ORIGINS host) trigger hardening even outside FUND_ENV=production,
+// so tests that declare a public origin must merge these in to pass Parse.
+func hardenedKeys() map[string]string {
+	return map[string]string{
+		"MCP_API_KEY":   "config-test-admin-key-01",
+		"FUND_EDGE_KEY": "config-test-edge-key-01",
+	}
+}
+
+// withHardenedKeys returns a copy of env merged with hardenedKeys().
+func withHardenedKeys(env map[string]string) map[string]string {
+	out := make(map[string]string, len(env)+2)
+	for key, value := range env {
+		out[key] = value
+	}
+	for key, value := range hardenedKeys() {
+		out[key] = value
+	}
+	return out
+}
+
 func TestParseUsesSafeDefaults(t *testing.T) {
 	cfg, err := Parse(map[string]string{})
 	if err != nil {
@@ -350,6 +373,99 @@ func TestParseRateLimitEnvs(t *testing.T) {
 	}
 	if cfg.APIRPM != 600 || cfg.MCPRPM != 120 {
 		t.Fatalf("defaults APIRPM=%d MCPRPM=%d", cfg.APIRPM, cfg.MCPRPM)
+	}
+}
+
+func TestParseMCPPreAuthRPM(t *testing.T) {
+	cfg, err := Parse(map[string]string{"FUND_MCP_PREAUTH_RPM": "300"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 300 {
+		t.Fatalf("MCPPreAuthRPM = %d, want 300", cfg.MCPPreAuthRPM)
+	}
+	// 非法值回退默认 600。
+	cfg, err = Parse(map[string]string{"FUND_MCP_PREAUTH_RPM": "-1"})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 600 {
+		t.Fatalf("fallback MCPPreAuthRPM = %d, want 600", cfg.MCPPreAuthRPM)
+	}
+	// 未设置默认 600。
+	cfg, err = Parse(map[string]string{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.MCPPreAuthRPM != 600 {
+		t.Fatalf("default MCPPreAuthRPM = %d, want 600", cfg.MCPPreAuthRPM)
+	}
+}
+
+// TestParseHardensOnPublicExposureSignals pins the decoupling of the production
+// checks from FUND_ENV: weak keys pass only when there is no production env AND
+// no public-exposure signal. A non-loopback FUND_PUBLIC_BASE_URL host or a
+// non-loopback FUND_ALLOWED_ORIGINS entry triggers validateProductionSecrets
+// even in development; loopback-only setups (the CI smoke shape) stay exempt.
+func TestParseHardensOnPublicExposureSignals(t *testing.T) {
+	weak := "weak" // < minProductionSecretLen → hardening rejects it
+	cases := []struct {
+		name          string
+		env           map[string]string
+		wantHardening bool
+	}{
+		{"plain development, no signals", map[string]string{"MCP_API_KEY": weak}, false},
+		{"loopback origins only", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_ALLOWED_ORIGINS": "http://localhost:5173, http://127.0.0.1:3000",
+		}, false},
+		{"loopback base url (CI smoke shape)", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_ENV":             "ci",
+			"FUND_PUBLIC_BASE_URL": "http://localhost:8080",
+			"FUND_EDGE_KEY":        weak,
+		}, false},
+		{"ipv6 loopback base url", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_PUBLIC_BASE_URL": "http://[::1]:8080",
+		}, false},
+		{"public base url", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_PUBLIC_BASE_URL": "https://fund.example.com",
+		}, true},
+		{"public origin in allowlist", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_ALLOWED_ORIGINS": "http://localhost:5173, https://fund.example.com",
+		}, true},
+		{"lan address is not loopback", map[string]string{
+			"MCP_API_KEY":          weak,
+			"FUND_PUBLIC_BASE_URL": "http://192.168.1.10:8080",
+		}, true},
+		{"production env alone", map[string]string{
+			"MCP_API_KEY": weak,
+			"FUND_ENV":    "production",
+		}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse(tc.env)
+			if tc.wantHardening && err == nil {
+				t.Fatal("Parse accepted weak keys despite a production-hardening signal")
+			}
+			if !tc.wantHardening && err != nil {
+				t.Fatalf("Parse rejected a loopback-only deployment: %v", err)
+			}
+			if tc.wantHardening && err != nil && !strings.Contains(err.Error(), "production requires") {
+				t.Fatalf("error does not come from the production checks: %v", err)
+			}
+		})
+	}
+
+	// The hardened shape still boots: strong keys plus a public signal pass.
+	if _, err := Parse(withHardenedKeys(map[string]string{
+		"FUND_PUBLIC_BASE_URL": "https://fund.example.com",
+	})); err != nil {
+		t.Fatalf("strong keys with a public signal must pass: %v", err)
 	}
 }
 

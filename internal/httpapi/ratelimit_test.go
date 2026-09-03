@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -161,13 +162,17 @@ func TestRouterAPIRateLimitRejectsAfterBurst(t *testing.T) {
 }
 
 func TestMCPAuthFailureDoesNotBurnRateLimit(t *testing.T) {
-	// 限流挂在 MCPAuth 之后(chi 顺序):401 请求不计费 —— 65 次无 Bearer 全部
-	// 401,绝无 429(若计费,第 61 个会 429)。
+	// per-key 限流挂在 MCPAuth 之后(chi 顺序):401 请求不计费 —— 65 次无 Bearer 全部
+	// 401,绝无 429(若 per-key 计费,第 61 个会 429)。每个请求来自不同源 IP:
+	// /mcp 另有认证前 per-IP 粗桶(FUND_MCP_PREAUTH_RPM,burst 60),同一 IP 打 65 个
+	// 会在粗桶处 429 —— 那是新行为(见 TestMCPPreAuthRateLimitRejectsUnauthenticatedFlood),
+	// 本测试只隔离 per-key 语义。
 	db := openPortfolioHTTPFixture(t)
 	t.Cleanup(func() { db.Close() })
 	router := NewRouter(testCfg(), WithDB(db))
 	for i := 0; i < 65; i++ {
 		req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+		req.RemoteAddr = fmt.Sprintf("192.0.2.%d:%d", i+1, 40000+i)
 		rr := httptest.NewRecorder()
 		router.ServeHTTP(rr, req)
 		if rr.Code != http.StatusUnauthorized {
