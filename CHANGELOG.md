@@ -11,11 +11,14 @@
 
 ## 发版流程
 
-1. 确认所有改动已合入 `main`
-2. 运行 `./scripts/release.sh <x.y.z>`（自动把 `[Unreleased]` 归入 `[x.y.z]`、打 tag `v<x.y.z>`、推送）
-3. tag 推送触发 GitHub Actions，自动创建 Release（release notes 取自本文件对应版本段）
+两段式——`main` 开着分支保护（required PR reviews + `enforce_admins`），**归版不能直推 main**：
 
-完整约定见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
+1. 确认所有改动已合入 `main`，本地 `main` 与 `origin/main` 同步、工作区干净
+2. `./scripts/release.sh <x.y.z>` —— 在 `chore/release-<x.y.z>` 分支上把 `[Unreleased]` 归入 `[x.y.z]`，提交推送并开 PR
+3. PR 合并后 `./scripts/release.sh --tag <x.y.z>` —— 校验后对 `main` HEAD 打 tag `v<x.y.z>` 并推送
+4. tag 推送触发 GitHub Actions，自动创建 Release（release notes 取自本文件对应版本段）
+
+完整约定与守卫清单见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
 
@@ -126,6 +129,7 @@
 - **chore** 删除死代码/死导出（LoadFile、nullIfZero、DefaultUSIndexSymbols、buttonVariants 导出等）。
 - **chore** CI Actions SHA 锁定 + workflow 级最小权限 + concurrency + dispatch 发布仅限 main。
 - **文档** SECURITY 补 Web 登录/session/HSTS 边界；MCP 工具描述与 agent brief 去除内部代号 Hermes/DSA。
+- **修复** 发版脚本在受保护 `main` 上根本跑不通。`scripts/release.sh` 归版后直接 commit 到 `main` 再 `git push origin main`，而本仓 `main` 开着 required PR reviews + `enforce_admins`，直推必被服务端拒；更糟的是失败时 `main` 上已留下一个推不出去的本地提交，只能 `reset --hard` 回退。改为两段式：`release.sh <x.y.z>` 只在 `chore/release-<x.y.z>` 分支上归版并开 PR（装了 `gh` 就自动开），合并后 `release.sh --tag <x.y.z>` 才对 `main` HEAD 打 tag——任何路径都不需要在 `main` 上撤销提交。补前置守卫（先拒后动）：本地/远端 tag 已存在、该版本号在 CHANGELOG 里已有段（`2.0.0` 就是只有 CHANGELOG 段、从未打 tag 的先例）、本地 `main` 与 `origin/main` 不同步、归版分支已存在。解释器按 `scripts/seed-ci-db.sh` 同一约定 `python3`→`python` 回落；新增可选 `RELEASE_CO_AUTHOR` 让归版提交带 `Co-authored-by` trailer。`CHANGELOG.md` 与 `CONTRIBUTING.md` 的发布步骤同步改为两段式。
 
 ## [2.0.0] - 2026-09-01
 
