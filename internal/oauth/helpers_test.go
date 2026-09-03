@@ -133,13 +133,12 @@ func approveConsentForTest(t *testing.T, svc *Service, grant AuthorizationGrant,
 	if err != nil {
 		t.Fatalf("begin consent: %v", err)
 	}
-	consumed, consumedState, ok := svc.ConsumeConsent(token)
+	target, ok, err := svc.FinalizeConsent(context.Background(), token, "approve")
+	if err != nil {
+		t.Fatalf("finalize consent: %v", err)
+	}
 	if !ok {
 		t.Fatal("consent token was not consumable")
-	}
-	target, err := svc.ApproveGrant(context.Background(), consumed, consumedState)
-	if err != nil {
-		t.Fatalf("approve grant: %v", err)
 	}
 	code := queryParam(t, target, "code")
 	if code == "" {
@@ -228,21 +227,37 @@ func TestCodeStoreIsSingleUseAndExpires(t *testing.T) {
 	}
 }
 
-func TestConsentTokenIsSingleUse(t *testing.T) {
+func TestConsentTokenFinalizesIdempotently(t *testing.T) {
 	svc := newTestService(t, func(o *Options) { o.AllowWriteScope = true })
 	grant := AuthorizationGrant{ClientID: "c1", RedirectURI: "https://chatgpt.com/cb"}
 	token, err := svc.BeginConsent(grant, "state-1")
 	if err != nil {
 		t.Fatalf("begin consent: %v", err)
 	}
-	got, state, ok := svc.ConsumeConsent(token)
-	if !ok || state != "state-1" || got.ClientID != "c1" {
-		t.Fatalf("consume failed: ok=%v state=%q grant=%+v", ok, state, got)
+	first, ok, err := svc.FinalizeConsent(context.Background(), token, "approve")
+	if err != nil || !ok {
+		t.Fatalf("first finalize: ok=%v err=%v", ok, err)
 	}
-	if _, _, ok := svc.ConsumeConsent(token); ok {
-		t.Fatal("consent token was replayable")
+	if queryParam(t, first, "code") == "" {
+		t.Fatalf("approval issued no code: %q", first)
 	}
-	if _, _, ok := svc.ConsumeConsent("bogus"); ok {
+	// A double submit replays the exact same callback (same code), never errors.
+	second, ok, err := svc.FinalizeConsent(context.Background(), token, "approve")
+	if err != nil || !ok {
+		t.Fatalf("replay finalize: ok=%v err=%v", ok, err)
+	}
+	if second != first {
+		t.Fatalf("replay redirect differs:\nfirst=%q\nsecond=%q", first, second)
+	}
+	// A later deny must not reverse an already-issued approval.
+	denied, ok, err := svc.FinalizeConsent(context.Background(), token, "deny")
+	if err != nil || !ok {
+		t.Fatalf("post-approve deny: ok=%v err=%v", ok, err)
+	}
+	if denied != first {
+		t.Fatalf("post-approve deny changed the redirect: %q", denied)
+	}
+	if _, ok, _ := svc.FinalizeConsent(context.Background(), "bogus", "approve"); ok {
 		t.Fatal("unknown consent token accepted")
 	}
 }

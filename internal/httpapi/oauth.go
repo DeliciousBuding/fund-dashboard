@@ -137,6 +137,14 @@ func handleOAuthAuthorize(svc *oauth.Service, authSvc *auth.Service) http.Handle
 			request.SessionID = session.ID
 		}
 		decision := svc.Authorize(r.Context(), issuer, request)
+		slog.Info("oauth authorize",
+			"request_id", RequestIDFromContext(r.Context()),
+			"kind", decision.Kind,
+			"client_id", truncateForLog(request.ClientID, 48),
+			"scope", request.Scope,
+			"resource", request.Resource,
+			"authenticated", request.Authenticated,
+		)
 		switch decision.Kind {
 		case oauth.DecisionRedirect:
 			http.Redirect(w, r, decision.RedirectURI, http.StatusFound)
@@ -234,6 +242,7 @@ func optionalQuery(parsed *url.URL) string {
 
 func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		issuer := resolveOAuthIssuer(r, svc)
 		r.Body = http.MaxBytesReader(w, r.Body, maxOAuthBodyBytes)
 		if err := r.ParseForm(); err != nil {
 			writeOAuthError(w, http.StatusBadRequest, oauth.ErrInvalidRequest, "malformed consent form")
@@ -245,27 +254,28 @@ func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerF
 			return
 		}
 		token := strings.TrimSpace(r.PostFormValue("consent_token"))
-		grant, state, ok := svc.ConsumeConsent(token)
-		if !ok {
-			writeOAuthError(w, http.StatusBadRequest, oauth.ErrInvalidRequest,
-				"consent session expired or was already used; restart the authorization request")
-			return
-		}
-		if strings.TrimSpace(r.PostFormValue("decision")) == "deny" {
-			target, err := svc.DenyRedirect(grant, state)
-			if err != nil {
-				writeOAuthServerError(w, r, err)
-				return
-			}
-			http.Redirect(w, r, target, http.StatusFound)
-			return
-		}
-		target, err := svc.ApproveGrant(r.Context(), grant, state)
+		decision := strings.TrimSpace(r.PostFormValue("decision"))
+		redirect, ok, err := svc.FinalizeConsent(r.Context(), token, decision)
 		if err != nil {
 			writeOAuthServerError(w, r, err)
 			return
 		}
-		http.Redirect(w, r, target, http.StatusFound)
+		if !ok {
+			// The token is unknown or expired. This is a local, non-redirectable
+			// error (we cannot safely bounce to an unverified client), so render
+			// the human-readable error page rather than raw JSON.
+			slog.Warn("oauth consent token invalid",
+				"request_id", RequestIDFromContext(r.Context()))
+			renderOAuthError(w, r, issuer, &oauth.Failure{
+				Code:        oauth.ErrInvalidRequest,
+				Description: "授权会话已过期或已处理，请回到发起授权的应用重新发起。",
+				Status:      http.StatusBadRequest,
+			})
+			return
+		}
+		// 303 See Other: this POST resolves to a GET on the client callback, so a
+		// browser back/forward or double submit navigates rather than re-POSTs.
+		http.Redirect(w, r, redirect, http.StatusSeeOther)
 	}
 }
 
@@ -288,6 +298,16 @@ func handleOAuthToken(svc *oauth.Service) http.HandlerFunc {
 		if err != nil {
 			var failure *oauth.Failure
 			if errors.As(err, &failure) {
+				slog.Warn("oauth token rejected",
+					"request_id", RequestIDFromContext(r.Context()),
+					"grant_type", request.GrantType,
+					"has_code", request.Code != "",
+					"has_verifier", request.CodeVerifier != "",
+					"has_redirect_uri", request.RedirectURI != "",
+					"has_client_id", request.ClientID != "",
+					"error", failure.Code.Error(),
+					"description", failure.Description,
+				)
 				writeOAuthFailure(w, failure)
 				return
 			}
@@ -443,4 +463,14 @@ func describeScopes(scopes []string) []scopeView {
 		}
 	}
 	return out
+}
+
+// truncateForLog caps a value before it is written to structured logs. It is a
+// diagnostic aid only; never use it to redact secrets (secrets must never reach
+// the log in the first place).
+func truncateForLog(v string, max int) string {
+	if len(v) <= max {
+		return v
+	}
+	return v[:max] + "…"
 }
