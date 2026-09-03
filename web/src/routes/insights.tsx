@@ -10,9 +10,10 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { fmtCNY } from "../lib/format";
 import { useAlerts, useHarness, useSourceEvents } from "../lib/queries";
+import { mutationErrorMessage } from "../services/userError";
 import { useUi } from "../stores/ui";
 
 // isSafeHttp allows only http(s) URLs to be used as clickable hrefs. Source
@@ -194,8 +195,7 @@ function EventsCard() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["source-events"] });
     },
-    onError: (e) =>
-      toast.error("标记失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("标记失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   const list = events.data?.events ?? [];

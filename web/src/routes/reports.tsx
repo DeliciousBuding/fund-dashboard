@@ -9,8 +9,9 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input, Label } from "../components/ui/input";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { downloadText } from "../lib/csv";
+import { mutationErrorMessage } from "../services/userError";
 import { useUi } from "../stores/ui";
 
 // 章节标题中文化（known keys；未知 key 原样显示）
@@ -38,8 +39,7 @@ export function ReportsPage() {
       return GenerateReportResultSchema.parse(data);
     },
     onSuccess: (r) => setReport(r),
-    onError: (e) =>
-      toast.error("生成失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("生成失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   return (
