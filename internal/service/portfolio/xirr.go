@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -131,6 +132,28 @@ func (s Service) queryPortfolioXIRRTransactions(ctx context.Context, portfolioID
 	return scanXIRRTransactions(rows)
 }
 
+// xirrLogger returns the injected degradation-signal sink, falling back to
+// slog.Default() for zero-value Services (no wiring change needed).
+func (s Service) xirrLogger() *slog.Logger {
+	if s.logger != nil {
+		return s.logger
+	}
+	return slog.Default()
+}
+
+// warnXIRRNavMissing is the explicit degradation signal: the position is real
+// (shares above the dust threshold) but no NAV exists to mark it to market,
+// so the XIRR terminal value silently falls toward 0 and would understate the
+// annualized return. The computation is intentionally unchanged — this log is
+// the only surface the degradation shows on — so every fallback path that
+// drops a live position's value must call it with a concrete reason.
+func (s Service) warnXIRRNavMissing(ctx context.Context, code string, reason string, shares float64) {
+	s.xirrLogger().WarnContext(ctx, "xirr terminal value degraded: holding has no usable NAV",
+		"fund_code", code,
+		"reason", reason,
+		"held_shares", shares)
+}
+
 func (s Service) queryCurrentMarketValue(ctx context.Context, code string, portfolioID int) (float64, error) {
 	portfolioID = clampPortfolioID(portfolioID)
 
@@ -144,6 +167,12 @@ func (s Service) queryCurrentMarketValue(ctx context.Context, code string, portf
 		  AND COALESCE(portfolio_id, 1) = ?
 	`, code, portfolioID).Scan(&snapShares, &snapNAV)
 	if err == nil && snapShares.Valid && snapShares.Float64 > 0.001 && snapNAV.Valid {
+		if snapNAV.Float64 <= 0 {
+			// A stored zero/invalid NAV marks this live position to zero without
+			// any signal; keep the historical computation, but stop doing it
+			// silently.
+			s.warnXIRRNavMissing(ctx, code, "snapshot_nav_not_positive", snapShares.Float64)
+		}
 		return snapShares.Float64 * snapNAV.Float64, nil
 	}
 	if err != nil && err != sql.ErrNoRows {
@@ -160,6 +189,8 @@ func (s Service) queryCurrentMarketValue(ctx context.Context, code string, portf
 		return 0, fmt.Errorf("query xirr shares: %w", err)
 	}
 	if !shares.Valid || shares.Float64 <= 0.001 {
+		// Fully exited position: terminal value 0 is the correct fact, not a
+		// degradation — the sell flows already carry the proceeds.
 		return 0, nil
 	}
 
@@ -172,14 +203,24 @@ func (s Service) queryCurrentMarketValue(ctx context.Context, code string, portf
 		LIMIT 1
 	`, code).Scan(&latestNAV); err != nil {
 		if err == sql.ErrNoRows {
+			s.warnXIRRNavMissing(ctx, code, "nav_history_empty", shares.Float64)
 			return 0, nil
 		}
 		return 0, fmt.Errorf("query xirr latest nav: %w", err)
 	}
-	if !latestNAV.Valid {
-		return 0, nil
+	if !latestNAV.Valid || latestNAV.Float64 <= 0 {
+		s.warnXIRRNavMissing(ctx, code, "nav_history_not_positive", shares.Float64)
+		return shares.Float64 * navOrZero(latestNAV), nil
 	}
 	return shares.Float64 * latestNAV.Float64, nil
+}
+
+// navOrZero maps a NULL/invalid NAV scan result to 0 without hiding the NULL.
+func navOrZero(nav sql.NullFloat64) float64 {
+	if !nav.Valid {
+		return 0
+	}
+	return nav.Float64
 }
 
 func (s Service) queryPortfolioMarketValue(ctx context.Context, portfolioID int) (float64, error) {
@@ -192,8 +233,44 @@ func (s Service) queryPortfolioMarketValue(ctx context.Context, portfolioID int)
 	`, portfolioID).Scan(&total); err != nil {
 		return 0, fmt.Errorf("query portfolio xirr market value: %w", err)
 	}
+	// Probe before the NULL-total early return: every fund missing its NAV is
+	// a degradation signal even when the SUM ends up NULL (nothing valued).
+	s.warnPortfolioFundsMissingNAV(ctx, portfolioID)
 	if !total.Valid {
 		return 0, nil
 	}
 	return total.Float64, nil
+}
+
+// warnPortfolioFundsMissingNAV surfaces the aggregate-level twin of the
+// fund-level degradation: SUM(held_shares * latest_nav) skips rows whose NAV
+// is NULL, so a live position can silently vanish from the portfolio terminal
+// value. Read-only detection — the reported value is unchanged.
+func (s Service) warnPortfolioFundsMissingNAV(ctx context.Context, portfolioID int) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT fund_code, held_shares
+		FROM portfolio_snapshot
+		WHERE held_shares > 0.001
+		  AND (latest_nav IS NULL OR latest_nav <= 0)
+		  AND COALESCE(portfolio_id, 1) = ?
+		ORDER BY fund_code
+		LIMIT 64
+	`, portfolioID)
+	if err != nil {
+		s.xirrLogger().WarnContext(ctx, "xirr portfolio nav-missing probe failed", "error", err.Error())
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code string
+		var shares float64
+		if err := rows.Scan(&code, &shares); err != nil {
+			s.xirrLogger().WarnContext(ctx, "xirr portfolio nav-missing scan failed", "error", err.Error())
+			return
+		}
+		s.warnXIRRNavMissing(ctx, code, "snapshot_nav_missing", shares)
+	}
+	if err := rows.Err(); err != nil {
+		s.xirrLogger().WarnContext(ctx, "xirr portfolio nav-missing iterate failed", "error", err.Error())
+	}
 }
