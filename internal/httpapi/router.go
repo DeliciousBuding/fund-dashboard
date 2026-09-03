@@ -222,7 +222,7 @@ func NewRouter(cfg config.Config, opts ...RouterOption) http.Handler {
 	if deps.oauthSvc != nil {
 		oauthLimiter := NewRateLimiter(float64(cfg.OAuthRPM), 30)
 		oauthIPKey := func(req *http.Request) string { return "ip:" + clientIP(req, cfg.TrustedProxies) }
-		registerOAuthRoutes(r, deps.oauthSvc, deps.auth, oauthLimiter, oauthIPKey)
+		registerOAuthRoutes(r, deps.oauthSvc, deps.auth, oauthLimiter, oauthIPKey, cfg.AllowedOrigins)
 	}
 
 	// MCP stays outside the per-IP /api group: it carries its own coarse pre-auth
