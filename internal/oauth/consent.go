@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -8,14 +9,19 @@ import (
 // consentTTL bounds how long a rendered consent screen stays actionable.
 const consentTTL = 10 * time.Minute
 
-// consentEntry binds a one-time consent token to the grant it approves.
+// consentEntry binds a one-time consent token to the grant it approves. Once the
+// owner submits a decision the entry remembers the resulting redirect, so a
+// double submit replays the same target instead of stranding the owner on an
+// error page after the code was already issued.
 type consentEntry struct {
 	grant     AuthorizationGrant
 	state     string
 	expiresAt time.Time
+	// redirect is empty until the entry is finalized by the first decision.
+	redirect string
 }
 
-// consentStore issues and consumes single-use consent tokens.
+// consentStore issues and finalizes single-use consent tokens.
 //
 // The consent form is a same-origin POST and the session cookie is SameSite=Lax,
 // so cross-site forgery is already blocked twice over. The token is the third
@@ -50,21 +56,38 @@ func (c *consentStore) Begin(grant AuthorizationGrant, state string) (string, er
 	return token, nil
 }
 
-// Consume atomically removes and returns a pending consent screen. A token can
-// approve exactly one grant, so a double submit cannot issue two codes.
-func (c *consentStore) Consume(token string) (AuthorizationGrant, string, bool) {
+// Finalize atomically maps a consent token to its final redirect exactly once.
+// build is invoked only by the first submitter (approve or deny); every later
+// submitter receives the already-issued redirect. A token can therefore never
+// approve two grants, but a browser that double-submits the form is sent to the
+// same callback with the same code rather than to an error page.
+//
+// The returned ok is false only when the token is unknown or expired. When build
+// fails (for example the approval could not be persisted) the entry is left
+// pending so the owner can retry, and the error is returned unchanged.
+func (c *consentStore) Finalize(token string, build func(AuthorizationGrant, string) (string, error)) (redirect string, ok bool, err error) {
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	entry, ok := c.entries[token]
-	if !ok {
-		return AuthorizationGrant{}, "", false
+	for key, entry := range c.entries {
+		if !now.Before(entry.expiresAt) {
+			delete(c.entries, key)
+		}
 	}
-	delete(c.entries, token)
-	if !now.Before(entry.expiresAt) {
-		return AuthorizationGrant{}, "", false
+	entry, exists := c.entries[token]
+	if !exists {
+		return "", false, nil
 	}
-	return entry.grant, entry.state, true
+	if entry.redirect != "" {
+		return entry.redirect, true, nil
+	}
+	redirect, err = build(entry.grant, entry.state)
+	if err != nil {
+		return "", false, err
+	}
+	entry.redirect = redirect
+	c.entries[token] = entry
+	return redirect, true, nil
 }
 
 // Len reports pending consent screens (diagnostics/tests).
@@ -83,12 +106,18 @@ func (s *Service) BeginConsent(grant AuthorizationGrant, state string) (string, 
 	return s.consents.Begin(grant, state)
 }
 
-// ConsumeConsent redeems a consent token.
-func (s *Service) ConsumeConsent(token string) (AuthorizationGrant, string, bool) {
+// FinalizeConsent redeems a consent token against a decision and returns the
+// final redirect. Replaying the same token returns the same redirect.
+func (s *Service) FinalizeConsent(ctx context.Context, token, decision string) (redirect string, ok bool, err error) {
 	if s.consents == nil {
-		return AuthorizationGrant{}, "", false
+		s.consents = newConsentStore(s.opts.Now)
 	}
-	return s.consents.Consume(token)
+	return s.consents.Finalize(token, func(grant AuthorizationGrant, state string) (string, error) {
+		if decision == "deny" {
+			return s.DenyRedirect(grant, state)
+		}
+		return s.ApproveGrant(ctx, grant, state)
+	})
 }
 
 // DenyRedirect builds the RFC 6749 §4.1.2.1 "access_denied" callback for a

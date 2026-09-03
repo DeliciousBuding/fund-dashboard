@@ -25,8 +25,8 @@ func authorizeCode(t *testing.T, env *oauthEnv) string {
 	if res.Code == http.StatusOK {
 		res = approveConsentScreen(t, env, res.Body.String())
 	}
-	if res.Code != http.StatusFound {
-		t.Fatalf("authorize status = %d, want 302", res.Code)
+	if res.Code != http.StatusFound && res.Code != http.StatusSeeOther {
+		t.Fatalf("authorize status = %d, want 302 or 303", res.Code)
 	}
 	parsed, err := url.Parse(res.Header().Get("Location"))
 	if err != nil {
@@ -566,13 +566,12 @@ func TestMCPRejectsTokenMintedForAnotherResource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin consent: %v", err)
 	}
-	grant, grantState, ok := other.ConsumeConsent(consentToken)
+	redirectURI, ok, err := other.FinalizeConsent(context.Background(), consentToken, "approve")
+	if err != nil {
+		t.Fatalf("finalize consent: %v", err)
+	}
 	if !ok {
 		t.Fatal("consent token was not consumable")
-	}
-	redirectURI, err := other.ApproveGrant(context.Background(), grant, grantState)
-	if err != nil {
-		t.Fatalf("approve grant: %v", err)
 	}
 	parsed, err := url.Parse(redirectURI)
 	if err != nil {

@@ -176,20 +176,24 @@ func TestAuthorizeConsentRequiredForWriteScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin consent: %v", err)
 	}
-	grant, state, ok := svc.ConsumeConsent(token)
-	if !ok || state != "st" || grant.ClientID != clientID {
-		t.Fatalf("consume failed: ok=%v state=%q grant=%+v", ok, state, grant)
-	}
-	target, err := svc.ApproveGrant(context.Background(), grant, state)
-	if err != nil {
-		t.Fatalf("approve: %v", err)
+	target, ok, err := svc.FinalizeConsent(context.Background(), token, "approve")
+	if err != nil || !ok {
+		t.Fatalf("approve: ok=%v err=%v", ok, err)
 	}
 	if queryParam(t, target, "code") == "" {
 		t.Fatalf("consent approval issued no code: %q", target)
 	}
-	denied, err := svc.DenyRedirect(grant, state)
+	if !strings.HasPrefix(target, "https://chatgpt.com/cb?") {
+		t.Fatalf("approval redirected somewhere unexpected: %q", target)
+	}
+
+	denyToken, err := svc.BeginConsent(decision.Grant, "st")
 	if err != nil {
-		t.Fatalf("deny: %v", err)
+		t.Fatalf("begin deny consent: %v", err)
+	}
+	denied, ok, err := svc.FinalizeConsent(context.Background(), denyToken, "deny")
+	if err != nil || !ok {
+		t.Fatalf("deny: ok=%v err=%v", ok, err)
 	}
 	if queryParam(t, denied, "error") != "access_denied" {
 		t.Fatalf("denial did not produce access_denied: %q", denied)

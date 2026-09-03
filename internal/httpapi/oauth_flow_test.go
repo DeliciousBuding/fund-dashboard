@@ -16,7 +16,7 @@ func TestOAuthAuthorizeRedirectsToLoginWhenUnauthenticated(t *testing.T) {
 	env := newOAuthEnv(t, testCfg(), nil)
 	res := env.get(t, env.authorizeURL(nil), false)
 	if res.Code != http.StatusFound {
-		t.Fatalf("status = %d, want 302; body=%s", res.Code, firstN(res.Body.String(), 200))
+		t.Fatalf("status = %d, want 303; body=%s", res.Code, firstN(res.Body.String(), 200))
 	}
 	location := res.Header().Get("Location")
 	if !strings.HasPrefix(location, "/login?next=") {
@@ -60,7 +60,7 @@ func TestOAuthAuthorizeShowsConsentOnFirstUseThenGoesSilent(t *testing.T) {
 	form := url.Values{"consent_token": {token[1]}, "decision": {"approve"}}
 	approved := env.do(t, http.MethodPost, "/oauth/consent", true,
 		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
-	if approved.Code != http.StatusFound {
+	if approved.Code != http.StatusSeeOther {
 		t.Fatalf("approve status = %d, want 302", approved.Code)
 	}
 	location := approved.Header().Get("Location")
@@ -180,8 +180,8 @@ func TestOAuthConsentPageFlowForWriteScope(t *testing.T) {
 	form := url.Values{"consent_token": {token[1]}, "decision": {"approve"}}
 	approve := env.do(t, http.MethodPost, "/oauth/consent", true,
 		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
-	if approve.Code != http.StatusFound {
-		t.Fatalf("approve status = %d, want 302; body=%s", approve.Code, firstN(approve.Body.String(), 200))
+	if approve.Code != http.StatusSeeOther {
+		t.Fatalf("approve status = %d, want 303; body=%s", approve.Code, firstN(approve.Body.String(), 200))
 	}
 	location := approve.Header().Get("Location")
 	if !strings.HasPrefix(location, testOAuthRedirect) {
@@ -195,14 +195,15 @@ func TestOAuthConsentPageFlowForWriteScope(t *testing.T) {
 		t.Fatal("approval issued no code")
 	}
 
-	// The consent token is single-use: a second submit must not mint a second code.
+	// A double submit must replay the same callback (same code), never strand the
+	// owner on an error page after the code was already issued.
 	replay := env.do(t, http.MethodPost, "/oauth/consent", true,
 		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
-	if replay.Code != http.StatusBadRequest {
-		t.Fatalf("consent replay status = %d, want 400", replay.Code)
+	if replay.Code != http.StatusSeeOther {
+		t.Fatalf("consent replay status = %d, want 303", replay.Code)
 	}
-	if replay.Header().Get("Location") != "" {
-		t.Fatalf("consent replay redirected to %q", replay.Header().Get("Location"))
+	if replayLocation := replay.Header().Get("Location"); replayLocation != location {
+		t.Fatalf("consent replay redirect differs:\nfirst=%q\nreplay=%q", location, replayLocation)
 	}
 }
 
@@ -237,8 +238,8 @@ func TestOAuthConsentDenialReportsAccessDenied(t *testing.T) {
 	form := url.Values{"consent_token": {token[1]}, "decision": {"deny"}}
 	deny := env.do(t, http.MethodPost, "/oauth/consent", true,
 		strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
-	if deny.Code != http.StatusFound {
-		t.Fatalf("deny status = %d, want 302", deny.Code)
+	if deny.Code != http.StatusSeeOther {
+		t.Fatalf("deny status = %d, want 303", deny.Code)
 	}
 	parsed, err := url.Parse(deny.Header().Get("Location"))
 	if err != nil {
