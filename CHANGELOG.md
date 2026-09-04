@@ -21,6 +21,9 @@
 完整约定与守卫清单见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
+
+## [2.3.0] - 2026-09-04
+
 - [改进] CI 新增三道静态分析/审计门禁：`lint-go`（golangci-lint v1.64.8，20 个策划 linter，含 stylecheck）、`vuln-go`（govulncheck v1.7.0 源码模式）、`audit-web`（pnpm audit，advisory 不影响合并）；五个既有必需 job id 与行为不变。Go 构建阶段改为只 COPY `cmd/` 与 `internal/`，并在 `-trimpath -buildvcs=false` 下编译，减少缓存失效并清除构建器路径。
 - [修复] `/api/auth/sessions` 在两条 `last_seen_at` 同秒的会话之间顺序不稳定（`ORDER BY last_seen_at DESC` 无 tiebreaker），导致已提交的 golden 样例在两次 CI 运行间翻转、`test-go` 随机变红。现在排序加 `id DESC` 总序（双方言主键可移植），且 service 层把当前会话恒定锚在首位；不同秒会话的顺序不变。
 - [改进]（行为变更）`FUND_EDGE_AUTH_ENABLED` 默认由 true 翻为 false：浏览器写路径默认只认 `fund_session` cookie + `X-Fund-Request` + Origin 白名单；旧的 `X-Fund-Edge-Key` 兼容层改为显式开启（仍依赖边缘代理注入该头的部署必须在 .env 设 `FUND_EDGE_AUTH_ENABLED=true` 并继续提供强 `FUND_EDGE_KEY`）。变量名、取值拼写与 fail-closed 语义不变；`deploy/docker-compose.yml`、`.env.example`、`deploy/README.md` 与 `AGENTS.md` 的默认值/文案已同步。
