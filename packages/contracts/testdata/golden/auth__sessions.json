@@ -2,7 +2,7 @@
   "sessions": [
     {
       "created_at": 0,
-      "current": false,
+      "current": true,
       "expires_at": 0,
       "id_prefix": "__SCRUBBED__",
       "ip": "127.0.0.1",
@@ -11,7 +11,7 @@
     },
     {
       "created_at": 0,
-      "current": true,
+      "current": false,
       "expires_at": 0,
       "id_prefix": "__SCRUBBED__",
       "ip": "127.0.0.1",

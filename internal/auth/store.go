@@ -189,6 +189,14 @@ type SessionPage struct {
 // sessionListLimit, together with the full table count. Total comes from a
 // separate COUNT(*) pass: the count/rows pair can race a concurrent
 // create/delete, which is benign for the single-tenant settings view.
+//
+// The ORDER BY carries an id tiebreaker because last_seen_at is unix seconds,
+// so two logins in the same second tie, and neither SQLite nor PostgreSQL
+// defines the relative order of tied rows: it follows whatever the query plan
+// produces. Without a total order the page order is not reproducible across
+// engines, plans or runs, which is how the committed golden wire sample for
+// GET /api/auth/sessions came to flip between two CI runs of the same tree.
+// id is the TEXT primary key on both dialects, so it is the portable choice.
 func (s *Store) ListSessions(ctx context.Context) (SessionPage, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_sessions`).Scan(&total); err != nil {
@@ -196,7 +204,7 @@ func (s *Store) ListSessions(ctx context.Context) (SessionPage, error) {
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, created_at, expires_at, last_seen_at, COALESCE(ip, ''), COALESCE(user_agent, '')
-		FROM auth_sessions ORDER BY last_seen_at DESC LIMIT ?
+		FROM auth_sessions ORDER BY last_seen_at DESC, id DESC LIMIT ?
 	`, sessionListLimit)
 	if err != nil {
 		return SessionPage{}, fmt.Errorf("list sessions: %w", err)
