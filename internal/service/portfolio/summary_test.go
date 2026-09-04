@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
-	_ "modernc.org/sqlite"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestServiceGetSummaryMatchesCurrentPortfolioSemantics(t *testing.T) {
@@ -126,12 +126,7 @@ func TestServiceListPortfolioDefinitionsReturnsConfiguredPortfolios(t *testing.T
 	defer db.Close()
 
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE portfolio_definitions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE,
-			description TEXT DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
-		);
+		-- portfolio_definitions ships in the production schema
 		INSERT INTO portfolio_definitions (id, name, description) VALUES
 			(2, 'satellite', 'Satellite sleeve'),
 			(1, 'default', 'Default portfolio');
@@ -158,22 +153,7 @@ func TestServiceListDCAPlansFiltersActivePlansByPortfolio(t *testing.T) {
 	defer db.Close()
 
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE dca_plans (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			fund_code TEXT NOT NULL,
-			fund_name TEXT,
-			amount REAL NOT NULL,
-			frequency TEXT NOT NULL DEFAULT 'weekday',
-			weekday_mask TEXT NOT NULL DEFAULT '1,2,3,4,5',
-			trade_type TEXT NOT NULL DEFAULT '定投买入',
-			portfolio_id INTEGER NOT NULL DEFAULT 1,
-			start_date TEXT NOT NULL,
-			end_date TEXT,
-			active INTEGER NOT NULL DEFAULT 1,
-			source TEXT NOT NULL DEFAULT 'manual',
-			created_at TEXT NOT NULL DEFAULT (datetime('now')),
-			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-		);
+		-- dca_plans ships in the production schema
 		INSERT INTO dca_plans (id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source, created_at, updated_at)
 		VALUES
 			(1, '018439', '国泰纳斯达克100ETF联接C', 30, 'weekday', '1,3,5', '定投买入', 1, '2026-06-01', NULL, 1, 'manual', '2026-06-01 09:00:00', '2026-06-02 09:00:00'),
@@ -211,65 +191,28 @@ func TestServiceListDCAPlansFiltersActivePlansByPortfolio(t *testing.T) {
 func openSummaryFixture(t *testing.T) *sql.DB {
 	t.Helper()
 
+	// Production schema via the real boot path (EnsureSQLiteSchema) instead of
+	// hand-rolled DDL, so a production DDL drift turns these tests red.
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
 	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
 	if err != nil {
 		t.Fatalf("open sqlite fixture: %v", err)
 	}
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		db.Close()
+		t.Fatalf("ensure schema: %v", err)
+	}
 
-	for _, stmt := range summaryFixtureStatements {
+	for _, stmt := range summarySeedStatements {
 		if _, err := db.ExecContext(context.Background(), stmt); err != nil {
 			db.Close()
-			t.Fatalf("exec fixture statement %q: %v", stmt, err)
+			t.Fatalf("exec seed statement %q: %v", stmt, err)
 		}
 	}
 	return db
 }
 
-var summaryFixtureStatements = []string{
-	`CREATE TABLE fund_details (
-		fund_code TEXT PRIMARY KEY,
-		fund_name TEXT,
-		fund_type TEXT,
-		security_type TEXT DEFAULT 'fund',
-		market TEXT DEFAULT ''
-	)`,
-	`CREATE TABLE transactions (
-		seq INTEGER PRIMARY KEY AUTOINCREMENT,
-		order_id TEXT,
-		trade_time TEXT,
-		confirm_date TEXT,
-		trade_type TEXT,
-		direction TEXT,
-		fund_code TEXT,
-		fund_name TEXT,
-		confirm_amount REAL,
-		confirm_share REAL,
-		fee REAL,
-		signed_cash_flow REAL,
-		signed_share_change REAL,
-		settlement_days INTEGER
-	)`,
-	`CREATE TABLE nav_history (
-		fund_code TEXT,
-		date TEXT,
-		unit_nav REAL,
-		daily_change_pct REAL DEFAULT 0,
-		security_type TEXT DEFAULT 'fund'
-	)`,
-	`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT NOT NULL,
-		fund_name TEXT,
-		held_shares REAL,
-		total_cost REAL,
-		latest_nav REAL,
-		current_value REAL,
-		unrealized_pnl REAL,
-		pnl_pct REAL,
-		security_type TEXT DEFAULT 'fund',
-			portfolio_id INTEGER NOT NULL DEFAULT 1,
-			PRIMARY KEY (fund_code, portfolio_id)
-		)`,
+var summarySeedStatements = []string{
 	`INSERT INTO fund_details (fund_code, fund_name, fund_type, security_type) VALUES
 		('019173', '纳斯达克100指数(QDII)C', 'QDII-股票', 'fund'),
 		('018439', '国泰纳斯达克100ETF联接C', 'QDII-ETF联接', 'fund')`,

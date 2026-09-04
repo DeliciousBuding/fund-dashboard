@@ -6,52 +6,16 @@ import (
 	"math"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 func openRecalcDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
-	for _, q := range []string{
-		`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT PRIMARY KEY,
-			fund_name TEXT,
-			held_shares REAL,
-			total_cost REAL,
-			latest_nav REAL,
-			current_value REAL,
-			unrealized_pnl REAL,
-			pnl_pct REAL,
-			security_type TEXT,
-			portfolio_id INTEGER NOT NULL DEFAULT 1
-		)`,
-		`CREATE TABLE transactions (
-			fund_code TEXT,
-			fund_name TEXT,
-			signed_share_change REAL,
-			signed_cash_flow REAL
-		)`,
-		`CREATE TABLE nav_history (
-			fund_code TEXT,
-			date TEXT,
-			unit_nav REAL
-		)`,
-		`CREATE TABLE fund_details (
-			fund_code TEXT PRIMARY KEY,
-			fund_name TEXT,
-			security_type TEXT
-		)`,
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return db
+	opened := testutil.OpenTempDBWithProductionSchema(t)
+	// Registered after TempDir's own cleanup so LIFO closes the DB (releasing
+	// the WAL handles) before the temp dir is removed on Windows.
+	t.Cleanup(func() { _ = opened.Close() })
+	return opened
 }
 
 func seedRecalc(t *testing.T, db *sql.DB, stmts []string) {
@@ -103,7 +67,7 @@ func TestRecalcFullModeLedgerMath(t *testing.T) {
 			name: "single buy",
 			code: "F1",
 			seed: []string{
-				`INSERT INTO fund_details VALUES ('F1', 'Example Fund', 'fund')`,
+				`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Example Fund', 'fund')`,
 				`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Example Fund', 100, -1000)`,
 				`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('F1', '2026-01-02', 1.5)`,
 			},
@@ -118,7 +82,7 @@ func TestRecalcFullModeLedgerMath(t *testing.T) {
 			name: "full round trip zeroes value and pnl",
 			code: "F1",
 			seed: []string{
-				`INSERT INTO fund_details VALUES ('F1', 'Example Fund', 'fund')`,
+				`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Example Fund', 'fund')`,
 				`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Example Fund', 100, -1000)`,
 				`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Example Fund', -100, 990)`,
 				`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('F1', '2026-01-02', 1.5)`,
@@ -134,7 +98,7 @@ func TestRecalcFullModeLedgerMath(t *testing.T) {
 			name: "float dust below threshold is not a holding",
 			code: "F1",
 			seed: []string{
-				`INSERT INTO fund_details VALUES ('F1', 'Dust Fund', 'fund')`,
+				`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Dust Fund', 'fund')`,
 				`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Dust Fund', 0.0000001, -0.000001)`,
 			},
 			want: snapRow{
@@ -260,7 +224,7 @@ func TestRecalcLightModeAbsentNAVKeepsNullAndZeroValuation(t *testing.T) {
 func TestRecalcLightModeInsertResolvesIdentityWithNullNAV(t *testing.T) {
 	db := openRecalcDB(t)
 	seedRecalc(t, db, []string{
-		`INSERT INTO fund_details VALUES ('F2', 'Light Fund', 'stock')`,
+		`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F2', 'Light Fund', 'stock')`,
 		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F2', 'Light Fund', 10, -20)`,
 	})
 
@@ -285,7 +249,7 @@ func TestRecalcLightModeInsertResolvesIdentityWithNullNAV(t *testing.T) {
 func TestRecalcRoundsAtPersistenceBoundary(t *testing.T) {
 	db := openRecalcDB(t)
 	seedRecalc(t, db, []string{
-		`INSERT INTO fund_details VALUES ('F1', 'Rounding Fund', 'fund')`,
+		`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Rounding Fund', 'fund')`,
 		// 33.33333333 shares → 4dp 33.3333; cash sum → 2dp -1234.57.
 		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Rounding Fund', 11.11111111, -411.5225)`,
 		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Rounding Fund', 22.22222222, -823.0475)`,

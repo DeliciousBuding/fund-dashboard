@@ -7,6 +7,7 @@ import (
 	"time"
 
 	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestCheckAlertsFindsPriceAndStale(t *testing.T) {
@@ -16,12 +17,12 @@ func TestCheckAlertsFindsPriceAndStale(t *testing.T) {
 	}
 	defer db.Close()
 	old := time.Now().AddDate(0, 0, -10).Format("2006-01-02")
+	// Production schema via the real boot path (portfolio_snapshot has no
+	// market column there, matching production PG).
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 	for _, q := range []string{
-		// Match production PG: portfolio_snapshot has no market column.
-		`CREATE TABLE portfolio_snapshot (fund_code TEXT, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER)`,
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL, daily_change_pct REAL)`,
-		`CREATE TABLE dca_plans (id INTEGER PRIMARY KEY, fund_code TEXT, fund_name TEXT, amount REAL, weekday_mask TEXT, portfolio_id INTEGER, active INTEGER)`,
 		`INSERT INTO fund_details (fund_code, fund_name, security_type, market) VALUES ('019173','Fund','fund','CN')`,
 		`INSERT INTO portfolio_snapshot (fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
 			VALUES ('019173','Fund',100,-100,1.0,100,0,0,'fund',1)`,
@@ -76,12 +77,8 @@ func TestMaxDrawdownPctUsesRecentWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for _, q := range []string{
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL, daily_change_pct REAL)`,
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
 	}
 	// Earliest flat history would yield ~0% DD if we only took ASC LIMIT N.
 	for i := 0; i < 150; i++ {

@@ -3,31 +3,17 @@ package db
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log/slog"
 	"strings"
 )
 
-// EnsurePGSchema creates the fund-dashboard schema on PostgreSQL.
+// EnsurePGSchema brings a PostgreSQL database to the current schema through
+// the numbered migration list (migrate.go): the 0001 baseline executes the
+// statement list below, 0002/0003 wrap the historical probe-and-ALTER catalog
+// repairs, and every applied step is recorded in schema_migrations.
 // Auto-generated from production schema (2026-07-17).
 func EnsurePGSchema(ctx context.Context, db *sql.DB) error {
-	for i, stmt := range pgSchemaStatements {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("pg schema stmt %d: %w", i, err)
-		}
-	}
-	// Conversion legs intentionally share order_id across two fund_codes.
-	// Uniqueness is (order_id, fund_code) — verified 0 true dups on production (#203).
-	if _, err := db.ExecContext(ctx, `
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_order_fund_unique
-		ON transactions(order_id, fund_code)
-	`); err != nil {
-		// do not fail boot — import/DCA still use WHERE NOT EXISTS
-		slog.Warn("pg unique index transactions(order_id,fund_code) skipped", "error", err)
-	}
-	migrateTransactionsDefaults(ctx, db)
-	migratePortfolioSnapshotPK(ctx, db)
-	return nil
+	return ensureSchema(ctx, db, createSchemaMigrationsPG, pgMigrations)
 }
 
 // migratePortfolioSnapshotPK upgrades legacy PRIMARY KEY (fund_code) to

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestUpsertAndDisableDCAPlan(t *testing.T) {
@@ -15,6 +16,9 @@ func TestUpsertAndDisableDCAPlan(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS dca_plans (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		fund_code TEXT NOT NULL,
@@ -77,12 +81,7 @@ func TestUpsertDCAPlanRejectsBadActiveAndFrequency(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE dca_plans (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		fund_code TEXT, fund_name TEXT, amount REAL, frequency TEXT, weekday_mask TEXT,
-		trade_type TEXT, portfolio_id INTEGER, start_date TEXT, end_date TEXT, active INTEGER,
-		source TEXT, created_at TEXT, updated_at TEXT
-	)`); err != nil {
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 	svc := NewService(db)

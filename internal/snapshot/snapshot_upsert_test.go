@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestIsUniqueViolation(t *testing.T) {
@@ -49,29 +49,13 @@ func TestRecalcConcurrentFirstWriteSingleRow(t *testing.T) {
 	defer db.Close()
 	db.SetMaxOpenConns(8)
 
+	// Production schema via the real EnsureSQLiteSchema boot path (migration
+	// runner, enforced indexes, schema_migrations version table).
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatalf("ensure schema: %v", err)
+	}
 	for _, stmt := range []string{
-		`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT NOT NULL,
-			fund_name TEXT,
-			held_shares REAL,
-			total_cost REAL,
-			latest_nav REAL,
-			current_value REAL,
-			unrealized_pnl REAL,
-			pnl_pct REAL,
-			security_type TEXT DEFAULT 'fund',
-			portfolio_id INTEGER NOT NULL DEFAULT 1,
-			PRIMARY KEY (fund_code, portfolio_id)
-		)`,
-		`CREATE TABLE transactions (
-			fund_code TEXT,
-			fund_name TEXT,
-			signed_share_change REAL,
-			signed_cash_flow REAL
-		)`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT)`,
-		`INSERT INTO fund_details VALUES ('F1', 'Race Fund', 'fund')`,
+		`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Race Fund', 'fund')`,
 		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Race Fund', 100, -1000)`,
 		`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('F1', '2026-01-02', 1.5)`,
 	} {
@@ -154,7 +138,7 @@ func (q *fakeUpdateOnceQuerier) ExecContext(ctx context.Context, query string, a
 func TestRecalcInsertConflictRetriesUpdate(t *testing.T) {
 	db := openRecalcDB(t)
 	seedRecalc(t, db, []string{
-		`INSERT INTO fund_details VALUES ('F1', 'Retry Fund', 'fund')`,
+		`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('F1', 'Retry Fund', 'fund')`,
 		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Retry Fund', 100, -1000)`,
 		`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('F1', '2026-01-02', 1.5)`,
 		`INSERT INTO portfolio_snapshot (fund_code, fund_name, held_shares, total_cost, latest_nav, current_value, unrealized_pnl, pnl_pct, security_type, portfolio_id)
