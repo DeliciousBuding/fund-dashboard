@@ -138,7 +138,12 @@ func TestRecalcFullModeLedgerMath(t *testing.T) {
 				`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Dust Fund', 0.0000001, -0.000001)`,
 			},
 			want: snapRow{
-				HeldShares: 0, TotalCost: -0.000001,
+				// Value changed with the persistence-boundary rounding (T1): the
+				// ledger cash sum -1e-6 is pure float residue, and total_cost now
+				// settles to 2dp before the row is stored, so 0 is the persisted
+				// value instead of the raw residue. The dust share sum still
+				// zeroes held_shares as before.
+				HeldShares: 0, TotalCost: 0,
 				CurrentValue: 0, Unrealized: 0, PnlPct: 0,
 				FundName: "Dust Fund", SecurityType: "fund",
 			},
@@ -271,6 +276,66 @@ func TestRecalcLightModeInsertResolvesIdentityWithNullNAV(t *testing.T) {
 	}
 	if !closeEnough(got.HeldShares, 10) || !closeEnough(got.TotalCost, -20) {
 		t.Fatalf("light insert shares/cost wrong: %+v", got)
+	}
+}
+
+// TestRecalcRoundsAtPersistenceBoundary pins the T1 contract: every valuation
+// column is stored at its final scale (shares 4dp, money/pct 2dp) so float
+// residue from the ledger never reaches portfolio_snapshot.
+func TestRecalcRoundsAtPersistenceBoundary(t *testing.T) {
+	db := openRecalcDB(t)
+	seedRecalc(t, db, []string{
+		`INSERT INTO fund_details VALUES ('F1', 'Rounding Fund', 'fund')`,
+		// 33.33333333 shares → 4dp 33.3333; cash sum → 2dp -1234.57.
+		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Rounding Fund', 11.11111111, -411.5225)`,
+		`INSERT INTO transactions (fund_code, fund_name, signed_share_change, signed_cash_flow) VALUES ('F1', 'Rounding Fund', 22.22222222, -823.0475)`,
+		`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('F1', '2026-01-02', 3.0)`,
+	})
+	if err := Recalc(context.Background(), db, "F1", ModeFull); err != nil {
+		t.Fatal(err)
+	}
+	got := readSnapshotRow(t, db, "F1")
+	if got.HeldShares != 33.3333 {
+		t.Errorf("held_shares = %v, want 33.3333 (4dp)", got.HeldShares)
+	}
+	if got.TotalCost != -1234.57 {
+		t.Errorf("total_cost = %v, want -1234.57 (2dp)", got.TotalCost)
+	}
+	// 33.3333 * 3.0 = 99.9999 → 2dp 100.
+	if got.CurrentValue != 100.0 {
+		t.Errorf("current_value = %v, want 100 (2dp of 99.9999)", got.CurrentValue)
+	}
+	if got.Unrealized != -1134.57 {
+		t.Errorf("unrealized_pnl = %v, want -1134.57 (2dp)", got.Unrealized)
+	}
+	if got.PnlPct != -91.9 {
+		t.Errorf("pnl_pct = %v, want -91.9 (2dp)", got.PnlPct)
+	}
+}
+
+func TestRoundHelpersNormalizeNegativeZero(t *testing.T) {
+	cases := []struct {
+		name string
+		got  float64
+		want float64
+	}{
+		{"shares residue", RoundShares(1e-15), 0},
+		{"negative shares residue", RoundShares(-1e-15), 0},
+		{"amount residue", roundAmount(-1e-7), 0},
+		{"shares 4dp", RoundShares(10.123456), 10.1235},
+		{"amount 2dp", roundAmount(1234.567), 1234.57},
+		{"shares exact passthrough", RoundShares(100), 100},
+		{"amount exact passthrough", roundAmount(-1000.5), -1000.5},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, tc.got, tc.want)
+		}
+		// Negative-zero normalization only applies to zero results; a genuine
+		// negative amount like -1000.5 legitimately keeps its sign bit.
+		if tc.want == 0 && math.Signbit(tc.got) {
+			t.Errorf("%s: got negative zero, want normalized 0", tc.name)
+		}
 	}
 }
 

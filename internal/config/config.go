@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,13 @@ type Config struct {
 	APIRPM int
 	// MCPRPM caps per-key MCP requests per minute (FUND_MCP_RPM, default 120).
 	MCPRPM int
+	// MCPPreAuthRPM caps per-IP /mcp requests per minute BEFORE authentication
+	// (FUND_MCP_PREAUTH_RPM, default 600, burst 60). It is a coarse CPU guard:
+	// without it an attacker spraying random bearer tokens forces one full ECDSA
+	// signature verification per request with no limiting at all. It is
+	// independent of the post-auth per-key bucket (FUND_MCP_RPM), which stays
+	// mounted after Bearer auth so 401s never burn key buckets.
+	MCPPreAuthRPM int
 	// OAuthRPM caps per-IP OAuth endpoint requests per minute
 	// (FUND_OAUTH_RPM, default 60). The discovery documents sit outside this
 	// bucket so a metadata probe can never be starved by a brute-force scan.
@@ -125,6 +133,7 @@ func Parse(env map[string]string) (Config, error) {
 		EdgeAuthEnabled:   parseBoolEnvDefault(env["FUND_EDGE_AUTH_ENABLED"], "FUND_EDGE_AUTH_ENABLED", true),
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
 		APIRPM:            parseRPM(env["FUND_API_RPM"], "FUND_API_RPM", 600),
+		MCPPreAuthRPM:     parseRPM(env["FUND_MCP_PREAUTH_RPM"], "FUND_MCP_PREAUTH_RPM", 600),
 		MCPRPM:            parseRPM(env["FUND_MCP_RPM"], "FUND_MCP_RPM", 120),
 		OAuthRPM:          parseRPM(env["FUND_OAUTH_RPM"], "FUND_OAUTH_RPM", 60),
 		TrustedProxies:    parseTrustedProxies(env["FUND_TRUSTED_PROXIES"]),
@@ -168,13 +177,67 @@ func Parse(env map[string]string) (Config, error) {
 		}
 	}
 
-	if isProductionEnv(cfg.Environment) {
+	// Production hardening is decoupled from FUND_ENV alone: a deployment that
+	// forgot FUND_ENV but points at a public origin must not silently skip the
+	// secret floors (weak MCP_API_KEY, missing issuer, ...). The signals are
+	// evaluated after the OAuth issuer derivation above, so a public origin
+	// declared via FUND_ALLOWED_ORIGINS counts through the derived issuer too.
+	if needsProductionHardening(cfg) {
 		if err := validateProductionSecrets(cfg); err != nil {
 			return Config{}, err
 		}
 	}
 
 	return cfg, nil
+}
+
+// needsProductionHardening reports whether this process must satisfy the
+// production secret checks: either FUND_ENV says production, or the operator
+// declared a public exposure — a non-loopback FUND_PUBLIC_BASE_URL host, or a
+// FUND_ALLOWED_ORIGINS entry on a non-loopback host. Loopback-only setups
+// (local development, CI smoke with placeholder keys on localhost) stay exempt:
+// the trigger only widens on evidence of a public surface, never guesses.
+func needsProductionHardening(cfg Config) bool {
+	if isProductionEnv(cfg.Environment) {
+		return true
+	}
+	if hostIsNonLoopback(cfg.OAuthPublicBaseURL) {
+		return true
+	}
+	for _, origin := range cfg.AllowedOrigins {
+		if hostIsNonLoopback(origin) {
+			return true
+		}
+	}
+	return false
+}
+
+// hostIsNonLoopback reports whether an absolute http(s) URL points at a host
+// outside this machine. Loopback (localhost, 127.0.0.0/8, ::1) and anything
+// that is not an absolute http(s) URL return false — a relative or garbage
+// value is no evidence of public exposure, and validateProductionSecrets still
+// rejects such issuer values when hardening applies for other reasons.
+func hostIsNonLoopback(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	scheme, _, found := strings.Cut(raw, "://")
+	if !found || (scheme != "http" && scheme != "https") {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" || host == "localhost" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return !ip.IsLoopback()
+	}
+	return true
 }
 
 func isProductionEnv(env string) bool {

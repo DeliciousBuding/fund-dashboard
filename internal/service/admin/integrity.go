@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/dialect"
+	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 // IntegrityReport is the read-only SQLite integrity / freelist / row-count view.
@@ -49,6 +52,12 @@ type FreelistCheck struct {
 	Freelist int    `json:"freelist"`
 	Detail   string `json:"detail"`
 }
+
+// maxShareDriftFindings caps how many per-fund drift entries reconcileShareDrift
+// appends to report.Recommendations (and warns about) in a single integrity
+// run. A personal ledger should never approach this; the cap keeps a
+// pathological database from ballooning the read-only report payload.
+const maxShareDriftFindings = 20
 
 func (s Service) GetDBIntegrity(ctx context.Context, now time.Time) (IntegrityReport, error) {
 	if now.IsZero() {
@@ -137,6 +146,8 @@ func (s Service) getPGIntegrity(ctx context.Context, report IntegrityReport) (In
 		report.TableChecksums[table] = "rows=" + strconv.Itoa(count)
 	}
 
+	s.reconcileShareDrift(ctx, &report)
+
 	report.Overall = "ok"
 	return report, nil
 }
@@ -199,6 +210,8 @@ func (s Service) getSQLiteIntegrity(ctx context.Context, report IntegrityReport)
 		report.TableChecksums[table] = "rows=" + strconv.Itoa(count)
 	}
 
+	s.reconcileShareDrift(ctx, &report)
+
 	allPassed := report.Checks.IntegrityCheck.Passed &&
 		report.Checks.QuickCheck.Passed &&
 		report.Checks.ForeignKeyCheck.Passed &&
@@ -211,6 +224,127 @@ func (s Service) getSQLiteIntegrity(ctx context.Context, report IntegrityReport)
 	}
 
 	return report, nil
+}
+
+// reconcileShareDrift cross-checks the share ledger against the position
+// snapshots, fund by fund: SUM(signed_share_change) from transactions versus
+// SUM(held_shares) from portfolio_snapshot (summed across portfolio rows —
+// transactions are fund-wide while snapshots are per-portfolio).
+//
+// Both sides settle to snapshot.RoundShares, the exact 4dp basis Recalc
+// persists with, so the comparison can never disagree with the writer about
+// what the ledger says. A drift larger than snapshot.HeldSharesDust means the
+// stored position no longer matches the trade history: findings are appended
+// to report.Recommendations (existing []string field — the response JSON
+// shape is unchanged) and warned to the server log.
+//
+// Best-effort by design: when either table is absent (fresh/legacy database)
+// the check is skipped silently, and a query error is logged without failing
+// the read-only report — an instrumentation gap must not be reported as data
+// corruption. On SQLite, appended recommendations flip Overall to "degraded"
+// through the existing len(Recommendations) rule; the PG branch keeps its
+// historical "ok" Overall for recommendation-only findings (same asymmetry as
+// table_unreadable entries).
+func (s Service) reconcileShareDrift(ctx context.Context, report *IntegrityReport) {
+	// RowCounts was populated by the caller's table enumeration; when either
+	// side of the reconciliation is missing there is nothing to compare.
+	if _, ok := report.RowCounts["transactions"]; !ok {
+		return
+	}
+	if _, ok := report.RowCounts["portfolio_snapshot"]; !ok {
+		return
+	}
+
+	ledger, err := s.shareSumsByFund(ctx, `
+		SELECT fund_code, SUM(COALESCE(signed_share_change, 0))
+		FROM transactions
+		WHERE fund_code IS NOT NULL AND fund_code <> ''
+		GROUP BY fund_code
+	`)
+	if err != nil {
+		slog.Warn("integrity share drift ledger query", "error", err.Error())
+		return
+	}
+	snapshots, err := s.shareSumsByFund(ctx, `
+		SELECT fund_code, SUM(COALESCE(held_shares, 0))
+		FROM portfolio_snapshot
+		WHERE fund_code IS NOT NULL AND fund_code <> ''
+		GROUP BY fund_code
+	`)
+	if err != nil {
+		slog.Warn("integrity share drift snapshot query", "error", err.Error())
+		return
+	}
+
+	appended := 0
+	totalDrifts := 0
+	for _, code := range sortedFundCodes(ledger, snapshots) {
+		ledgerShares := snapshot.RoundShares(ledger[code])
+		snapShares := snapshot.RoundShares(snapshots[code])
+		drift := ledgerShares - snapShares
+		if math.Abs(drift) <= snapshot.HeldSharesDust {
+			continue
+		}
+		totalDrifts++
+		slog.Warn("integrity share drift detected",
+			"fund_code", code,
+			"ledger_shares", ledgerShares,
+			"snapshot_shares", snapShares,
+			"drift", drift)
+		if appended < maxShareDriftFindings {
+			report.Recommendations = append(report.Recommendations,
+				fmt.Sprintf("share_drift:%s ledger_shares=%.4f snapshot_shares=%.4f drift=%.4f",
+					clampAdminText(code, 32), ledgerShares, snapShares, drift))
+			appended++
+		}
+	}
+	if totalDrifts > appended {
+		report.Recommendations = append(report.Recommendations,
+			fmt.Sprintf("share_drift_truncated:%d_more_funds_beyond_cap", totalDrifts-appended))
+	}
+}
+
+// shareSumsByFund runs one grouped share-sum query into a fund->shares map.
+func (s Service) shareSumsByFund(ctx context.Context, query string) (map[string]float64, error) {
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sums := map[string]float64{}
+	for rows.Next() {
+		var code string
+		var shares float64
+		if err := rows.Scan(&code, &shares); err != nil {
+			return nil, err
+		}
+		sums[code] = shares
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return sums, nil
+}
+
+// sortedFundCodes returns the union of both maps' keys in stable order so the
+// report payload and log output are deterministic across runs.
+func sortedFundCodes(a, b map[string]float64) []string {
+	seen := map[string]bool{}
+	codes := []string{}
+	for code := range a {
+		if !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
+		}
+	}
+	for code := range b {
+		if !seen[code] {
+			seen[code] = true
+			codes = append(codes, code)
+		}
+	}
+	sort.Strings(codes)
+	return codes
 }
 
 func (s Service) querySingleString(ctx context.Context, query string) (string, error) {

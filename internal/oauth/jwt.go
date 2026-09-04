@@ -25,6 +25,11 @@ import (
 // signature check.
 const AlgES256 = "ES256"
 
+// maxFutureIssuedAtSkew is how far past the local clock an iat claim may sit
+// and still verify — small deployments clock-drift, an iat minutes ahead is a
+// forgery signal.
+const maxFutureIssuedAtSkew = 5 * time.Minute
+
 // accessTokenClaims is the RFC 9068-shaped JWT payload. "aud" is pinned to the
 // MCP resource URL so a token minted for this resource server cannot be replayed
 // against another service that happens to trust the same issuer.
@@ -259,8 +264,16 @@ func (s *Service) VerifyAccessToken(token, expectedIssuer, expectedAudience stri
 		return nil, fmt.Errorf("audience mismatch: %q", claims.Audience)
 	}
 	now := s.opts.Now()
-	if claims.Expiry != 0 && now.Unix() >= claims.Expiry {
+	// exp is mandatory: a claim set without it (Expiry==0) used to skip the
+	// expiry check entirely, so any future issuance path that forgot to set it
+	// would have minted effectively never-expiring tokens. Reject instead.
+	if now.Unix() >= claims.Expiry {
 		return nil, errors.New("token expired")
+	}
+	// Reject tokens issued in the future beyond the clock-skew allowance: a
+	// nonce-shaped iat far ahead of now is a sign of a forged or broken issuer.
+	if claims.IssuedAt > now.Unix()+int64(maxFutureIssuedAtSkew/time.Second) {
+		return nil, errors.New("token issued in the future")
 	}
 	return &AccessToken{
 		Issuer:   claims.Issuer,

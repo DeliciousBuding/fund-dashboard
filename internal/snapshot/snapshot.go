@@ -11,12 +11,41 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 )
 
 // HeldSharesDust is the minimum absolute share count treated as a real holding.
 // Float residue after full sells (~1e-15) is not a real position (#90).
 const HeldSharesDust = 0.001
+
+// Persistence-boundary rounding. Recalc is the single write path into
+// portfolio_snapshot valuation columns, so it is the one place where ledger
+// float residue must be settled before the row is stored. Shares round to 4dp
+// (symmetric with NAV parsing in internal/datasource), money and percentage
+// fields round to 2dp (symmetric with the display layer). Both helpers
+// normalize -0 to 0 so a residue like -1e-7 cannot surface as "-0" through
+// the API.
+//
+// RoundShares is exported because share-drift reconciliation
+// (internal/service/admin integrity check) must compare the transaction
+// ledger against portfolio_snapshot on exactly the same 4dp basis Recalc
+// persists with — two different precision bases would manufacture drift.
+func RoundShares(v float64) float64 {
+	r := math.Round(v*1e4) / 1e4
+	if r == 0 {
+		return 0
+	}
+	return r
+}
+
+func roundAmount(v float64) float64 {
+	r := math.Round(v*100) / 100
+	if r == 0 {
+		return 0
+	}
+	return r
+}
 
 // Querier is the minimal SQL surface Recalc needs. *sql.DB and *sql.Tx both
 // satisfy it, so a snapshot can be rebuilt inside or outside a transaction.
@@ -69,10 +98,13 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 	heldShares := 0.0
 	totalCost := 0.0
 	if shares.Valid {
-		heldShares = shares.Float64
+		// Round the ledger sum to the 4dp share basis before the dust check so
+		// pure float residue (1e-15 class) is settled to exactly 0 and the
+		// dust threshold judges genuinely small positions, not float noise.
+		heldShares = RoundShares(shares.Float64)
 	}
 	if cost.Valid {
-		totalCost = cost.Float64
+		totalCost = roundAmount(cost.Float64)
 	}
 	if heldShares > -HeldSharesDust && heldShares < HeldSharesDust {
 		heldShares = 0
@@ -135,18 +167,22 @@ func recalc(ctx context.Context, q Querier, code string, portfolioID int, mode M
 		}
 	}
 
+	// Valuation columns settle to their persisted precision here — this is the
+	// single write boundary, so every stored number is already at its final
+	// scale (money/pct 2dp, shares 4dp) and downstream readers never see
+	// accumulated float residue.
 	currentValue := 0.0
 	if effNav != 0 {
-		currentValue = heldShares * effNav
+		currentValue = roundAmount(heldShares * effNav)
 	}
-	unrealized := currentValue + totalCost
+	unrealized := roundAmount(currentValue + totalCost)
 	pnlPct := 0.0
 	if totalCost != 0 {
 		denom := totalCost
 		if denom < 0 {
 			denom = -denom
 		}
-		pnlPct = unrealized / denom * 100
+		pnlPct = roundAmount(unrealized / denom * 100)
 	}
 	if heldShares == 0 {
 		currentValue = 0

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"time"
@@ -21,6 +22,10 @@ type Service struct {
 	// Server.confirmationCompletable(). The zero value is false: a Service built
 	// without the wiring fact hides those tools instead of promising them.
 	confirmationsAvailable bool
+	// logger is the optional slog sink for degradation signals (XIRR terminal
+	// value fallbacks). Nil keeps the zero-value construction path working:
+	// xirrLogger() falls back to slog.Default(), so app wiring needs no change.
+	logger *slog.Logger
 }
 
 func NewService(db *sql.DB) Service {

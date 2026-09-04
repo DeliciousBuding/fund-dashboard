@@ -102,6 +102,59 @@ func TestAccessTokenVerificationFailsClosed(t *testing.T) {
 	}
 }
 
+// TestAccessTokenExpiryAndIssuedAtAreEnforced pins the temporal claims contract:
+// exp is mandatory (a claim set without it must never verify — a forgotten exp
+// would mint never-expiring tokens), expired tokens fail, and iat may sit at
+// most maxFutureIssuedAtSkew ahead of the server clock.
+func TestAccessTokenExpiryAndIssuedAtAreEnforced(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	svc := newTestService(t, func(o *Options) { o.Now = func() time.Time { return now } })
+	audience := svc.Resource(testIssuer)
+	mint := func(mutate func(*accessTokenClaims)) string {
+		claims := accessTokenClaims{
+			Issuer:   testIssuer,
+			Subject:  Subject,
+			Audience: audience,
+			Scope:    ScopeRead,
+			IssuedAt: now.Unix(),
+			Expiry:   now.Add(time.Hour).Unix(),
+		}
+		if mutate != nil {
+			mutate(&claims)
+		}
+		token, err := svc.SignAccessToken(claims)
+		if err != nil {
+			t.Fatalf("sign: %v", err)
+		}
+		return token
+	}
+
+	cases := []struct {
+		name    string
+		mutate  func(*accessTokenClaims)
+		wantErr bool
+	}{
+		{"valid exp and iat verify", nil, false},
+		{"missing exp is rejected", func(c *accessTokenClaims) { c.Expiry = 0 }, true},
+		{"exp in the past is rejected", func(c *accessTokenClaims) { c.Expiry = now.Add(-time.Hour).Unix() }, true},
+		{"exp equal to now is expired", func(c *accessTokenClaims) { c.Expiry = now.Unix() }, true},
+		{"iat far in the future is rejected", func(c *accessTokenClaims) { c.IssuedAt = now.Add(6 * time.Minute).Unix() }, true},
+		{"iat within clock skew verifies", func(c *accessTokenClaims) { c.IssuedAt = now.Add(2 * time.Minute).Unix() }, false},
+		{"missing iat still verifies", func(c *accessTokenClaims) { c.IssuedAt = 0 }, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.VerifyAccessToken(mint(tc.mutate), testIssuer, audience)
+			if tc.wantErr && err == nil {
+				t.Fatal("token was accepted, want rejection")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("token was rejected: %v", err)
+			}
+		})
+	}
+}
+
 func TestSigningKeyPersistsAcrossInstances(t *testing.T) {
 	db := testutil.OpenTempDB(t)
 	defer db.Close()

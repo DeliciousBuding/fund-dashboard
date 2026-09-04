@@ -25,7 +25,7 @@ const maxOAuthBodyBytes = 16 << 10
 // client asking for /.well-known/oauth-protected-resource receives HTTP 200 and
 // an HTML shell, which fails discovery in a way that looks like "server has no
 // auth" rather than "server is broken".
-func registerOAuthRoutes(r chi.Router, svc *oauth.Service, authSvc *auth.Service, limiter *RateLimiter, ipKey func(*http.Request) string) {
+func registerOAuthRoutes(r chi.Router, svc *oauth.Service, authSvc *auth.Service, limiter *RateLimiter, ipKey func(*http.Request) string, allowedOrigins []string) {
 	// Discovery is unauthenticated by definition and cheap; keep it outside the
 	// limiter so a client's metadata probe can never be starved by a scan.
 	for _, path := range oauth.WellKnownPathProtectedResource(svc.Options().ResourcePath) {
@@ -41,7 +41,7 @@ func registerOAuthRoutes(r chi.Router, svc *oauth.Service, authSvc *auth.Service
 		// itself so an unauthenticated owner is redirected to login rather than
 		// handed a JSON 401.
 		g.Get("/oauth/authorize", handleOAuthAuthorize(svc, authSvc))
-		g.Post("/oauth/consent", handleOAuthConsent(svc, authSvc))
+		g.Post("/oauth/consent", handleOAuthConsent(svc, authSvc, allowedOrigins))
 		g.Get("/oauth/assets/consent.css", handleOAuthConsentCSS())
 		// Machine-facing.
 		g.Post("/oauth/token", handleOAuthToken(svc))
@@ -252,7 +252,7 @@ func redirectOrigin(raw string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerFunc {
+func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service, allowedOrigins []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		issuer := resolveOAuthIssuer(r, svc)
 		r.Body = http.MaxBytesReader(w, r.Body, maxOAuthBodyBytes)
@@ -263,6 +263,19 @@ func handleOAuthConsent(svc *oauth.Service, authSvc *auth.Service) http.HandlerF
 		session := sessionFromRequest(r, authSvc)
 		if session == nil {
 			http.Redirect(w, r, loginReturnURL("/oauth/authorize"), http.StatusFound)
+			return
+		}
+		// Defense in depth on top of SameSite cookies + the one-shot consent
+		// token: a browser-labelled cross-site submission is refused with the
+		// same browserMutationAllowed semantics as every other browser write
+		// path. Non-browser clients (curl / ops scripts) send no Origin and no
+		// Sec-Fetch-Site and keep working — the consent POST is form-encoded, so
+		// this cannot punch a hole in the CSRF header rule that guards /api/*.
+		if !browserMutationAllowed(r, allowedOrigins) {
+			slog.Warn("oauth consent rejected by origin check",
+				"request_id", RequestIDFromContext(r.Context()),
+				"origin", truncateForLog(strings.TrimSpace(r.Header.Get("Origin")), 64))
+			WriteJSON(w, http.StatusForbidden, map[string]any{"error": "origin_not_allowed"})
 			return
 		}
 		token := strings.TrimSpace(r.PostFormValue("consent_token"))
