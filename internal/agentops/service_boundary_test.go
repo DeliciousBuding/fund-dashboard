@@ -148,3 +148,50 @@ func TestPrepareConfirmationMissingAuditStoreLeavesNoRows(t *testing.T) {
 		t.Fatalf("confirmation rows = %d, want none after failed prepare", count)
 	}
 }
+
+// TestGuardOrderIsPreservedPerEntryPoint pins the deliberate asymmetry between
+// the two confirmation entry points after their guards were factored into
+// shared helpers. Prepare validates the caller-supplied identity before the
+// persistence wiring; claim validates the wiring first. A request that is both
+// mis-attributed and hitting a mis-wired service therefore gets a different
+// sentinel - and a different HTTP status - on each path. That is existing
+// behaviour, not an accident to "tidy": reordering either prelude would change
+// the status code a doubly-invalid request sees.
+func TestGuardOrderIsPreservedPerEntryPoint(t *testing.T) {
+	ctx := context.Background()
+	db := openAgentOpsFixture(t)
+	defer db.Close()
+
+	registry, err := agenttools.DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry: %v", err)
+	}
+	manager, err := confirmations.NewManager([]byte("test-secret"))
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	// AuditRepo deliberately left unwired.
+	service := NewService(ServiceDeps{
+		Registry:         registry,
+		Confirmations:    manager,
+		ConfirmationRepo: agentstate.NewConfirmationRepository(db),
+	})
+	oversized := strings.Repeat("x", maxAgentIdentityLength+1)
+
+	_, err = service.PrepareConfirmation(ctx, PrepareConfirmationInput{
+		Tool: "add_transaction", Role: agenttools.RoleOperator,
+		Caller: oversized, Payload: map[string]any{"fund_code": "AAPL"},
+	})
+	if !errors.Is(err, ErrIdentityTooLong) {
+		t.Fatalf("prepare error = %v, want ErrIdentityTooLong (identity is checked before the stores)", err)
+	}
+
+	_, err = service.ClaimConfirmation(ctx, ConsumeConfirmationInput{
+		Tool: "add_transaction", Role: agenttools.RoleOperator,
+		Caller: oversized, ConfirmationID: 1, Token: "token",
+		Payload: map[string]any{"fund_code": "AAPL"},
+	})
+	if !errors.Is(err, ErrMissingAuditStore) {
+		t.Fatalf("claim error = %v, want ErrMissingAuditStore (stores are checked before the identity)", err)
+	}
+}

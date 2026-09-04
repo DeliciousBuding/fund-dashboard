@@ -54,6 +54,9 @@ func TestParseUsesSafeDefaults(t *testing.T) {
 	if cfg.AgentConfirmationSecret != "" {
 		t.Fatalf("AgentConfirmationSecret = %q, want empty by default", cfg.AgentConfirmationSecret)
 	}
+	if cfg.EdgeAuthEnabled {
+		t.Fatalf("EdgeAuthEnabled = true, want false by default (edge-key compat is opt-in)")
+	}
 }
 
 func TestParseUsesFundDBPathBeforeLegacyDBPath(t *testing.T) {
@@ -241,13 +244,49 @@ func TestParseProductionRequiresStrongSecrets(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects empty FUND_EDGE_KEY", func(t *testing.T) {
+	// The compat layer is opt-in now, so this floor has to be asked for
+	// explicitly: FUND_EDGE_AUTH_ENABLED=true re-arms the required edge key.
+	t.Run("rejects empty FUND_EDGE_KEY when the compat layer is enabled", func(t *testing.T) {
 		_, err := Parse(map[string]string{
-			"FUND_ENV":    "production",
-			"MCP_API_KEY": strongAdmin,
+			"FUND_ENV":               "production",
+			"MCP_API_KEY":            strongAdmin,
+			"FUND_EDGE_AUTH_ENABLED": "true",
+			"FUND_ALLOWED_ORIGINS":   "https://fund.example.com",
 		})
 		if err == nil {
 			t.Fatalf("Parse returned nil error, want empty FUND_EDGE_KEY rejection")
+		}
+	})
+
+	t.Run("rejects short FUND_EDGE_KEY when the compat layer is enabled", func(t *testing.T) {
+		_, err := Parse(map[string]string{
+			"FUND_ENV":               "production",
+			"MCP_API_KEY":            strongAdmin,
+			"FUND_EDGE_AUTH_ENABLED": "true",
+			"FUND_EDGE_KEY":          "too-short",
+			"FUND_ALLOWED_ORIGINS":   "https://fund.example.com",
+		})
+		if err == nil {
+			t.Fatalf("Parse returned nil error, want short FUND_EDGE_KEY rejection")
+		}
+	})
+
+	// Default-off: a production deployment that never opted in needs no edge
+	// key at all, because browser writes authenticate with the session cookie.
+	t.Run("accepts empty FUND_EDGE_KEY while the compat layer stays off", func(t *testing.T) {
+		cfg, err := Parse(map[string]string{
+			"FUND_ENV":             "production",
+			"MCP_API_KEY":          strongAdmin,
+			"FUND_ALLOWED_ORIGINS": "https://fund.example.com",
+		})
+		if err != nil {
+			t.Fatalf("Parse returned error: %v", err)
+		}
+		if cfg.EdgeAuthEnabled {
+			t.Fatalf("EdgeAuthEnabled = true, want false without FUND_EDGE_AUTH_ENABLED")
+		}
+		if cfg.EdgeKey != "" {
+			t.Fatalf("EdgeKey = %q, want empty", cfg.EdgeKey)
 		}
 	})
 
@@ -530,6 +569,43 @@ func TestParseBoolEnvRecognizesTruthyAndFalsySpellings(t *testing.T) {
 	}
 	if cfg.AgentOpsEnabled {
 		t.Fatal("unknown bool spelling must parse as disabled")
+	}
+}
+
+// TestParseEdgeAuthEnabledKeepsEnvNameAndSemantics pins that flipping the
+// default did not touch the variable name, the accepted spellings, or the
+// fail-closed behaviour on a typo: only the unset case changed meaning.
+func TestParseEdgeAuthEnabledKeepsEnvNameAndSemantics(t *testing.T) {
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{"", false}, // unset -> the new opt-in default
+		{"true", true},
+		{"1", true},
+		{"yes", true},
+		{"on", true},
+		{"enabled", true},
+		{"TRUE", true},
+		{"false", false},
+		{"0", false},
+		{"off", false},
+		{"disabled", false},
+		{"maybe", false}, // typo stays fail-closed, warned at startup
+	}
+	for _, tc := range cases {
+		env := map[string]string{}
+		if tc.value != "" {
+			env["FUND_EDGE_AUTH_ENABLED"] = tc.value
+		}
+		cfg, err := Parse(env)
+		if err != nil {
+			t.Fatalf("Parse(FUND_EDGE_AUTH_ENABLED=%q): %v", tc.value, err)
+		}
+		if cfg.EdgeAuthEnabled != tc.want {
+			t.Fatalf("FUND_EDGE_AUTH_ENABLED=%q -> EdgeAuthEnabled=%v, want %v",
+				tc.value, cfg.EdgeAuthEnabled, tc.want)
+		}
 	}
 }
 

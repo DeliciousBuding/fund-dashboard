@@ -1,54 +1,25 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
+	"github.com/DeliciousBuding/fund-dashboard/internal/contracts"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 	"github.com/go-chi/chi/v5"
 )
 
 // registerSPATransactionRoutes exposes transaction mutations for the browser SPA.
-// The caller must wrap these routes in EdgeAuth; the SPA never holds the shared key.
+// The caller mounts these inside the BrowserWriteAuth group: session cookie
+// first, with the legacy edge-injected key only while FUND_EDGE_AUTH_ENABLED is
+// on. The SPA client itself never holds a key. Handlers are the same
+// implementation the admin Bearer surface uses (registerTransactionMutationRoutes).
 func registerSPATransactionRoutes(r chi.Router, service adminsvc.Service) {
-	r.Post("/api/transactions/import", func(w http.ResponseWriter, req *http.Request) {
-		req.Body = http.MaxBytesReader(w, req.Body, 2<<20)
-		var body importTransactionsRequest
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_json")
-			return
-		}
-		result, err := service.ImportTransactions(req.Context(), body.Transactions)
-		writeAdminTransactionResult(w, req, result, err)
-	})
-
-	r.Put("/api/transactions/{seq}", func(w http.ResponseWriter, req *http.Request) {
-		seq, err := strconv.Atoi(chi.URLParam(req, "seq"))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "seq required")
-			return
-		}
-		req.Body = http.MaxBytesReader(w, req.Body, 1<<20)
-		var body adminsvc.UpdateTransaction
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_json")
-			return
-		}
-		result, err := service.UpdateTransaction(req.Context(), seq, body)
-		writeAdminTransactionResult(w, req, result, err)
-	})
-
-	r.Delete("/api/transactions/{seq}", func(w http.ResponseWriter, req *http.Request) {
-		seq, err := strconv.Atoi(chi.URLParam(req, "seq"))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "seq required")
-			return
-		}
-		result, err := service.DeleteTransaction(req.Context(), seq)
-		writeAdminTransactionResult(w, req, result, err)
+	registerTransactionMutationRoutes(r, service, transactionMutationPaths{
+		importPath: "/api/transactions/import",
+		seqPath:    "/api/transactions/{seq}",
 	})
 }
 
@@ -75,10 +46,10 @@ func handleCompareFunds(service *portfoliosvc.Service) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "codes required")
 			return
 		}
-		// Bound fan-out: each code hits NAV/xirr/drawdown work (#205).
-		const maxCompareCodes = 8
-		if len(codes) > maxCompareCodes {
-			writeError(w, http.StatusBadRequest, "codes max 8")
+		// Bound fan-out: each code hits NAV/xirr/drawdown work (#205). The limit
+		// is shared with the MCP compare_funds surface via internal/contracts.
+		if len(codes) > contracts.MaxCompareCodes {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("codes max %d", contracts.MaxCompareCodes))
 			return
 		}
 		results, err := service.CompareFunds(r.Context(), codes, portfolioIDFromRequest(r))

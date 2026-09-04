@@ -21,6 +21,9 @@
 完整约定与守卫清单见 [CONTRIBUTING.md](CONTRIBUTING.md#发布流程)。
 
 ## [Unreleased]
+- [改进] CI 新增三道静态分析/审计门禁：`lint-go`（golangci-lint v1.64.8，20 个策划 linter，含 stylecheck）、`vuln-go`（govulncheck v1.7.0 源码模式）、`audit-web`（pnpm audit，advisory 不影响合并）；五个既有必需 job id 与行为不变。Go 构建阶段改为只 COPY `cmd/` 与 `internal/`，并在 `-trimpath -buildvcs=false` 下编译，减少缓存失效并清除构建器路径。
+- [修复] `/api/auth/sessions` 在两条 `last_seen_at` 同秒的会话之间顺序不稳定（`ORDER BY last_seen_at DESC` 无 tiebreaker），导致已提交的 golden 样例在两次 CI 运行间翻转、`test-go` 随机变红。现在排序加 `id DESC` 总序（双方言主键可移植），且 service 层把当前会话恒定锚在首位；不同秒会话的顺序不变。
+- [改进]（行为变更）`FUND_EDGE_AUTH_ENABLED` 默认由 true 翻为 false：浏览器写路径默认只认 `fund_session` cookie + `X-Fund-Request` + Origin 白名单；旧的 `X-Fund-Edge-Key` 兼容层改为显式开启（仍依赖边缘代理注入该头的部署必须在 .env 设 `FUND_EDGE_AUTH_ENABLED=true` 并继续提供强 `FUND_EDGE_KEY`）。变量名、取值拼写与 fail-closed 语义不变；`deploy/docker-compose.yml`、`.env.example`、`deploy/README.md` 与 `AGENTS.md` 的默认值/文案已同步。
 
 - [修复] `/mcp` 在认证之前没有任何限流，随机 bearer token 洪泛会让每个请求都强制走一次完整 ECDSA 验签——公网面上最廉价的 CPU 放大点。现在在 MCPAuth 之前挂一个粗粒度按来源 IP 的令牌桶（新增 `FUND_MCP_PREAUTH_RPM`，默认 600/分钟、burst 60），与认证后的按 key 桶（`FUND_MCP_RPM`）相互独立，因此 401 永远不会消耗 key 配额；已认证路径语义不变（#40）。
 - [修复] OAuth 访问令牌校验在 `exp` 缺失时会跳过过期检查（`Expiry==0`），任何忘记写该声明的签发路径都会静默铸出永不过期的令牌。现在 `exp` 为必填，并拒绝 `iat` 超前服务器时钟 5 分钟以上的令牌；当前签发方本来就总带 `exp`，但校验方不再依赖这一点（#40）。

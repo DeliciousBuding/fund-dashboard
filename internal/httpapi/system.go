@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"runtime"
@@ -63,9 +64,15 @@ func handleSystemStatus(cfg config.Config, deps *routerDeps, admin adminsvc.Serv
 			"uptime_sec": int64(time.Since(adminProcessStartedAt).Seconds()),
 			"freshness":  map[string]any{"health": freshness.Health},
 		}
-		// SQLite 附 DB 文件大小（PG 无本地文件，省略字段）。
-		if strings.EqualFold(cfg.DBDriver, "sqlite") && cfg.DBPath != "" {
-			if info, err := os.Stat(cfg.DBPath); err == nil {
+		// SQLite 附 DB 文件大小（PG 无本地文件，省略字段）。判据必须是上面已解析的
+		// driver：cfg.DBDriver 是未解析的原始 FUND_DB_DRIVER（默认部署留空，由
+		// app.resolveDriver 推断成 sqlite），拿它当判据会让响应一边报
+		// db_driver=sqlite 一边永远不吐 db_size_bytes。
+		if strings.EqualFold(driver, "sqlite") && cfg.DBPath != "" {
+			info, err := os.Stat(cfg.DBPath)
+			if err != nil {
+				slog.Warn("system status: db file stat failed", "error", err)
+			} else {
 				body["db_size_bytes"] = info.Size()
 			}
 		}

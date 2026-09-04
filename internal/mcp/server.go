@@ -39,6 +39,10 @@ func negotiateProtocolVersion(params json.RawMessage) string {
 		ProtocolVersion string `json:"protocolVersion"`
 	}
 	if err := json.Unmarshal(params, &request); err != nil {
+		// Malformed initialize params are a client fault, not a reason to fail
+		// the handshake: the spec answer is our latest revision. Logged so a
+		// connector sending a wrong-typed protocolVersion is diagnosable.
+		slog.Warn("mcp initialize params unreadable, answering with the latest protocol version", "error", err)
 		return latestProtocolVersion
 	}
 	for _, version := range supportedProtocolVersions {
@@ -268,55 +272,82 @@ func (s *Server) confirmationCompletable() bool {
 	return s.agentOps != nil && s.role == agenttools.RoleOperator
 }
 
-// implementedMCPTools is the SSOT for tools/call switch cases below.
-func implementedMCPTools() map[string]struct{} {
-	return map[string]struct{}{
-		"prepare_confirmation":            {},
-		"get_portfolio_summary":           {},
-		"get_portfolio_xirr":              {},
-		"get_portfolio_timeline":          {},
-		"get_portfolio_penetration":       {},
-		"get_portfolio_allocation":        {},
-		"list_portfolios":                 {},
-		"list_dca_plans":                  {},
-		"get_investment_harness_snapshot": {},
-		"get_investment_source_brief":     {},
-		"get_source_events":               {},
-		"mark_source_event":               {},
-		"crawl_nav":                       {},
-		"recalculate_snapshot":            {},
-		"crawl_fund_holdings":             {},
-		"get_data_freshness":              {},
-		"verify_data":                     {},
-		"get_fund_status":                 {},
-		"get_system_status":               {},
-		"get_fund_detail":                 {},
-		"get_nav_history":                 {},
-		"get_fund_xirr":                   {},
-		"search_funds":                    {},
-		"search_stocks":                   {},
-		"get_us_stock":                    {},
-		"get_market_indices":              {},
-		"get_fund_drawdown":               {},
-		"compare_funds":                   {},
-		"compute_dca_amount":              {},
-		"run_backtest":                    {},
-		"get_full_dashboard":              {},
-		"add_transaction":                 {},
-		"import_transactions":             {},
-		"update_transaction":              {},
-		"delete_transaction":              {},
-		"disable_dca_plan":                {},
-		"upsert_dca_plan":                 {},
-		"add_fund":                        {},
-		"add_security":                    {},
-		"update_fund":                     {},
-		"delete_fund":                     {},
-		"adjust_position":                 {},
-		"check_alerts":                    {},
-		"run_dca_auto_invest":             {},
-		"generate_report":                 {},
+// toolHandler is the uniform signature every executable MCP tool satisfies.
+// The receiver is explicit so the dispatch table can be a package-level value
+// built from method expressions.
+type toolHandler func(s *Server, ctx context.Context, args map[string]any) (map[string]any, *Error)
+
+// ctxOnlyTool adapts a handler that takes no arguments to toolHandler so the
+// dispatch table stays uniform.
+func ctxOnlyTool(fn func(*Server, context.Context) (map[string]any, *Error)) toolHandler {
+	return func(s *Server, ctx context.Context, _ map[string]any) (map[string]any, *Error) {
+		return fn(s, ctx)
 	}
+}
+
+// toolDispatch is the single registry of tools this server can execute.
+// tools/call dispatches through it and tools/list derives its advertisement
+// filter from its key set (implementedMCPTools), so the advertised surface and
+// the executable surface are the same list by construction rather than by
+// discipline. Adding a tool means adding one entry here plus its registry
+// definition; TestImplementedMCPToolsCoversRegistryTools and
+// TestEveryAdvertisedToolDispatches pin both directions.
+var toolDispatch = map[string]toolHandler{
+	"get_portfolio_summary":           (*Server).callPortfolioSummary,
+	"get_portfolio_xirr":              (*Server).callPortfolioXIRR,
+	"get_portfolio_timeline":          (*Server).callPortfolioTimeline,
+	"get_portfolio_penetration":       (*Server).callPortfolioPenetration,
+	"get_portfolio_allocation":        (*Server).callPortfolioAllocation,
+	"list_portfolios":                 ctxOnlyTool((*Server).callListPortfolios),
+	"list_dca_plans":                  (*Server).callListDCAPlans,
+	"get_investment_harness_snapshot": (*Server).callInvestmentHarnessSnapshot,
+	"get_investment_source_brief":     (*Server).callInvestmentSourceBrief,
+	"get_source_events":               (*Server).callSourceEvents,
+	"mark_source_event":               (*Server).callMarkSourceEvent,
+	"crawl_nav":                       (*Server).callCrawlNav,
+	"recalculate_snapshot":            (*Server).callRecalculateSnapshot,
+	"crawl_fund_holdings":             (*Server).callCrawlFundHoldings,
+	"get_data_freshness":              ctxOnlyTool((*Server).callDataFreshness),
+	"verify_data":                     ctxOnlyTool((*Server).callVerifyData),
+	"get_fund_status":                 (*Server).callFundStatus,
+	"get_system_status":               ctxOnlyTool((*Server).callSystemStatus),
+	"get_fund_detail":                 (*Server).callFundDetail,
+	"get_nav_history":                 (*Server).callNavHistory,
+	"get_fund_xirr":                   (*Server).callFundXIRR,
+	"search_funds":                    (*Server).callSearchFunds,
+	"search_stocks":                   (*Server).callSearchStocks,
+	"get_us_stock":                    (*Server).callUSStock,
+	"get_market_indices":              ctxOnlyTool((*Server).callMarketIndices),
+	"get_fund_drawdown":               (*Server).callFundDrawdown,
+	"compare_funds":                   (*Server).callCompareFunds,
+	"compute_dca_amount":              (*Server).callComputeDCAAmount,
+	"run_backtest":                    (*Server).callRunBacktest,
+	"get_full_dashboard":              (*Server).callFullDashboard,
+	"prepare_confirmation":            (*Server).callPrepareConfirmation,
+	"add_transaction":                 (*Server).callAddTransaction,
+	"import_transactions":             (*Server).callImportTransactions,
+	"update_transaction":              (*Server).callUpdateTransaction,
+	"delete_transaction":              (*Server).callDeleteTransaction,
+	"upsert_dca_plan":                 (*Server).callUpsertDCAPlan,
+	"disable_dca_plan":                (*Server).callDisableDCAPlan,
+	"add_fund":                        (*Server).callAddFund,
+	"add_security":                    (*Server).callAddSecurity,
+	"update_fund":                     (*Server).callUpdateFund,
+	"delete_fund":                     (*Server).callDeleteFund,
+	"adjust_position":                 (*Server).callAdjustPosition,
+	"check_alerts":                    (*Server).callCheckAlerts,
+	"run_dca_auto_invest":             (*Server).callRunDCAAutoInvest,
+	"generate_report":                 (*Server).callGenerateReport,
+}
+
+// implementedMCPTools reports the tool names tools/call can execute. Derived
+// from toolDispatch so the two can never disagree.
+func implementedMCPTools() map[string]struct{} {
+	out := make(map[string]struct{}, len(toolDispatch))
+	for name := range toolDispatch {
+		out[name] = struct{}{}
+	}
+	return out
 }
 
 type mcpTool struct {
@@ -407,99 +438,10 @@ func (s *Server) callTool(ctx context.Context, rawParams json.RawMessage) (map[s
 
 	var result map[string]any
 	var callErr *Error
-	switch name {
-	case "get_portfolio_summary":
-		result, callErr = s.callPortfolioSummary(ctx, args)
-	case "get_portfolio_xirr":
-		result, callErr = s.callPortfolioXIRR(ctx, args)
-	case "get_portfolio_timeline":
-		result, callErr = s.callPortfolioTimeline(ctx, args)
-	case "get_portfolio_penetration":
-		result, callErr = s.callPortfolioPenetration(ctx, args)
-	case "get_portfolio_allocation":
-		result, callErr = s.callPortfolioAllocation(ctx, args)
-	case "list_portfolios":
-		result, callErr = s.callListPortfolios(ctx)
-	case "list_dca_plans":
-		result, callErr = s.callListDCAPlans(ctx, args)
-	case "get_investment_harness_snapshot":
-		result, callErr = s.callInvestmentHarnessSnapshot(ctx, args)
-	case "get_investment_source_brief":
-		result, callErr = s.callInvestmentSourceBrief(ctx, args)
-	case "get_source_events":
-		result, callErr = s.callSourceEvents(ctx, args)
-	case "mark_source_event":
-		result, callErr = s.callMarkSourceEvent(ctx, args)
-	case "crawl_nav":
-		result, callErr = s.callCrawlNav(ctx, args)
-	case "recalculate_snapshot":
-		result, callErr = s.callRecalculateSnapshot(ctx, args)
-	case "crawl_fund_holdings":
-		result, callErr = s.callCrawlFundHoldings(ctx, args)
-	case "get_data_freshness":
-		result, callErr = s.callDataFreshness(ctx)
-	case "verify_data":
-		result, callErr = s.callVerifyData(ctx)
-	case "get_fund_status":
-		result, callErr = s.callFundStatus(ctx, args)
-	case "get_system_status":
-		result, callErr = s.callSystemStatus(ctx)
-	case "get_fund_detail":
-		result, callErr = s.callFundDetail(ctx, args)
-	case "get_nav_history":
-		result, callErr = s.callNavHistory(ctx, args)
-	case "get_fund_xirr":
-		result, callErr = s.callFundXIRR(ctx, args)
-	case "search_funds":
-		result, callErr = s.callSearchFunds(ctx, args)
-	case "search_stocks":
-		result, callErr = s.callSearchStocks(ctx, args)
-	case "get_us_stock":
-		result, callErr = s.callUSStock(ctx, args)
-	case "get_market_indices":
-		result, callErr = s.callMarketIndices(ctx)
-	case "get_fund_drawdown":
-		result, callErr = s.callFundDrawdown(ctx, args)
-	case "compare_funds":
-		result, callErr = s.callCompareFunds(ctx, args)
-	case "compute_dca_amount":
-		result, callErr = s.callComputeDCAAmount(ctx, args)
-	case "run_backtest":
-		result, callErr = s.callRunBacktest(ctx, args)
-	case "get_full_dashboard":
-		result, callErr = s.callFullDashboard(ctx, args)
-	case "prepare_confirmation":
-		result, callErr = s.callPrepareConfirmation(ctx, args)
-	case "add_transaction":
-		result, callErr = s.callAddTransaction(ctx, args)
-	case "import_transactions":
-		result, callErr = s.callImportTransactions(ctx, args)
-	case "update_transaction":
-		result, callErr = s.callUpdateTransaction(ctx, args)
-	case "delete_transaction":
-		result, callErr = s.callDeleteTransaction(ctx, args)
-	case "upsert_dca_plan":
-		result, callErr = s.callUpsertDCAPlan(ctx, args)
-	case "disable_dca_plan":
-		result, callErr = s.callDisableDCAPlan(ctx, args)
-	case "add_fund":
-		result, callErr = s.callAddFund(ctx, args)
-	case "add_security":
-		result, callErr = s.callAddSecurity(ctx, args)
-	case "update_fund":
-		result, callErr = s.callUpdateFund(ctx, args)
-	case "delete_fund":
-		result, callErr = s.callDeleteFund(ctx, args)
-	case "adjust_position":
-		result, callErr = s.callAdjustPosition(ctx, args)
-	case "check_alerts":
-		result, callErr = s.callCheckAlerts(ctx, args)
-	case "run_dca_auto_invest":
-		result, callErr = s.callRunDCAAutoInvest(ctx, args)
-	case "generate_report":
-		result, callErr = s.callGenerateReport(ctx, args)
-	default:
-		result, callErr = nil, jsonrpcError(-32601, "tool_not_implemented: "+name)
+	if handler, ok := toolDispatch[name]; ok {
+		result, callErr = handler(s, ctx, args)
+	} else {
+		callErr = jsonrpcError(-32601, "tool_not_implemented: "+name)
 	}
 
 	if callErr != nil {
@@ -543,6 +485,16 @@ func (s *Server) claimWriteConfirmation(ctx context.Context, name string, args m
 		ResultSummary:   map[string]any{"authorization": "claimed"},
 	}
 	if _, err := s.agentOps.ClaimConfirmation(ctx, in); err != nil {
+		// The caller gets one deliberately uniform denial (an expired token, an
+		// already-used token, a payload-hash mismatch and a store failure must be
+		// indistinguishable from outside). The cause is only recoverable from this
+		// log line, so dropping it would make a rejected write untriageable.
+		// The token itself is never logged.
+		slog.Warn("mcp confirmation claim rejected",
+			"tool", name,
+			"confirmation_id", confirmationID,
+			"caller", in.Caller,
+			"error", err)
 		return jsonrpcError(-32001, "tool_denied: invalid_confirmation")
 	}
 	return nil
