@@ -179,7 +179,7 @@ func TestRunDCAAutoInvestBackfillDueDateTable(t *testing.T) {
 		{
 			name: "missed_due_date_replays_with_due_date_on_order_and_ledger",
 			mask: "3", start: "2026-01-01", hasNav: true, nav: 2.0,
-			asOf: "2026-09-02", // Wednesday, mask day 3 — window was missed that day
+			asOf:       "2026-09-02", // Wednesday, mask day 3 — window was missed that day
 			wantStatus: "executed", wantExecuted: 1,
 			wantOrderID: "DCA-1-20260902", wantTx: 1, wantLedger: 1,
 		},
@@ -199,7 +199,7 @@ func TestRunDCAAutoInvestBackfillDueDateTable(t *testing.T) {
 		{
 			name: "empty_mask_weekday_semantics_preserved_on_past_date",
 			mask: "", start: "2026-01-01", hasNav: true, nav: 2.0,
-			asOf: "2026-08-31", // Monday — empty mask defaults to 1-5
+			asOf:       "2026-08-31", // Monday — empty mask defaults to 1-5
 			wantStatus: "executed", wantExecuted: 1,
 			wantOrderID: "DCA-1-20260831", wantTx: 1, wantLedger: 1,
 		},
