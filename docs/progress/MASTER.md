@@ -1,6 +1,6 @@
 # MASTER — Progress
 
-最后更新：2026-09-04（W1 已合并 + PR #40 待 CI；W2 收口中；W3 L9 已派发）
+最后更新：2026-09-04（W1/W2/W3 全量落地：#40/#41 + session 排序修复 #43 + L9 CI #42 + L8 #44；战役收口）
 
 ## 战役：反模式整治与升级（2026-09-03）
 
@@ -33,11 +33,11 @@
 | W1 | L2 DCA 补偿 | `lane/p0-dca` | `internal/service/portfolio/dca_run*`、`internal/jobs/scheduler.go`、`internal/jobs/dca*`（新建） | merged e9afae6 |
 | W1 | L3 金额精度 | `lane/p0-precision` | `internal/snapshot/`、`internal/service/portfolio/{xirr,xirr_calc,summary}.go`、`internal/service/admin/integrity.go` | merged 734d230 |
 | W2 | L4 契约金样本 | `lane/p1-golden` | `packages/contracts/**`、`internal/httpapi/golden_test.go`（新建）、`testdata/golden/`（新建） | merged 53d8b37（contracts 108→142 pass） |
-| W2 | L5 crawl 收敛 | `lane/p1-crawl` | `internal/mcp/tools_read.go`、`tools_helpers.go`、`internal/httpapi/admin_crawl.go`、`internal/jobs/price_refresh.go`、`internal/service/admin/crawl*.go`（新建） | running（worktree 已建，重构进行中） |
+| W2 | L5 crawl 收敛 | `lane/p1-crawl` | `internal/mcp/tools_read.go`、`tools_helpers.go`、`internal/httpapi/admin_crawl.go`、`internal/jobs/price_refresh.go`、`internal/service/admin/crawl*.go`（新建） | merged 53d8b37（随 W2） |
 | W2 | L6 迁移+测试DDL | `lane/p1-schema` | `internal/repository/db/**`、`internal/testutil/`、存量 `*_test.go` 的手抄 DDL 迁移 | merged 73ae1ed |
 | W2 | L7 前端 | `lane/p1-frontend` | `web/src/**`（不改 package.json/lockfile） | merged 25b7248 |
-| W3 | L8 后端打磨 | `lane/p2-polish` | `internal/mcp/server.go`、`internal/httpapi/{system,admin_dashboard,spa_transactions,admin_transactions,session_auth}.go`、`internal/agentops/`、`internal/jobs/{nav_schema,scheduler}.go`、`internal/contracts/validation.go`、`internal/config/config.go`(edge-key 默认) | pending（依赖 L6 合并后再派发：territory 含 nav_schema.go） |
-| W3 | L9 CI | `lane/p2-ci` | `.github/workflows/ci.yml`、`deploy/Dockerfile` | running（worktree .worktrees/p2-ci） |
+| W3 | L8 后端打磨 | `lane/p2-polish` | `internal/mcp/server.go`、`internal/httpapi/{system,admin_dashboard,spa_transactions,admin_transactions,session_auth}.go`、`internal/agentops/`、`internal/jobs/{nav_schema,scheduler}.go`、`internal/contracts/validation.go`、`internal/config/config.go`(edge-key 默认)+ `deploy/{docker-compose.yml,.env.example}`/`docs` 同步 | merged 5137b2f（随 PR #44） |
+| W3 | L9 CI | `lane/p2-ci` | `.github/workflows/ci.yml`、`deploy/Dockerfile` | merged 25e6626（随 PR #42） |
 
 ### 落地机制（2026-09-04 实测，纠正原计划）
 
@@ -85,6 +85,13 @@ CI 侧（PR #40，ubuntu，含 race）：`test-go` pass 2m27s、`build-go` pass�
 - API 错误统一 `{error: string}`；MCP 工具描述中文；SQL 全参数化；日期 YYYY-MM-DD。
 - 基线不可退：测试数只增不减、skipped=0、禁删测试/禁松断言/禁 `|| true`。
 - 不改公共 API 形状（除任务书明确要求的字段）。
+
+### 本会话收口记录（2026-09-04 主 agent）
+
+- **W2 遗留一个 flaky golden（已修，#43）**：`/api/auth/sessions` 两条会话的 `last_seen_at` 同秒打平，`ORDER BY last_seen_at DESC` 无 tiebreaker，且 `current` 由随机 token 决定，导致已提交 golden 样例在两次 CI 运行间翻转、`test-go` 在**每个 PR** 上随机变红。修复 = store 加 `id DESC` 总序（双方言主键可移植）+ service 把当前会话恒定锚首位；不同秒会话顺序不变。已加 store 级回归测试（红→绿证明确实抓得住）。
+- **L9 lint-go 集成期暴露 stylecheck ST1019**（4 个测试文件 `internal/repository/db` 双别名 import，因局部变量 `db` 遮蔽包别名）。处理 = 去掉重复 import、保留 stylecheck，而不是从策划集里删掉它（删掉会让闸门再也抓不到下一处重复导入）。
+- **CI `audit-web` 为 advisory**：因 npm audit 端点从 GitHub runner 稳定 `ERR_SOCKET_TIMEOUT`（第三方网络抖动），基本每次都会红，但不阻塞（continue-on-error）。记录为已知限制，不是代码漏洞。
+- **lint 集合计数是漂移源**：`golangci-lint` 报告与组合相关（`predeclared` 单独 9 vs 与 `revive` 同开 0），且默认 `--max-same-issues=3` 会截断重复——per-linter 独立跑 + 双 limit 0 才是可靠 oracle。计数不入 CI 配置，改为指向 backlog。
 
 ---
 
