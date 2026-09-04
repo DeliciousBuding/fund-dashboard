@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -200,5 +202,42 @@ func TestSystemAuditMergesAuthAndAgentTimeline(t *testing.T) {
 	}
 	if !seen["auth"] || !seen["agent"] {
 		t.Fatalf("timeline missing kinds: %v", seen)
+	}
+}
+
+// TestSystemStatusReportsDBSizeForResolvedSQLiteDriver pins the driver
+// source-of-truth: FUND_DB_DRIVER is optional, so cfg.DBDriver is empty in a
+// default deployment while the router has already resolved the driver to
+// "sqlite". Gating db_size_bytes on the raw config value made the endpoint
+// report db_driver=sqlite and never emit the size; the gate must use the
+// resolved driver.
+func TestSystemStatusReportsDBSizeForResolvedSQLiteDriver(t *testing.T) {
+	db := openSPAExtensionFixture(t)
+	defer db.Close()
+
+	// No FUND_DB_PATH configured -> the optional field stays absent.
+	withoutPath := doJSONRequest(t, newAuthedRouter(t, testCfg(), db, WithDBDriver("sqlite")),
+		http.MethodGet, "/api/system/status", nil, http.StatusOK)
+	if _, present := withoutPath["db_size_bytes"]; present {
+		t.Fatalf("db_size_bytes present without FUND_DB_PATH: %s", toJSONString(t, withoutPath))
+	}
+	if withoutPath["db_driver"] != "sqlite" {
+		t.Fatalf("db_driver = %v, want sqlite", withoutPath["db_driver"])
+	}
+
+	dbFile := filepath.Join(t.TempDir(), "fund.db")
+	if err := os.WriteFile(dbFile, make([]byte, 4096), 0o600); err != nil {
+		t.Fatalf("write stub db file: %v", err)
+	}
+	cfg := testCfg() // DBDriver deliberately left empty, as in a default deployment
+	cfg.DBPath = dbFile
+	withPath := doJSONRequest(t, newAuthedRouter(t, cfg, db, WithDBDriver("sqlite")),
+		http.MethodGet, "/api/system/status", nil, http.StatusOK)
+	size, present := withPath["db_size_bytes"].(float64)
+	if !present {
+		t.Fatalf("db_size_bytes missing with a resolved sqlite driver: %s", toJSONString(t, withPath))
+	}
+	if size != 4096 {
+		t.Fatalf("db_size_bytes = %v, want 4096", size)
 	}
 }
