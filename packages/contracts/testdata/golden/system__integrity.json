@@ -1,0 +1,53 @@
+{
+  "checks": {
+    "foreign_key_check": {
+      "passed": true,
+      "violations": 0
+    },
+    "freelist_count": {
+      "detail": "0 pages (normal)",
+      "freelist": 0,
+      "passed": true
+    },
+    "integrity_check": {
+      "detail": "ok",
+      "passed": true
+    },
+    "quick_check": {
+      "passed": true,
+      "result": "ok"
+    }
+  },
+  "decision_boundary": "read_only",
+  "overall": "ok",
+  "recommendations": [],
+  "row_counts": {
+    "agent_audit_events": 1,
+    "auth_credentials": 1,
+    "auth_events": 2,
+    "auth_sessions": 2,
+    "dca_plans": 1,
+    "fund_details": 2,
+    "fund_holdings": 1,
+    "nav_history": 2,
+    "portfolio_definitions": 1,
+    "portfolio_snapshot": 2,
+    "source_events": 1,
+    "transactions": 2
+  },
+  "table_checksums": {
+    "agent_audit_events": "rows=1",
+    "auth_credentials": "rows=1",
+    "auth_events": "rows=2",
+    "auth_sessions": "rows=2",
+    "dca_plans": "rows=1",
+    "fund_details": "rows=2",
+    "fund_holdings": "rows=1",
+    "nav_history": "rows=2",
+    "portfolio_definitions": "rows=1",
+    "portfolio_snapshot": "rows=2",
+    "source_events": "rows=1",
+    "transactions": "rows=2"
+  },
+  "timestamp": "__SCRUBBED__"
+}

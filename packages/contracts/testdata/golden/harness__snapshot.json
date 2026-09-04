@@ -1,0 +1,368 @@
+{
+  "agent_brief": "Investment Harness facts only: 2 held assets, total value 530.00. Allocation: Allocation: Stock 71.7%, Fund 28.3%; Market: US Stocks 71.7%, CN Funds 28.3%. Risk: US Stocks weight above 70%; 科技股 theme weight above 50%. Data gaps: price 0, cost basis 0, change pct 0. Public discovery is read-only: write/maintenance/confirmation-gated tools are not advertised; broker execution and backup producer are disabled.",
+  "agent_capabilities": [
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_full_dashboard",
+      "use_for": "一次性读取组合、harness、数据质量、来源事件和市场缓存"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_portfolio_summary",
+      "use_for": "读取组合交易、持仓和收益概览"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_portfolio_xirr",
+      "use_for": "读取组合 XIRR 事实"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_portfolio_timeline",
+      "use_for": "读取组合价值时间线"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_portfolio_allocation",
+      "use_for": "读取资产类型、市场和主题配置"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_portfolio_penetration",
+      "use_for": "读取基金穿透底层股票暴露"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "list_portfolios",
+      "use_for": "列出组合定义"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "list_dca_plans",
+      "use_for": "列出定投计划规则（facts-only）"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_fund_detail",
+      "use_for": "读取单个证券的交易、价格和持仓事实"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_fund_status",
+      "use_for": "读取单证券管理状态"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_fund_xirr",
+      "use_for": "读取单证券 XIRR"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_fund_drawdown",
+      "use_for": "读取最大回撤事实"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_nav_history",
+      "use_for": "读取历史 NAV/价格序列"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "search_funds",
+      "use_for": "按名称/代码搜索证券"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "search_stocks",
+      "use_for": "本地股票档案搜索"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_us_stock",
+      "use_for": "读取缓存美股行情/档案"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_market_indices",
+      "use_for": "读取缓存指数"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "external_context",
+      "tool": "get_investment_source_brief",
+      "use_for": "生成 AI Agent/搜索服务 可消费的消息源查询"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_source_events",
+      "use_for": "读取已抓取新闻、公告和搜索结果队列"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_investment_harness_snapshot",
+      "use_for": "读取 agent harness 边界与可用工具"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_data_freshness",
+      "use_for": "检查 NAV/价格新鲜度和可行动补数入口"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "verify_data",
+      "use_for": "检查缺失净值、负持仓、空结算日等数据完整性问题"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "get_system_status",
+      "use_for": "读取系统诊断事实"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "compute_dca_amount",
+      "use_for": "运行事实型 DCA 模拟，不产生扣款指令"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "run_backtest",
+      "use_for": "运行历史策略模拟，不产生交易指令"
+    },
+    {
+      "permission": "allowed",
+      "risk_level": "low",
+      "scope": "read",
+      "tool": "compare_funds",
+      "use_for": "多证券历史对比事实"
+    }
+  ],
+  "agent_permissions": {
+    "decision_boundary": "facts_only",
+    "disabled_operations": [
+      "broker_trade_execution",
+      "cash_transfer",
+      "backup_producer",
+      "mcp_write_tools",
+      "maintenance_tools",
+      "confirmation_gated_tools"
+    ],
+    "read_scope": [
+      "portfolio",
+      "transactions",
+      "prices",
+      "allocation",
+      "fund_holdings",
+      "source_events",
+      "market_indices",
+      "admin_health",
+      "dca_plans"
+    ],
+    "requires_confirmation": [],
+    "write_scope": []
+  },
+  "allocation": {
+    "agent_brief": "Allocation: Stock 71.7%, Fund 28.3%; Market: US Stocks 71.7%, CN Funds 28.3%. Risk: US Stocks weight above 70%; 科技股 theme weight above 50%.",
+    "by_fund_type": [
+      {
+        "count": 1,
+        "key": "科技股",
+        "label": "科技股",
+        "value": 380,
+        "weight_pct": 71.7
+      },
+      {
+        "count": 1,
+        "key": "QDII-股票",
+        "label": "QDII-股票",
+        "value": 150,
+        "weight_pct": 28.3
+      }
+    ],
+    "by_market": [
+      {
+        "count": 1,
+        "key": "us_stock",
+        "label": "US Stocks",
+        "value": 380,
+        "weight_pct": 71.7
+      },
+      {
+        "count": 1,
+        "key": "cn_fund",
+        "label": "CN Funds",
+        "value": 150,
+        "weight_pct": 28.3
+      }
+    ],
+    "by_security_type": [
+      {
+        "count": 1,
+        "key": "stock",
+        "label": "Stock",
+        "value": 380,
+        "weight_pct": 71.7
+      },
+      {
+        "count": 1,
+        "key": "fund",
+        "label": "Fund",
+        "value": 150,
+        "weight_pct": 28.3
+      }
+    ],
+    "risk_flags": [
+      "US Stocks weight above 70%",
+      "科技股 theme weight above 50%"
+    ],
+    "total_value": 530
+  },
+  "available_agent_tools": [
+    "get_full_dashboard",
+    "get_portfolio_summary",
+    "get_portfolio_xirr",
+    "get_portfolio_timeline",
+    "get_portfolio_allocation",
+    "get_portfolio_penetration",
+    "list_portfolios",
+    "list_dca_plans",
+    "get_fund_detail",
+    "get_fund_status",
+    "get_fund_xirr",
+    "get_fund_drawdown",
+    "get_nav_history",
+    "search_funds",
+    "search_stocks",
+    "get_us_stock",
+    "get_market_indices",
+    "get_data_freshness",
+    "verify_data",
+    "get_system_status",
+    "get_source_events",
+    "get_investment_source_brief",
+    "get_investment_harness_snapshot",
+    "compute_dca_amount",
+    "run_backtest",
+    "compare_funds"
+  ],
+  "data_quality": {
+    "holdings_coverage_pct": 100,
+    "missing_change_pct_count": 0,
+    "missing_cost_basis_count": 0,
+    "stale_price_count": 0
+  },
+  "decision_boundary": "facts_only",
+  "generated_at": "__SCRUBBED__",
+  "holding_signals": [
+    {
+      "change_pct": 6.5,
+      "code": "AAPL",
+      "cost_per_share": 150,
+      "current_value": 380,
+      "data_points": {
+        "has_change_pct": true,
+        "has_cost_basis": true,
+        "has_price": true
+      },
+      "deviation_pct": 26.67,
+      "held_shares": 2,
+      "latest_nav": 190,
+      "market": "US",
+      "name": "Apple Inc.",
+      "pnl_pct": 26.67,
+      "security_type": "stock",
+      "signal_tags": [
+        "price_rally_gt_5pct",
+        "above_cost_gt_10pct"
+      ],
+      "weight_pct": 71.7
+    },
+    {
+      "change_pct": -4.2,
+      "code": "019173",
+      "cost_per_share": 1.2,
+      "current_value": 150,
+      "data_points": {
+        "has_change_pct": true,
+        "has_cost_basis": true,
+        "has_price": true
+      },
+      "deviation_pct": 25,
+      "held_shares": 100,
+      "latest_nav": 1.5,
+      "market": "CN",
+      "name": "纳斯达克100指数(QDII)C",
+      "pnl_pct": 25,
+      "security_type": "fund",
+      "signal_tags": [
+        "price_range_bound",
+        "above_cost_gt_10pct"
+      ],
+      "weight_pct": 28.3
+    }
+  ],
+  "holdings_count": 2,
+  "recommended_agent_actions": [
+    {
+      "priority": "medium",
+      "reason": "配置层存在风险提示：US Stocks weight above 70%；科技股 theme weight above 50%；建议读取穿透暴露做事实核对",
+      "tool": "get_portfolio_penetration"
+    },
+    {
+      "input": {
+        "limit": 8
+      },
+      "priority": "low",
+      "reason": "生成 AI Agent/搜索服务 消息源查询，用于补充外部上下文",
+      "tool": "get_investment_source_brief"
+    }
+  ],
+  "total_value": 530
+}

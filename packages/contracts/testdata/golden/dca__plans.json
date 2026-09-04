@@ -1,0 +1,20 @@
+{
+  "plans": [
+    {
+      "active": 1,
+      "amount": 25,
+      "created_at": "2026-06-01 08:00:00",
+      "end_date": null,
+      "frequency": "weekday",
+      "fund_code": "019173",
+      "fund_name": "纳斯达克100指数(QDII)C",
+      "id": 1,
+      "portfolio_id": 1,
+      "source": "manual",
+      "start_date": "2026-06-01",
+      "trade_type": "定投买入",
+      "updated_at": "2026-06-01 08:00:00",
+      "weekday_mask": "1,3,5"
+    }
+  ]
+}

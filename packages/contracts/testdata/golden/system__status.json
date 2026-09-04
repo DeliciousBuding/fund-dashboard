@@ -1,0 +1,9 @@
+{
+  "db_driver": "sqlite",
+  "freshness": {
+    "health": "degraded"
+  },
+  "go_version": "__SCRUBBED__",
+  "uptime_sec": 0,
+  "version": "test"
+}

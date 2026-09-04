@@ -1,0 +1,48 @@
+{
+  "auto_amount": 0,
+  "auto_tx": 0,
+  "by_security_type": [
+    {
+      "count": 1,
+      "security_type": "stock",
+      "total_pnl": 80,
+      "total_value": 380
+    },
+    {
+      "count": 1,
+      "security_type": "fund",
+      "total_pnl": 30,
+      "total_value": 150
+    }
+  ],
+  "current_value": 530,
+  "first_trade": "2026-06-01",
+  "held_funds": 2,
+  "invested_cost": 420,
+  "last_nav_date": "__SCRUBBED__",
+  "last_trade": "2026-06-01",
+  "manual_amount": 420,
+  "manual_tx": 2,
+  "pnl_pct": 26.19,
+  "settlement_distribution": {
+    "2": 2
+  },
+  "stale_nav_days": 0,
+  "top_gainer": {
+    "code": "AAPL",
+    "current_value": 380,
+    "name": "Apple Inc.",
+    "pnl_pct": 26.67,
+    "unrealized_pnl": 80
+  },
+  "total_buy": 420,
+  "total_fee": 0.2,
+  "total_sell": 0,
+  "total_tx": 2,
+  "trade_type_breakdown": {
+    "用户买入": 2
+  },
+  "unique_funds": 1,
+  "unique_stocks": 1,
+  "unrealized_pnl": 110
+}

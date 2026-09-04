@@ -1,0 +1,24 @@
+{
+  "sessions": [
+    {
+      "created_at": 0,
+      "current": false,
+      "expires_at": 0,
+      "id_prefix": "__SCRUBBED__",
+      "ip": "127.0.0.1",
+      "last_seen_at": 0,
+      "user_agent": "test-agent"
+    },
+    {
+      "created_at": 0,
+      "current": true,
+      "expires_at": 0,
+      "id_prefix": "__SCRUBBED__",
+      "ip": "127.0.0.1",
+      "last_seen_at": 0,
+      "user_agent": "test-agent"
+    }
+  ],
+  "total": 2,
+  "truncated": false
+}

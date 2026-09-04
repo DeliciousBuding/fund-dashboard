@@ -1,0 +1,38 @@
+{
+  "alerts": [
+    {
+      "as_of": "__SCRUBBED__",
+      "code": "019173",
+      "kind": "price_change",
+      "market": "CN",
+      "message": "019173 daily change 6.50% exceeds ±5.00%",
+      "name": "纳斯达克100指数(QDII)C",
+      "security_type": "fund",
+      "severity": "medium",
+      "threshold": 5,
+      "value": 6.5
+    },
+    {
+      "as_of": "__SCRUBBED__",
+      "code": "AAPL",
+      "kind": "stale_nav",
+      "market": "US",
+      "message": "AAPL NAV stale 10 days (threshold 4)",
+      "name": "Apple Inc.",
+      "security_type": "stock",
+      "severity": "low",
+      "threshold": 4,
+      "value": 10
+    }
+  ],
+  "checked_at": "__SCRUBBED__",
+  "count": 2,
+  "decision_boundary": "facts_only",
+  "drawdown_pct": 10,
+  "ok": true,
+  "portfolio_id": 1,
+  "price_change_pct": 5,
+  "side_effects": "none",
+  "stale_days": 4,
+  "webhook_sent": false
+}

@@ -1,0 +1,14 @@
+{
+  "funds": [
+    {
+      "calmar": null,
+      "code": "019173",
+      "market": "CN",
+      "max_drawdown": 0,
+      "name": "纳斯达克100指数(QDII)C",
+      "sharpe": null,
+      "volatility": null,
+      "xirr": null
+    }
+  ]
+}

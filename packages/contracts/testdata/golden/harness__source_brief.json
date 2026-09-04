@@ -1,0 +1,92 @@
+{
+  "agent_brief": "组合来源说明：共生成 4 条来源查询，覆盖 2 个持仓与 1 个底层股票。搜索目标包括网页搜索、搜索服务商、官方披露页面与本地 MCP 抓取工具；本内容仅作为搜索/抓取上下文，投资决策仍由 agent 自行判断。",
+  "coverage": {
+    "holdings_scanned": 2,
+    "max_queries": 20,
+    "underlying_scanned": 1
+  },
+  "decision_boundary": "source_queries_only",
+  "generated_at": "__SCRUBBED__",
+  "queries": [
+    {
+      "entity_code": null,
+      "entity_name": "portfolio",
+      "freshness": "intraday",
+      "id": "portfolio-global-market",
+      "query": "今日 全球市场 纳斯达克 港股 A股 汇率 影响 QDII 基金",
+      "reason": "组合跨 CN/HK/US 市场，需要宏观和市场层消息作为背景。",
+      "scope": "portfolio"
+    },
+    {
+      "entity_code": "AAPL",
+      "entity_name": "Apple Inc.",
+      "freshness": "intraday",
+      "id": "holding-AAPL",
+      "query": "Apple Inc. AAPL US 最新消息 公告 持仓 估值",
+      "reason": "持仓级消息源，用于核对 Apple Inc. 的公告、净值/股价和主题变化。",
+      "scope": "holding"
+    },
+    {
+      "entity_code": "019173",
+      "entity_name": "纳斯达克100指数(QDII)C",
+      "freshness": "daily",
+      "id": "holding-019173",
+      "query": "纳斯达克100指数(QDII)C 019173 CN 最新消息 公告 持仓 估值",
+      "reason": "持仓级消息源，用于核对 纳斯达克100指数(QDII)C 的公告、净值/股价和主题变化。",
+      "scope": "holding"
+    },
+    {
+      "entity_code": "NVDA",
+      "entity_name": "NVIDIA",
+      "freshness": "intraday",
+      "id": "underlying-NVDA",
+      "query": "NVIDIA NVDA earnings news guidance regulation",
+      "reason": "穿透持仓底层股票消息源，估算组合间接暴露的新闻风险。",
+      "scope": "underlying"
+    }
+  ],
+  "source_targets": [
+    {
+      "kind": "web_search",
+      "name": "网页搜索",
+      "url_template": null,
+      "use_for": "新闻、公告、监管和宏观消息检索"
+    },
+    {
+      "kind": "web_search",
+      "name": "搜索服务商",
+      "url_template": "search:{query}",
+      "use_for": "复用 SerpAPI/Tavily/Brave/SearXNG 等搜索源做新闻兜底"
+    },
+    {
+      "kind": "market_data",
+      "name": "多市场复盘上下文",
+      "url_template": "market-review:{market}",
+      "use_for": "多市场复盘、交易日历和数据质量上下文"
+    },
+    {
+      "kind": "market_data",
+      "name": "fund-dashboard MCP",
+      "url_template": "mcp:get_fund_detail({code})",
+      "use_for": "本地持仓、价格、成本、交易流水事实"
+    },
+    {
+      "kind": "official_disclosure",
+      "name": "Eastmoney / fundf10",
+      "url_template": "https://fundf10.eastmoney.com/ccmx_{code}.html",
+      "use_for": "基金季报持仓和披露核对"
+    },
+    {
+      "kind": "official_disclosure",
+      "name": "Yahoo Finance",
+      "url_template": "https://finance.yahoo.com/quote/{code}",
+      "use_for": "美股行情、财报和公司事件入口"
+    },
+    {
+      "kind": "local_mcp",
+      "name": "crawl_fund_holdings",
+      "url_template": "mcp:crawl_fund_holdings({fund_code})",
+      "use_for": "补全本地 fund_holdings 穿透数据"
+    }
+  ]
+}
