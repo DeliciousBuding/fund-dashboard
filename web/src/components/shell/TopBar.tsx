@@ -6,12 +6,12 @@ import { useRouter } from "@tanstack/react-router";
 import { CircleDot, LogOut, Moon, Search, Sun, SunMoon } from "lucide-react";
 import { toast } from "sonner";
 import { useMarketStream } from "../../hooks/useMarketStream";
-import { ApiError } from "../../lib/api";
 import { logout } from "../../lib/auth";
 import { refreshAuthStatus } from "../../lib/authQuery";
 import { useFreshness } from "../../lib/queries";
 import { queryClient } from "../../lib/queryClient";
 import { cn } from "../../lib/utils";
+import { mutationErrorMessage } from "../../services/userError";
 import { type ThemeMode, useSettings } from "../../stores/settings";
 import { useUi } from "../../stores/ui";
 import { Badge } from "../ui/badge";
@@ -119,7 +119,7 @@ export function TopBar({ title }: { title?: string }) {
       await router.navigate({ to: "/login" });
     },
     onError: (e) =>
-      toast.error("退出登录失败", { description: e instanceof ApiError ? e.code : String(e) }),
+      toast.error("退出登录失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : SunMoon;

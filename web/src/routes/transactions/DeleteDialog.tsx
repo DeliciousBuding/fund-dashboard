@@ -10,7 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import { ApiError, api } from "../../lib/api";
+import { api } from "../../lib/api";
+import { mutationErrorMessage } from "../../services/userError";
 
 // ── 删除确认 ────────────────────────────────────────────────────────
 
@@ -27,8 +28,7 @@ export function DeleteDialog(props: { seq: number | null; onOpenChange: (v: bool
       toast.success("交易已删除");
       props.onOpenChange(false);
     },
-    onError: (e) =>
-      toast.error("删除失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("删除失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
   return (
     <Dialog open={props.seq != null} onOpenChange={props.onOpenChange}>

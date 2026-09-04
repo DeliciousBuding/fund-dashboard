@@ -4,6 +4,7 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { readChartTheme } from "./theme";
 import { useEChart } from "./useEChart";
+import { useThemeKey } from "./useThemeKey";
 
 interface ChartProps {
   /** 构建 option；入参是当前主题（readChartTheme 快照）。 */
@@ -35,9 +36,9 @@ export function Chart({
   errorText = "加载失败",
   onRetry,
 }: ChartProps) {
-  // 主题快照：dataset.theme 变化时 deps 里的 themeKey 驱动重渲染。
-  const themeKey =
-    typeof document === "undefined" ? "dark" : (document.documentElement.dataset.theme ?? "dark");
+  // 主题快照（响应式）：data-theme / data-convention 属性变化经
+  // useSyncExternalStore 触发重渲染，deps 里的 themeKey 驱动 notMerge 重绘。
+  const themeKey = useThemeKey();
   // biome-ignore lint/correctness/useExhaustiveDependencies: themeKey 变化必须重建 option
   const built = useMemo(() => {
     if (loading || empty || error) return null;

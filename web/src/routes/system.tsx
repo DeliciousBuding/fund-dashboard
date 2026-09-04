@@ -27,8 +27,9 @@ import {
 import { EmptyState } from "../components/ui/empty-state";
 import { Skeleton } from "../components/ui/skeleton";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { fetchValidated, useAlerts } from "../lib/queries";
+import { mutationErrorMessage } from "../services/userError";
 
 function fmtTs(ts?: number): string {
   if (!ts) return "—";
@@ -99,8 +100,7 @@ export function SystemPage() {
       await queryClient.invalidateQueries({ queryKey: ["system-jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["system-status"] });
     },
-    onError: (e) =>
-      toast.error("触发失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("触发失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   if (status.isError || jobs.isError) {

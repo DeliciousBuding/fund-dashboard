@@ -20,9 +20,10 @@ import { Input, Label } from "../components/ui/input";
 import { Segmented } from "../components/ui/segmented";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { fetchValidated } from "../lib/queries";
 import { cn } from "../lib/utils";
+import { mutationErrorMessage } from "../services/userError";
 import { useSettings } from "../stores/settings";
 
 // ── 安全 tab ────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ function ChangePasswordCard() {
       setConfirm("");
       await queryClient.invalidateQueries({ queryKey: ["auth-sessions"] });
     },
-    onError: (e) => setError(e instanceof ApiError ? e.code : "修改失败"),
+    onError: (e) => setError(mutationErrorMessage(e, "修改失败")),
   });
 
   return (

@@ -27,9 +27,10 @@ import { Input, Label } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { Switch } from "../components/ui/switch";
 import { Table, TBody, Td, THead, Th, Tr } from "../components/ui/table";
-import { ApiError, api } from "../lib/api";
+import { api } from "../lib/api";
 import { fmtCNY } from "../lib/format";
 import { useDcaPlans } from "../lib/queries";
+import { mutationErrorMessage } from "../services/userError";
 import { useUi } from "../stores/ui";
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -98,8 +99,7 @@ function PlanFormDialog(props: {
       toast.success(form.id == null ? "定投计划已创建" : "定投计划已更新");
       props.onOpenChange(false);
     },
-    onError: (e) =>
-      setError(e instanceof ApiError ? e.code : e instanceof Error ? e.message : "保存失败"),
+    onError: (e) => setError(mutationErrorMessage(e, "保存失败")),
   });
 
   return (
@@ -224,8 +224,7 @@ function RunDialog(props: { open: boolean; onOpenChange: (v: boolean) => void })
         setPreview(null);
       }
     },
-    onError: (e) =>
-      toast.error("执行失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("执行失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   return (
@@ -337,8 +336,7 @@ export function DcaPage() {
       await queryClient.invalidateQueries({ queryKey: ["dca-plans"] });
       toast.success("计划已停用");
     },
-    onError: (e) =>
-      toast.error("停用失败", { description: e instanceof ApiError ? e.code : String(e) }),
+    onError: (e) => toast.error("停用失败", { description: mutationErrorMessage(e, "请稍后重试") }),
   });
 
   const rows = useMemo(() => plans.data?.plans ?? [], [plans.data]);
