@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/agenttools"
-	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 	portfoliosvc "github.com/DeliciousBuding/fund-dashboard/internal/service/portfolio"
 )
@@ -196,7 +195,7 @@ func (s *Server) callRecalculateSnapshot(ctx context.Context, args map[string]an
 	if failed == nil {
 		failed = []string{}
 	}
-	status := jobs.RecalcAllStatus(n, failed)
+	status := adminsvc.BatchStatus(n, failed)
 	return textJSONResult(map[string]any{
 		"status":            status,
 		"mode":              "all",
@@ -256,15 +255,15 @@ func (s *Server) callCrawlNav(ctx context.Context, args map[string]any) (map[str
 			})
 		}
 		done, failed, totalAdded, cancelled := crawlStaleCodes(ctx, s.nav, codes)
-		status := "complete"
+		// The status rule is shared, so REST, MCP and the scheduled job cannot
+		// disagree about complete vs partial vs error.
+		status := adminsvc.BatchStatus(len(done), failed)
 		if cancelled {
+			// A batch cancelled before any code was dispatched has no facts to
+			// report, so it stays a tool error instead of a misleading complete.
 			if len(done) == 0 && len(failed) == 0 {
 				return nil, jsonrpcError(-32000, "tool_error: cancelled")
 			}
-			status = "partial"
-		} else if len(failed) > 0 && len(done) == 0 {
-			status = "error"
-		} else if len(failed) > 0 {
 			status = "partial"
 		}
 		return textJSONResult(map[string]any{
@@ -493,23 +492,31 @@ func (s *Server) harnessAudience() portfoliosvc.HarnessAudience {
 	return portfoliosvc.HarnessAudiencePublic
 }
 
-// crawlStaleCodes crawls each code until the context is cancelled. It keeps
-// per-code soft failures (done vs failed) and reports whether cancellation
-// stopped the batch so the caller can distinguish complete/partial/cancelled.
-func crawlStaleCodes(ctx context.Context, nav NavCrawler, codes []string) (done, failed []string, totalAdded int, cancelled bool) {
-	done = make([]string, 0, len(codes))
-	for _, code := range codes {
-		if err := ctx.Err(); err != nil {
-			cancelled = true
-			return done, failed, totalAdded, cancelled
-		}
+// staleBatchPolicy is the MCP flavor of the shared batch: no inter-code
+// backoff (a tool call must not sleep inside its own request budget) and a
+// failure log that names the tool. Per-code failures used to be appended to
+// `failed` with no log at all, which AGENTS.md forbids (静默吞错误 -> 所有 catch
+// 必须 log); logging now happens once, inside the shared runner.
+var staleBatchPolicy = adminsvc.BatchPolicy{
+	FailureLogMessage: "mcp crawl_nav stale_only code failed",
+}
+
+// navCodeRefresher adapts the MCP NavCrawler port to the shared service
+// CodeRefresher port. The latest-NAV string is a single-code response detail
+// that a batch does not need.
+func navCodeRefresher(nav NavCrawler) adminsvc.CodeRefresher {
+	return func(ctx context.Context, code string) (int, error) {
 		added, _, err := nav.CrawlCode(ctx, code)
-		if err != nil {
-			failed = append(failed, code)
-			continue
-		}
-		totalAdded += added
-		done = append(done, code)
+		return added, err
 	}
-	return done, failed, totalAdded, false
+}
+
+// crawlStaleCodes is the MCP adapter over the shared batch runner. It projects
+// adminsvc.BatchOutcome onto the (done, failed, added, cancelled) tuple the
+// crawl_nav response is built from. The loop semantics - input order, ctx
+// check before each code, logged per-code soft-fail, cancellation - live only
+// in adminsvc.RunCodeBatch.
+func crawlStaleCodes(ctx context.Context, nav NavCrawler, codes []string) (done, failed []string, totalAdded int, cancelled bool) {
+	outcome := adminsvc.RunCodeBatch(ctx, codes, navCodeRefresher(nav), staleBatchPolicy)
+	return outcome.Done, outcome.Failed, outcome.Added, outcome.Stopped
 }

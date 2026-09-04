@@ -132,89 +132,81 @@ func (r *PriceRefresher) RefreshAllHeld(ctx context.Context) (securities, totalA
 
 // RefreshStaleHeld refreshes only held securities with missing or stale NAV
 // (same selection as admin/MCP stale_only). Fresh holdings are skipped entirely.
+// The selection, the batch loop and the status rule come from the shared crawl
+// service, so the scheduled job cannot drift from the MCP tool or the admin
+// endpoint it is supposed to be in parity with.
 func (r *PriceRefresher) RefreshStaleHeld(ctx context.Context) (securities, totalAdded int, err error) {
 	svc, err := adminsvc.NewServiceWithDriverChecked(r.db, r.driver)
 	if err != nil {
 		return 0, 0, fmt.Errorf("admin service for stale refresh: %w", err)
 	}
-	report, err := svc.GetFreshness(ctx)
+	result, err := adminsvc.RefreshStaleCodes(ctx, svc, r.codeRefresher(), priceRefreshBatchPolicy)
 	if err != nil {
+		// RefreshStaleCodes only fails on the freshness read; per-code refresh
+		// failures are soft-failed into result.Batch.Failed below.
 		return 0, 0, fmt.Errorf("freshness for stale refresh: %w", err)
 	}
-	codes := heldRefreshCodes(report)
-	if len(codes) == 0 {
+	if len(result.Codes) == 0 {
 		slog.Info("price refresh stale_only: nothing to do")
 		return 0, 0, nil
 	}
-	slog.Info("price refresh stale_only", "codes", len(codes))
-	return r.RefreshCodes(ctx, codes)
+	slog.Info("price refresh stale_only", "codes", len(result.Codes))
+	return refreshRunResult(ctx, len(result.Codes), result.Batch)
 }
 
 // RefreshCodes refreshes an explicit list of security codes (order preserved).
+// The loop is the shared adminsvc.RunCodeBatch, so the scheduled job and the
+// synchronous REST/MCP crawls cannot drift on ordering, ctx handling,
+// per-code soft-fail or throttling.
 func (r *PriceRefresher) RefreshCodes(ctx context.Context, codes []string) (securities, totalAdded int, err error) {
 	if len(codes) == 0 {
 		return 0, 0, nil
 	}
-	attempted := 0
-	for i, code := range codes {
-		if err := ctx.Err(); err != nil {
-			return securities, totalAdded, err
-		}
-		code = strings.TrimSpace(code)
-		if code == "" {
-			continue
-		}
-		attempted++
-		added, _, cerr := r.CrawlCode(ctx, code)
-		if cerr != nil {
-			slog.Error("price refresh failed", "code", code, "error", cerr)
-			continue
-		}
-		totalAdded += added
-		securities++
-		if i < len(codes)-1 {
-			if err := sleepContext(ctx, 1500*time.Millisecond); err != nil {
-				return securities, totalAdded, err
-			}
-		}
+	batch := adminsvc.RunCodeBatch(ctx, codes, r.codeRefresher(), priceRefreshBatchPolicy)
+	return refreshRunResult(ctx, len(codes), batch)
+}
+
+// priceRefreshBackoff throttles the scheduled job between successful codes.
+// A synchronous REST/MCP caller passes no backoff: it must not sleep inside
+// its own request budget.
+const priceRefreshBackoff = 1500 * time.Millisecond
+
+// priceRefreshBatchPolicy is the job flavor of the shared batch: throttled
+// upstream, per-code failures logged under the job's own message.
+var priceRefreshBatchPolicy = adminsvc.BatchPolicy{
+	Backoff:           priceRefreshBackoff,
+	FailureLogMessage: "price refresh failed",
+}
+
+// codeRefresher adapts PriceRefresher.CrawlCode to the shared service
+// CodeRefresher port. The latest-NAV string is a single-code response detail a
+// batch does not need, and fund-vs-stock source selection stays inside
+// CrawlCode, which is the one place that resolves the security type.
+func (r *PriceRefresher) codeRefresher() adminsvc.CodeRefresher {
+	return func(ctx context.Context, code string) (int, error) {
+		added, _, err := r.CrawlCode(ctx, code)
+		return added, err
 	}
-	slog.Info("price refresh complete", "securities", securities, "new_rows", totalAdded, "requested", len(codes))
+}
+
+// refreshRunResult projects one shared-batch outcome onto the job run
+// contract. requested is the caller's original code-list length, so the
+// completion log still reports what was asked for rather than what survived
+// blank-trimming.
+func refreshRunResult(ctx context.Context, requested int, batch adminsvc.BatchOutcome) (securities, totalAdded int, err error) {
+	if batch.Stopped {
+		// The shared batch stops on ctx without an error return; the run budget
+		// is gone, so hand the caller the ctx error as this job always did.
+		return len(batch.Done), batch.Added, ctx.Err()
+	}
+	slog.Info("price refresh complete", "securities", len(batch.Done), "new_rows", batch.Added, "requested", requested)
 	// Total-failure must surface: per-code errors are logged and soft-skipped for
 	// partial-crawl parity, but a run where every attempted security failed is
 	// an error, not a successful crawl.
-	if attempted > 0 && securities == 0 {
-		return securities, totalAdded, fmt.Errorf("price refresh failed for all %d attempted securities", attempted)
+	if batch.Attempted > 0 && len(batch.Done) == 0 {
+		return len(batch.Done), batch.Added, fmt.Errorf("price refresh failed for all %d attempted securities", batch.Attempted)
 	}
-	return securities, totalAdded, nil
-}
-
-// heldRefreshCodes merges stale + missing held NAV codes (admin/MCP parity).
-func heldRefreshCodes(report adminsvc.FreshnessReport) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(report.StaleSecurities)+len(report.MissingNAVSecurities))
-	for _, item := range report.StaleSecurities {
-		code := adminsvc.NormalizeSecurityCode(item.Code)
-		if code == "" {
-			continue
-		}
-		if _, ok := seen[code]; ok {
-			continue
-		}
-		seen[code] = struct{}{}
-		out = append(out, code)
-	}
-	for _, item := range report.MissingNAVSecurities {
-		code := adminsvc.NormalizeSecurityCode(item.Code)
-		if code == "" {
-			continue
-		}
-		if _, ok := seen[code]; ok {
-			continue
-		}
-		seen[code] = struct{}{}
-		out = append(out, code)
-	}
-	return out
+	return len(batch.Done), batch.Added, nil
 }
 
 func latestNavDate(ctx context.Context, db *sql.DB, code string) (string, bool, error) {
@@ -481,16 +473,12 @@ func logRecalcPartial(ok int, failed []string) {
 	)
 }
 
-// RecalcAllStatus maps ok/failed counts to crawl-nav-style status strings.
-// complete | partial | error (all attempted codes failed).
+// RecalcAllStatus maps ok/failed counts to crawl-nav-style status strings
+// (complete | partial | error, where error means all attempted codes failed).
+// The rule itself lives in adminsvc.BatchStatus so REST, MCP and the job layer
+// share one implementation; this alias is kept for job-layer callers.
 func RecalcAllStatus(ok int, failed []string) string {
-	if len(failed) == 0 {
-		return "complete"
-	}
-	if ok == 0 {
-		return "error"
-	}
-	return "partial"
+	return adminsvc.BatchStatus(ok, failed)
 }
 
 // navUpsertConflictTarget returns the unique-column list matching the

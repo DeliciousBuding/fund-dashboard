@@ -295,32 +295,12 @@ func nowUTC() time.Time {
 	return time.Now().UTC()
 }
 
-// RecommendedRefreshCodes merges held stale + missing NAV codes for agent crawl_nav stale_only (#252).
-// Exported for admin HTTP crawl-nav parity (#253).
+// RecommendedRefreshCodes is the MCP-facing alias for the shared held stale +
+// missing NAV code list used by agent crawl_nav stale_only (#252) and by admin
+// HTTP crawl-nav parity (#253). The selection rule itself lives in
+// adminsvc.RecommendedRefreshCodes so the MCP tool, the REST endpoint and the
+// scheduled job can no longer disagree about which securities need
+// maintenance.
 func RecommendedRefreshCodes(report adminsvc.FreshnessReport) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(report.StaleSecurities)+len(report.MissingNAVSecurities))
-	for _, item := range report.StaleSecurities {
-		code := adminsvc.NormalizeSecurityCode(item.Code)
-		if code == "" {
-			continue
-		}
-		if _, ok := seen[code]; ok {
-			continue
-		}
-		seen[code] = struct{}{}
-		out = append(out, code)
-	}
-	for _, item := range report.MissingNAVSecurities {
-		code := adminsvc.NormalizeSecurityCode(item.Code)
-		if code == "" {
-			continue
-		}
-		if _, ok := seen[code]; ok {
-			continue
-		}
-		seen[code] = struct{}{}
-		out = append(out, code)
-	}
-	return out
+	return adminsvc.RecommendedRefreshCodes(report)
 }

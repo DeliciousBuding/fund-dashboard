@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DeliciousBuding/fund-dashboard/internal/jobs"
 	"github.com/DeliciousBuding/fund-dashboard/internal/mcp"
 	adminsvc "github.com/DeliciousBuding/fund-dashboard/internal/service/admin"
 )
@@ -90,7 +89,13 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 				})
 				return
 			}
-			report, err := admin.GetFreshness(ctx)
+			// The freshness read, the recommended-code selection, the per-code
+			// loop and the status rule all come from the shared crawl service, so
+			// this endpoint and the MCP crawl_nav tool cannot drift (#253 parity).
+			result, err := adminsvc.RefreshStaleCodes(ctx, *admin, navCodeRefresher(n), adminsvc.BatchPolicy{
+				FailureLogMessage: "admin crawl-nav stale_only code failed",
+				LogAttrs:          []any{"request_id", RequestIDFromContext(r.Context())},
+			})
 			if err != nil {
 				status, msg := crawlOpFailure(r, err)
 				WriteJSON(w, status, resp{
@@ -98,8 +103,7 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 				})
 				return
 			}
-			codes := mcp.RecommendedRefreshCodes(report)
-			if len(codes) == 0 {
+			if len(result.Codes) == 0 {
 				WriteJSON(w, http.StatusOK, resp{
 					Status:  "complete",
 					Mode:    "stale_only",
@@ -109,54 +113,30 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 				})
 				return
 			}
-			totalAdded := 0
-			done := make([]string, 0, len(codes))
-			failed := make([]string, 0)
-			for _, c := range codes {
-				if err := ctx.Err(); err != nil {
-					break
-				}
-				added, _, err := n.CrawlCode(ctx, c)
-				if err != nil {
-					slog.Error("admin crawl-nav stale_only code failed",
-						"request_id", RequestIDFromContext(r.Context()),
-						"code", c,
-						"error", err.Error(),
-					)
-					failed = append(failed, c)
-					continue
-				}
-				totalAdded += added
-				done = append(done, c)
-			}
-			// The loop above stops on a deadline without an error return; the
+			batch := result.Batch
+			// The shared batch stops on a deadline without an error return; the
 			// whole-request budget is still exhausted, so surface 504 rather
 			// than a misleading partial/complete.
 			if requestDeadlineHit(ctx) {
 				WriteJSON(w, http.StatusGatewayTimeout, resp{
 					Status:      "error",
 					Mode:        "stale_only",
-					Securities:  len(done),
-					Added:       totalAdded,
-					Codes:       done,
-					FailedCodes: failed,
+					Securities:  len(batch.Done),
+					Added:       batch.Added,
+					Codes:       batch.Done,
+					FailedCodes: batch.Failed,
 					Error:       "timeout",
 				})
 				return
 			}
-			status := "complete"
-			if len(failed) > 0 && len(done) == 0 {
-				status = "error"
-			} else if len(failed) > 0 {
-				status = "partial"
-			}
+			status := batch.Status()
 			out := resp{
 				Status:      status,
 				Mode:        "stale_only",
-				Securities:  len(done),
-				Added:       totalAdded,
-				Codes:       done,
-				FailedCodes: failed,
+				Securities:  len(batch.Done),
+				Added:       batch.Added,
+				Codes:       batch.Done,
+				FailedCodes: batch.Failed,
 			}
 			if status == "error" {
 				WriteJSON(w, http.StatusInternalServerError, out)
@@ -179,6 +159,16 @@ func navCrawlHandler(n mcp.NavCrawler, admin *adminsvc.Service) http.HandlerFunc
 		}
 		out.Status = "complete"
 		WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+// navCodeRefresher adapts the mcp.NavCrawler port that the admin crawl routes
+// are wired with to the shared crawl service CodeRefresher port. The
+// latest-NAV string is a single-code response detail a batch does not need.
+func navCodeRefresher(n mcp.NavCrawler) adminsvc.CodeRefresher {
+	return func(ctx context.Context, code string) (int, error) {
+		added, _, err := n.CrawlCode(ctx, code)
+		return added, err
 	}
 }
 
@@ -308,7 +298,7 @@ func recalculateSnapshotHandler(s mcp.SnapshotRecalculator) http.HandlerFunc {
 			})
 			return
 		}
-		status := jobs.RecalcAllStatus(n, failed)
+		status := adminsvc.BatchStatus(n, failed)
 		out.Status = status
 		if status == "error" {
 			WriteJSON(w, http.StatusInternalServerError, out)
