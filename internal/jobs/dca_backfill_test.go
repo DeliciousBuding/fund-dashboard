@@ -108,7 +108,7 @@ func TestDCABackfillWindowOncePerDayAndDurable(t *testing.T) {
 	s := NewScheduler(NewPriceRefresher(db), db).WithDCARunner(r)
 	day := time.Date(2026, 7, 15, 6, 5, 0, 0, chinatime.Loc)
 	s.tick(day)
-	s.tick(day.Add(3 * time.Hour + 50 * time.Minute)) // 09:55, still in band
+	s.tick(day.Add(3*time.Hour + 50*time.Minute)) // 09:55, still in band
 	if r.calls() != dcaBackfillLookbackDays {
 		t.Fatalf("calls after same-day ticks=%d want %d", r.calls(), dcaBackfillLookbackDays)
 	}
@@ -239,7 +239,7 @@ func TestDCABackfillMaterializesMissedDueDateEndToEnd(t *testing.T) {
 	}
 	// Process was down during Wednesday 2026-09-09 20:00; restarts Thursday 08:03.
 	now := time.Date(2026, 9, 10, 8, 3, 0, 0, chinatime.Loc) // Thursday
-	s := NewScheduler(NewPriceRefresher(db), db)              // real DCARunner
+	s := NewScheduler(NewPriceRefresher(db), db)             // real DCARunner
 	s.tick(now)
 
 	var orderID, confirmDate string
