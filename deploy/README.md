@@ -19,7 +19,9 @@ secrets read from a `.env` file:
 
 ```bash
 cp .env.example .env
-# edit .env: set MCP_API_KEY (openssl rand -hex 32); FUND_EDGE_KEY is optional legacy fallback (write routes are session-first)
+# edit .env: set MCP_API_KEY (openssl rand -hex 32); FUND_EDGE_KEY is an opt-in
+# legacy fallback for an edge proxy that injects X-Fund-Edge-Key; the write routes
+# are session-first and the compat layer is OFF by default (FUND_EDGE_AUTH_ENABLED=false)
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
@@ -52,7 +54,8 @@ explicitly or rely on the first `FUND_ALLOWED_ORIGINS` entry; production refuses
 boot when neither resolves to an https origin, because the issuer is embedded in
 every token and must never be derived from a proxied `Host` header. Optional
 depending on deployment shape: `PUBLIC_MCP_KEY` (MCP analyst, read-only),
-`FUND_EDGE_KEY` (frontend mutation key injected by the edge proxy), and the
+`FUND_EDGE_KEY` (frontend mutation key injected by the edge proxy; only enforced
+when the compat layer is explicitly enabled via `FUND_EDGE_AUTH_ENABLED=true`), and the
 `FUND_OAUTH_*` connector knobs (all defaulted; see the OAuth block in
 `.env.example`).
 

@@ -36,7 +36,7 @@
 | `/oauth/authorize`、`/oauth/consent` | 复用 `fund_session` cookie；无会话 → 302 `/login?next=…`（回跳目标规范化后二次校验 `/oauth/` 前缀） | 同意页带一次性 `consent_token`（10min、单次消费），零 JS / 零内联样式以符合既有 CSP |
 | MCP 写工具 | `confirmation_id` + `confirmation_token` | **拒绝** bare `confirmed=true` |
 | 浏览器读/写 | session cookie（argon2id 登录，滑动续约）；写加 `X-Fund-Request` 头 + Origin 白名单 | 设计见 `docs/design/04` |
-| 前端写路径（兼容层） | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`） | 浏览器 JS 不持 key |
+| 前端写路径（兼容层，默认关闭） | edge proxy 注入 `X-Fund-Edge-Key`（`FUND_EDGE_KEY`）；需显式 `FUND_EDGE_AUTH_ENABLED=true` 才生效 | 浏览器 JS 不持 key（会话写路径优先） |
 | 全 `/api/*` | per-IP 限流（`FUND_API_RPM`）；`/mcp` per-key（`FUND_MCP_RPM`）；`/oauth/*` per-IP（`FUND_OAUTH_RPM`） | 公网加固见 `docs/design/06` |
 | `/api/health` | 匿名 | 生产省略 version |
 
