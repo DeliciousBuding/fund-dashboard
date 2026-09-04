@@ -6,12 +6,11 @@ import (
 	"testing"
 	"time"
 
-	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestCheckAlertsFindsPriceAndStale(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +71,7 @@ func TestWeekdayMaskHit(t *testing.T) {
 
 // #221: alert max drawdown must use the most recent NAV window, not the earliest.
 func TestMaxDrawdownPctUsesRecentWindow(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}

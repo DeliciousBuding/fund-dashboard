@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
@@ -194,7 +193,7 @@ func openSummaryFixture(t *testing.T) *sql.DB {
 	// Production schema via the real boot path (EnsureSQLiteSchema) instead of
 	// hand-rolled DDL, so a production DDL drift turns these tests red.
 	dbPath := filepath.Join(t.TempDir(), "fund.db")
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: dbPath})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: dbPath})
 	if err != nil {
 		t.Fatalf("open sqlite fixture: %v", err)
 	}
