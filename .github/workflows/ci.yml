@@ -77,6 +77,127 @@ jobs:
       - name: Typecheck + build (tsc + vite → internal/webui/dist)
         run: pnpm -C web build
 
+  # -- P2 quick wins: Go static analysis, Go vuln scan, JS/TS advisory audit ----
+  # Branch protection on main requires exactly five checks: test-go, build-go,
+  # test-web, build-web, smoke-e2e. Those job ids and their reported behaviour
+  # are untouched; the jobs below are added alongside them, so they surface as
+  # extra (non-required) checks and cannot silently unsatisfy branch protection.
+  # None of them is referenced from the `needs:` of the five gated jobs, and none
+  # of the five gained continue-on-error.
+
+  lint-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Curated set = exactly the golangci-lint v1.64.8 linters that are green on
+      # the tree this PR merges into. Verified with golangci-lint v1.64.8:
+      #   golangci-lint run ./... --disable-all --enable=<this list>
+      #     --max-issues-per-linter=0 --max-same-issues=0
+      #   -> exit 0, zero findings.
+      # stylecheck stays enabled on purpose. It reported four ST1019 findings on
+      # main: a local variable named db shadowed the db package alias, so a second
+      # alias for the very same import had been added as a workaround. The last
+      # commit in this PR removes those duplicate imports instead of dropping the
+      # linter, so the gate is green on arrival and still catches the next one.
+      # golangci-lint is pinned to v1.x on purpose: v2 merged staticcheck /
+      # gosimple / stylecheck into one linter and changed the flag surface, so
+      # this list is only valid for v1. Re-validate it before a major bump.
+      #
+      # Deliberately NOT enabled: they report pre-existing findings that this
+      # change neither fixes nor suppresses file-by-file. They are registered as
+      # backlog debt in docs/design/05-roadmap.md, which also records the exact
+      # per-linter command, so counts are re-measured there instead of drifting
+      # inside CI config.
+      # Measurement caveat before trusting any count: golangci-lint reporting is
+      # combination-dependent (predeclared reports findings alone that vanish when
+      # revive is enabled too), and the default --max-same-issues=3 truncates
+      # repeats, so a '3 findings' report can hide more. Per-linter runs with both
+      # limits at 0 are the only reliable oracle. A zero for the enabled set above
+      # is not such an artifact: de-duplication keeps one copy, so zero reported
+      # means zero present.
+      # NOT enabled because a required check already does the same work:
+      #   govet -> test-go runs `go vet ./...`
+      #   gofmt -> test-go runs `gofmt -l .`
+      # NOT enabled because it would tighten the formatter policy beyond the
+      # existing gofmt gate (a separate decision, not a CI quick win):
+      #   gofumpt, goimports, gci.
+      GCL_LINTERS: asasalint,bidichk,bodyclose,durationcheck,fatcontext,forbidigo,gocheckcompilerdirectives,makezero,mirror,misspell,nakedret,nilnesserr,nolintlint,nosprintfhostport,reassign,rowserrcheck,sloglint,stylecheck,unconvert,unused
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.6'
+      - name: Install golangci-lint (pinned)
+        # Installed with `go install <module>@<version>` instead of a
+        # third-party action: the module comes from the Go module proxy and its
+        # checksum is verified against sum.golang.org, so this adds no new
+        # unpinned supply-chain dependency. Confirmed to compile and run under
+        # go1.26.6 (same toolchain the required Go jobs already use).
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: golangci-lint (curated green set)
+        run: |
+          echo "enabled linters: $GCL_LINTERS"
+          golangci-lint run ./... --disable-all --enable="$GCL_LINTERS" --timeout=10m
+
+  vuln-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.26.6'
+      - name: Install govulncheck (pinned)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: govulncheck (source mode)
+        # Gated, not advisory. Source-mode govulncheck reports only advisories
+        # whose symbols this code actually calls, so a finding is actionable by
+        # definition (bump the module) rather than a speculative "you depend on a
+        # module that once had a CVE" list. No severity or package narrowing is
+        # applied.
+        # Verified locally on this exact tree: exit 0, "Your code is affected by
+        # 0 vulnerabilities"; 3 further advisories in required modules are
+        # reported as not called and do not fail the scan.
+        # If this ever goes red, the fix is a go.mod/go.sum bump, which is
+        # outside this lane's write territory: escalate to the owning lane rather
+        # than silencing the check. It is not one of the five required checks, so
+        # red here does not by itself block a merge.
+        run: govulncheck ./...
+
+  audit-web:
+    # ADVISORY. This is the only continue-on-error in the workflow and it sits on
+    # a new job, never on one of the five required checks.
+    # Why advisory rather than gated:
+    #   1. `pnpm audit` answers from a live third-party advisory DB, not from the
+    #      commit, so its verdict is not reproducible from a given tree. Observed
+    #      locally: two HTTP 503 responses from the audit endpoint (absorbed by
+    #      pnpm's own retries) before a clean answer came back.
+    #   2. Silencing an unfixable advisory needs `pnpm.auditConfig` in
+    #      package.json, which is outside this lane's write territory, so a hard
+    #      gate here could only ever be cleared by a different lane.
+    # No severity narrowing was needed: today the full audit (prod + dev, every
+    # severity) reports "No known vulnerabilities found", exit 0. The complete
+    # report is printed so a real advisory stays visible on the PR.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 24
+      - name: JS/TS dependency advisories (pnpm audit, lockfile-driven)
+        # No `pnpm install` first: audit reads pnpm-lock.yaml directly (verified
+        # locally with node_modules absent). Lint and typecheck are deliberately
+        # NOT repeated here - test-web already runs `biome check .`, and
+        # build-web already runs `tsc --noEmit` inside `pnpm -C web build`.
+        run: pnpm audit
+
   # ── Container + API smoke (seeded DB) ──────────────────────────
   # The SPA is embedded in the image (go:embed); smoke covers the Go API,
   # the auth gate, and the embedded SPA shell.

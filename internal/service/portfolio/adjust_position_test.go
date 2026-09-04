@@ -5,13 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
 func TestAdjustPositionOverridesShares(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +70,7 @@ func TestAdjustPositionOverridesShares(t *testing.T) {
 }
 
 func TestAdjustPositionRejectsHugeShares(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}

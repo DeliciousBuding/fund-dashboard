@@ -6,12 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 )
 
 func TestUpsertAndDisableDCAPlan(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -76,7 +75,7 @@ func TestUpsertAndDisableDCAPlan(t *testing.T) {
 }
 
 func TestUpsertDCAPlanRejectsBadActiveAndFrequency(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
+	db, err := dbpkg.Open(context.Background(), dbpkg.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
