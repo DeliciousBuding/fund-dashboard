@@ -51,9 +51,8 @@ func TestQueryAnomalyCountWithAnomalyColumn(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 
-	if _, err := db.ExecContext(context.Background(), `ALTER TABLE transactions ADD COLUMN anomaly TEXT`); err != nil {
-		t.Fatalf("add anomaly column: %v", err)
-	}
+	// transactions.anomaly ships in the production schema (EnsureSQLiteSchema
+	// fixture), so the historical ALTER TABLE backfill is no longer needed here.
 	if _, err := db.ExecContext(context.Background(), `
 		INSERT INTO transactions (order_id, trade_time, direction, fund_code, anomaly) VALUES
 			('A1', '2026-01-01', 'buy', '019173', 'bad date'),

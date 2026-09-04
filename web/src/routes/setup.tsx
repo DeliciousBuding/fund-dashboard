@@ -1,17 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import type { ApiError } from "../lib/api";
 import { setup } from "../lib/auth";
 import { refreshAuthStatus } from "../lib/authQuery";
 import { queryClient } from "../lib/queryClient";
-
-const errorText: Record<string, string> = {
-  weak_password: "密码至少 10 个字符",
-  already_initialized: "已初始化，请直接登录",
-  auth_env_managed: "密码由部署环境变量管理，请直接登录",
-  rate_limited: "尝试过于频繁，请稍后再试",
-};
+import { mutationErrorMessage } from "../services/userError";
 
 export function SetupPage() {
   const router = useRouter();
@@ -41,8 +34,7 @@ export function SetupPage() {
   };
 
   const message =
-    localError ??
-    (mutation.error ? (errorText[(mutation.error as ApiError).code] ?? "初始化失败") : null);
+    localError ?? (mutation.error ? mutationErrorMessage(mutation.error, "初始化失败") : null);
 
   return (
     <main className="grid min-h-screen place-items-center px-4">

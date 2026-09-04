@@ -10,7 +10,6 @@ import (
 func TestServiceCreateSourceEventStoresDefaultsAndFacts(t *testing.T) {
 	db := openSummaryFixture(t)
 	defer db.Close()
-	ensureSourceEventsTable(t, db)
 
 	service := NewService(db)
 	event, err := service.CreateSourceEvent(context.Background(), CreateSourceEventInput{
@@ -45,7 +44,6 @@ func TestServiceCreateSourceEventStoresDefaultsAndFacts(t *testing.T) {
 func TestServiceGetSourceEventsFiltersAndHidesReadByDefault(t *testing.T) {
 	db := openSummaryFixture(t)
 	defer db.Close()
-	ensureSourceEventsTable(t, db)
 
 	service := NewService(db)
 	if _, err := service.CreateSourceEvent(context.Background(), CreateSourceEventInput{
@@ -129,7 +127,6 @@ func TestServiceGetSourceEventsFiltersAndHidesReadByDefault(t *testing.T) {
 func TestServiceSourceEventsDoNotEmitAdviceLanguage(t *testing.T) {
 	db := openSummaryFixture(t)
 	defer db.Close()
-	ensureSourceEventsTable(t, db)
 
 	service := NewService(db)
 	if _, err := service.CreateSourceEvent(context.Background(), CreateSourceEventInput{
@@ -153,29 +150,6 @@ func TestServiceSourceEventsDoNotEmitAdviceLanguage(t *testing.T) {
 		if strings.Contains(string(payload), forbidden) {
 			t.Fatalf("source events contain advice language %q: %s", forbidden, string(payload))
 		}
-	}
-}
-
-func ensureSourceEventsTable(t *testing.T, db execer) {
-	t.Helper()
-	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE IF NOT EXISTS source_events (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			title TEXT NOT NULL,
-			url TEXT,
-			source TEXT NOT NULL DEFAULT 'websearch',
-			snippet TEXT,
-			query TEXT,
-			related_security_code TEXT,
-			related_security_name TEXT,
-			is_read INTEGER DEFAULT 0,
-			is_useful INTEGER DEFAULT 0,
-			fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
-		);
-		DELETE FROM source_events;
-	`); err != nil {
-		t.Fatalf("ensure source_events table: %v", err)
 	}
 }
 

@@ -11,30 +11,19 @@ import (
 
 	"github.com/DeliciousBuding/fund-dashboard/internal/chinatime"
 	"github.com/DeliciousBuding/fund-dashboard/internal/datasource"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 	_ "modernc.org/sqlite"
 )
 
 func TestServiceGetMarketIndicesReadsFreshCachedRows(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 
 	now := time.Date(2026, 7, 17, 12, 0, 0, 0, chinatime.Loc)
 	indicesNowFn = func() time.Time { return now }
 	t.Cleanup(func() { indicesNowFn = time.Now })
 	fresh := now.Add(-30 * time.Minute).Format("2006-01-02 15:04:05")
 	for _, stmt := range []string{
-		`CREATE TABLE indices (
-			code TEXT PRIMARY KEY,
-			name TEXT,
-			market TEXT,
-			price REAL,
-			change_pct REAL,
-			change_amt REAL,
-			updated_at TEXT DEFAULT (datetime('now'))
-		)`,
 		`INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at) VALUES
 			('^GSPC', '标普500', 'US', 5600.5, 0.42, 23.5, '` + fresh + `'),
 			('^NDX', '纳斯达克100', 'US', 19888.2, 1.25, 245.8, '` + fresh + `')`,
@@ -69,22 +58,9 @@ func TestServiceGetMarketIndicesReadsFreshCachedRows(t *testing.T) {
 }
 
 func TestServiceGetMarketIndicesRefreshesStaleCache(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 
 	for _, stmt := range []string{
-		`CREATE TABLE indices (
-			code TEXT PRIMARY KEY,
-			name TEXT,
-			market TEXT,
-			price REAL,
-			change_pct REAL,
-			change_amt REAL,
-			updated_at TEXT
-		)`,
 		`INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at) VALUES
 			('^GSPC', '标普500', 'US', 1000, 0, 0, '2026-07-03 04:33:00')`,
 	} {
@@ -122,22 +98,9 @@ func TestServiceGetMarketIndicesRefreshesStaleCache(t *testing.T) {
 }
 
 func TestServiceGetMarketIndicesFallsBackOnFetchError(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 
 	for _, stmt := range []string{
-		`CREATE TABLE indices (
-			code TEXT PRIMARY KEY,
-			name TEXT,
-			market TEXT,
-			price REAL,
-			change_pct REAL,
-			change_amt REAL,
-			updated_at TEXT
-		)`,
 		`INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at) VALUES
 			('^NDX', '纳斯达克100', 'US', 29000, 0.5, 100, '2026-07-03 04:33:00')`,
 	} {
@@ -164,6 +127,9 @@ func TestServiceGetMarketIndicesFallsBackOnFetchError(t *testing.T) {
 }
 
 func TestServiceGetMarketIndicesHandlesMissingTable(t *testing.T) {
+	// intentionally missing schema for the no-indices-table fallback: the
+	// subject is a database where indices does not exist, so the production
+	// bootstrap must not run here.
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -180,20 +146,12 @@ func TestServiceGetMarketIndicesHandlesMissingTable(t *testing.T) {
 }
 
 func TestServiceGetMarketIndicesClampsAndLimits(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, chinatime.Loc)
 	indicesNowFn = func() time.Time { return now }
 	t.Cleanup(func() { indicesNowFn = time.Now })
 	fresh := now.Add(-10 * time.Minute).Format("2006-01-02 15:04:05")
 	longName := strings.Repeat("N", 200)
-	if _, err := db.ExecContext(context.Background(), `CREATE TABLE indices (
-		code TEXT PRIMARY KEY, name TEXT, market TEXT, price REAL, change_pct REAL, change_amt REAL, updated_at TEXT)`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.ExecContext(context.Background(),
 		`INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at) VALUES (?, ?, ?, 1, 0, 0, ?)`,
 		"^GSPC", longName, "US", fresh,
@@ -217,15 +175,7 @@ func TestServiceGetMarketIndicesClampsAndLimits(t *testing.T) {
 }
 
 func TestServiceGetMarketIndicesSanitizesRefreshError(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.ExecContext(context.Background(), `CREATE TABLE indices (
-		code TEXT PRIMARY KEY, name TEXT, market TEXT, price REAL, change_pct REAL, change_amt REAL, updated_at TEXT)`); err != nil {
-		t.Fatal(err)
-	}
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	fetchIndexFn = func(context.Context, []string) ([]datasource.IndexQuote, error) {
 		return nil, errors.New("pq: dial tcp 192.0.2.1:5432: connect: connection refused secret=abc")
 	}
@@ -253,17 +203,11 @@ func TestServiceGetMarketIndicesCoalescesConcurrentRefresh(t *testing.T) {
 	defer db.Close()
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(4)
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, stmt := range []string{
-		`CREATE TABLE indices (
-			code TEXT PRIMARY KEY,
-			name TEXT,
-			market TEXT,
-			price REAL,
-			change_pct REAL,
-			change_amt REAL,
-			updated_at TEXT
-		)`,
 		`INSERT INTO indices (code, name, market, price, change_pct, change_amt, updated_at) VALUES
 			('^GSPC', '标普500', 'US', 1000, 0, 0, '2026-07-03 04:33:00')`,
 	} {

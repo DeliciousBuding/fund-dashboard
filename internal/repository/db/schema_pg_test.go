@@ -373,19 +373,93 @@ func newFakePGDB(t *testing.T, execFn func(string) (driver.Result, error), query
 	return dbi, conn
 }
 
-// condefQuery simulates the two catalog probes issued by
-// migratePortfolioSnapshotPK: the pg_get_constraintdef lookup and the
-// duplicate-group count.
-func condefQuery(condef string, dups int64) func(string) ([]string, [][]driver.Value, error) {
-	return func(q string) ([]string, [][]driver.Value, error) {
-		switch {
-		case strings.Contains(q, "pg_get_constraintdef"):
-			return []string{"condef"}, [][]driver.Value{{condef}}, nil
-		case strings.Contains(q, "GROUP BY fund_code"):
-			return []string{"dups"}, [][]driver.Value{{dups}}, nil
-		default:
-			return nil, nil, fmt.Errorf("unexpected query: %q", q)
+// fakePGCatalog answers every catalog probe the migration runner issues:
+// the schema_migrations version SELECT, the portfolio_snapshot PK condef
+// lookup, the duplicate-group count, the transactions column-default/NULL
+// probes and the nav_history column listing. Each family is configurable so a
+// test can present a fresh, a legacy, or a half-migrated database.
+type fakePGCatalog struct {
+	appliedCount     int          // rows recorded in schema_migrations (INSERTs observed)
+	condef           string       // portfolio_snapshot PK definition; "" = no PK row
+	dups             int64        // duplicate (fund_code, portfolio_id) groups
+	portfolioDefault driver.Value // nil = NULL (default missing)
+	securityDefault  driver.Value
+	txNulls          int64    // transactions rows with NULL portfolio_id/security_type
+	navColumns       []string // nav_history columns per information_schema
+	failCondef       error    // hard error injected into the condef probe
+	failInfoSchema   error    // hard error injected into the transactions defaults probe
+	failNavColumns   error    // hard error injected into the nav_history column probe
+}
+
+// freshPGCatalog presents a database already at the target structure: every
+// migration probes, finds nothing to do, and only records its version.
+func freshPGCatalog() *fakePGCatalog {
+	return &fakePGCatalog{
+		condef:           "PRIMARY KEY (fund_code, portfolio_id)",
+		portfolioDefault: "1",
+		securityDefault:  "'fund'::text",
+		navColumns:       []string{"fund_code", "date", "unit_nav", "accumulated_nav", "daily_change_pct", "security_type"},
+	}
+}
+
+// exec observes the version INSERTs so the simulated schema_migrations table
+// grows exactly like the real one; pass it as newFakePGDB's execFn.
+func (c *fakePGCatalog) exec(q string) (driver.Result, error) {
+	if strings.Contains(q, "INSERT INTO schema_migrations") {
+		c.appliedCount++
+	}
+	return driver.RowsAffected(1), nil
+}
+
+// execWith keeps the version-INSERT bookkeeping while injecting extra exec
+// behavior (e.g. a failing statement).
+func (c *fakePGCatalog) execWith(inner func(string) (driver.Result, error)) func(string) (driver.Result, error) {
+	return func(q string) (driver.Result, error) {
+		c.exec(q)
+		if inner != nil {
+			return inner(q)
 		}
+		return driver.RowsAffected(0), nil
+	}
+}
+
+func (c *fakePGCatalog) query(q string) ([]string, [][]driver.Value, error) {
+	switch {
+	case strings.Contains(q, "FROM schema_migrations"):
+		rows := make([][]driver.Value, 0, c.appliedCount)
+		for v := 1; v <= c.appliedCount; v++ {
+			rows = append(rows, []driver.Value{int64(v)})
+		}
+		return []string{"version"}, rows, nil
+	case strings.Contains(q, "pg_get_constraintdef"):
+		if c.failCondef != nil {
+			return nil, nil, c.failCondef
+		}
+		if c.condef == "" {
+			return []string{"condef"}, nil, nil // no PK constraint row
+		}
+		return []string{"condef"}, [][]driver.Value{{c.condef}}, nil
+	case strings.Contains(q, "GROUP BY fund_code"):
+		return []string{"dups"}, [][]driver.Value{{c.dups}}, nil
+	case strings.Contains(q, "information_schema.columns") && strings.Contains(q, "nav_history"):
+		if c.failNavColumns != nil {
+			return nil, nil, c.failNavColumns
+		}
+		rows := make([][]driver.Value, 0, len(c.navColumns))
+		for _, col := range c.navColumns {
+			rows = append(rows, []driver.Value{col})
+		}
+		return []string{"column_name"}, rows, nil
+	case strings.Contains(q, "information_schema.columns"): // transactions defaults probe
+		if c.failInfoSchema != nil {
+			return nil, nil, c.failInfoSchema
+		}
+		return []string{"portfolio_default", "security_default"},
+			[][]driver.Value{{c.portfolioDefault, c.securityDefault}}, nil
+	case strings.Contains(q, "COUNT(*) FROM transactions"):
+		return []string{"nulls"}, [][]driver.Value{{c.txNulls}}, nil
+	default:
+		return nil, nil, fmt.Errorf("fakePGCatalog: unexpected query: %q", q)
 	}
 }
 
@@ -398,49 +472,68 @@ func indexOfSubstr(items []string, needle string) int {
 	return -1
 }
 
+// freshRunExecCount is the exec count for a clean run over a database already
+// at target structure: one CREATE TABLE schema_migrations, the full baseline
+// statement list, the best-effort unique index, and one version INSERT per
+// migration.
+func freshRunExecCount() int {
+	return 1 + len(pgSchemaStatements) + 1 + len(pgMigrations)
+}
+
 func TestEnsurePGSchemaRunsTwiceWithoutSideEffects(t *testing.T) {
 	ctx := context.Background()
-	dbi, conn := newFakePGDB(t, nil, condefQuery("PRIMARY KEY (fund_code, portfolio_id)", 0))
+	catalog := freshPGCatalog()
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		if err := EnsurePGSchema(ctx, dbi); err != nil {
 			t.Fatalf("run %d: %v", i+1, err)
 		}
 	}
 
 	execs := conn.execSnapshot()
-	// Each run issues pgSchemaStatements + the best-effort unique index. The
-	// migration probe sees an already-composite PK and must not run any
-	// UPDATE/DO mutation, so the second run's sequence must be identical to
-	// the first (true no-side-effect idempotency at the orchestration level).
-	perRun := len(pgSchemaStatements) + 1
-	if len(execs) != 2*perRun {
-		t.Fatalf("exec count = %d, want %d (two identical runs)", len(execs), 2*perRun)
+	// Run 1 applies everything: version table + baseline + unique index + one
+	// version INSERT per migration. Runs 2 and 3 add one exec each.
+	if len(execs) != freshRunExecCount()+2 {
+		t.Fatalf("total exec count = %d, want %d (apply + 2 steady-state runs)", len(execs), freshRunExecCount()+2)
 	}
-	first, second := execs[:perRun], execs[perRun:]
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("second run differs from first run\n first: %q\nsecond: %q", first, second)
+	run1 := execs[:freshRunExecCount()]
+	if !strings.Contains(run1[0], "CREATE TABLE IF NOT EXISTS schema_migrations") {
+		t.Fatalf("first exec must create schema_migrations: %q", run1[0])
 	}
 	for i, stmt := range pgSchemaStatements {
-		if first[i] != stmt {
-			t.Fatalf("statement %d differs\n got: %q\nwant: %q", i, first[i], stmt)
+		if run1[i+1] != stmt {
+			t.Fatalf("baseline statement %d differs\n got: %q\nwant: %q", i, run1[i+1], stmt)
 		}
 	}
-	last := first[perRun-1]
-	if !strings.Contains(last, "idx_transactions_order_fund_unique") ||
-		!strings.Contains(last, "(order_id, fund_code)") {
-		t.Fatalf("unique index statement missing or changed: %q", last)
+	// Runs 2 and 3 find every version recorded: steady state must be a single
+	// idempotent CREATE TABLE IF NOT EXISTS and nothing else — no baseline
+	// replay, no INSERT, no mutation.
+	second := execs[freshRunExecCount():]
+	if len(second) != 2 {
+		t.Fatalf("steady-state runs must be one exec each, got %d (total execs %d)", len(second), len(execs))
 	}
-	for _, q := range first {
-		if strings.Contains(q, "UPDATE portfolio_snapshot") || strings.Contains(q, "ADD PRIMARY KEY") {
-			t.Fatalf("unexpected migration side effect: %q", q)
+	third := second[1:]
+	second = second[:1]
+	if !reflect.DeepEqual(second, third) {
+		t.Fatalf("run 3 differs from run 2\n second: %q\nthird:  %q", second, third)
+	}
+	for _, q := range second {
+		for _, bad := range []string{"CREATE TABLE IF NOT EXISTS transactions", "INSERT ", "UPDATE ", "ALTER ", "ADD PRIMARY KEY", "idx_transactions_order_fund_unique"} {
+			if strings.Contains(q, bad) {
+				t.Fatalf("steady-state run re-executed %q: %q", bad, q)
+			}
 		}
 	}
 }
 
 func TestEnsurePGSchemaMigratesLegacyPortfolioSnapshotPK(t *testing.T) {
 	ctx := context.Background()
-	dbi, conn := newFakePGDB(t, nil, condefQuery("PRIMARY KEY (fund_code)", 0))
+	// Legacy shape: single-column PK, defaults already declared, nav complete —
+	// only migration 0003 has work to do.
+	catalog := freshPGCatalog()
+	catalog.condef = "PRIMARY KEY (fund_code)"
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema: %v", err)
 	}
@@ -456,11 +549,24 @@ func TestEnsurePGSchemaMigratesLegacyPortfolioSnapshotPK(t *testing.T) {
 	if updateAt > doAt {
 		t.Fatalf("fill UPDATE must run before the PK DDL block: update=%d do=%d", updateAt, doAt)
 	}
+	// The step is recorded, so a replay must not mutate the table again.
+	firstRun := len(execs)
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	for _, q := range conn.execSnapshot()[firstRun:] {
+		if strings.Contains(q, "UPDATE portfolio_snapshot") || strings.Contains(q, "ADD PRIMARY KEY") {
+			t.Fatalf("replayed migration side effect: %q", q)
+		}
+	}
 }
 
 func TestEnsurePGSchemaSkipsMigrationOnDuplicateGroups(t *testing.T) {
 	ctx := context.Background()
-	dbi, conn := newFakePGDB(t, nil, condefQuery("PRIMARY KEY (fund_code)", 3))
+	catalog := freshPGCatalog()
+	catalog.condef = "PRIMARY KEY (fund_code)"
+	catalog.dups = 3
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema: %v", err)
 	}
@@ -476,12 +582,11 @@ func TestEnsurePGSchemaSkipsMigrationOnDuplicateGroups(t *testing.T) {
 func TestEnsurePGSchemaMigrationProbeTolerance(t *testing.T) {
 	ctx := context.Background()
 
-	// Hard catalog error: migration must degrade to a warning, not fail boot,
-	// and must not touch the table.
-	failing := func(q string) ([]string, [][]driver.Value, error) {
-		return nil, nil, errors.New("catalog probe exploded")
-	}
-	dbi, conn := newFakePGDB(t, nil, failing)
+	// Hard catalog error on the PK probe: the repair must degrade to a warning
+	// and leave the table untouched, exactly like the pre-versioning runner.
+	catalog := freshPGCatalog()
+	catalog.failCondef = errors.New("catalog probe exploded")
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema with failing probe: %v", err)
 	}
@@ -490,19 +595,11 @@ func TestEnsurePGSchemaMigrationProbeTolerance(t *testing.T) {
 		t.Fatalf("migration ran despite failing probe: %v", execs)
 	}
 
-	// No PK constraint found (probe returns no rows): the migration path is
+	// No PK constraint found (probe returns no rows): the repair path is
 	// entered and, with no duplicate groups, the composite PK is added.
-	noRows := func(q string) ([]string, [][]driver.Value, error) {
-		switch {
-		case strings.Contains(q, "pg_get_constraintdef"):
-			return []string{"condef"}, nil, nil
-		case strings.Contains(q, "GROUP BY fund_code"):
-			return []string{"dups"}, [][]driver.Value{{int64(0)}}, nil
-		default:
-			return nil, nil, fmt.Errorf("unexpected query: %q", q)
-		}
-	}
-	dbi2, conn2 := newFakePGDB(t, nil, noRows)
+	catalog2 := freshPGCatalog()
+	catalog2.condef = ""
+	dbi2, conn2 := newFakePGDB(t, catalog2.exec, catalog2.query)
 	if err := EnsurePGSchema(ctx, dbi2); err != nil {
 		t.Fatalf("EnsurePGSchema with no PK rows: %v", err)
 	}
@@ -514,23 +611,26 @@ func TestEnsurePGSchemaMigrationProbeTolerance(t *testing.T) {
 		t.Fatalf("composite PK DDL missing when no PK found: %v", execs2)
 	}
 }
+
 func TestEnsurePGSchemaFailsOnStatementError(t *testing.T) {
 	ctx := context.Background()
+	catalog := freshPGCatalog()
 	execFn := func(q string) (driver.Result, error) {
 		if strings.Contains(q, "nav_history") {
 			return nil, errors.New("boom")
 		}
 		return driver.RowsAffected(0), nil
 	}
-	dbi, conn := newFakePGDB(t, execFn, condefQuery("PRIMARY KEY (fund_code, portfolio_id)", 0))
+	dbi, conn := newFakePGDB(t, catalog.execWith(execFn), catalog.query)
 	err := EnsurePGSchema(ctx, dbi)
 	if err == nil {
-		t.Fatal("EnsurePGSchema: want error for failing statement")
+		t.Fatal("EnsurePGSchema: want error for failing baseline statement")
 	}
-	if !strings.Contains(err.Error(), "pg schema stmt") {
-		t.Fatalf("error = %q, want mention of the failing statement index", err)
+	if !strings.Contains(err.Error(), "migration 0001_baseline_schema") {
+		t.Fatalf("error = %q, want mention of the failing baseline migration", err)
 	}
-	// Execution must stop at the failing statement.
+	// Execution must stop at the failing statement: only the version-table
+	// DDL precedes the baseline.
 	execs := conn.execSnapshot()
 	want := 0
 	for i, stmt := range pgSchemaStatements {
@@ -539,54 +639,48 @@ func TestEnsurePGSchemaFailsOnStatementError(t *testing.T) {
 			break
 		}
 	}
-	if len(execs) != want {
-		t.Fatalf("exec count = %d, want stop at %d", len(execs), want)
+	if len(execs) != want+1 {
+		t.Fatalf("exec count = %d, want stop at %d (+1 version table)", len(execs), want)
 	}
 }
 
 func TestEnsurePGSchemaUniqueIndexFailureDoesNotFailBoot(t *testing.T) {
 	ctx := context.Background()
+	catalog := freshPGCatalog()
 	execFn := func(q string) (driver.Result, error) {
 		if strings.Contains(q, "idx_transactions_order_fund_unique") {
 			return nil, errors.New("duplicate legacy rows")
 		}
 		return driver.RowsAffected(0), nil
 	}
-	dbi, conn := newFakePGDB(t, execFn, condefQuery("PRIMARY KEY (fund_code, portfolio_id)", 0))
+	dbi, conn := newFakePGDB(t, catalog.execWith(execFn), catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("unique index failure must not fail boot: %v", err)
 	}
-	execs := conn.execSnapshot()
-	if len(execs) != len(pgSchemaStatements)+1 {
-		t.Fatalf("exec count = %d, want %d", len(execs), len(pgSchemaStatements)+1)
+	first := conn.execSnapshot()
+	if len(first) != freshRunExecCount() {
+		t.Fatalf("exec count = %d, want %d", len(first), freshRunExecCount())
+	}
+	// The step is recorded even though it warned, so the next boot must not
+	// retry it: legacy duplicate rows would make it fail forever.
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("second boot: %v", err)
+	}
+	for _, q := range conn.execSnapshot()[freshRunExecCount():] {
+		if strings.Contains(q, "idx_transactions_order_fund_unique") {
+			t.Fatalf("unique index retried after being recorded: %q", q)
+		}
 	}
 }
 
 // ── transactions column defaults ───────────────────────────────────────────
 //
-// Legacy SQLite databases received these defaults from
+// Legacy databases received these defaults from
 // ALTER TABLE transactions ADD COLUMN portfolio_id INTEGER DEFAULT 1; the PG
 // CREATE TABLE never declared them, so insert paths that omit both columns
 // (admin.Service.ImportTransactions has never listed them) wrote NULL. Most
 // reads defend with COALESCE(portfolio_id,1), but a strict portfolio_id filter
 // silently hides such rows from the ledger. Pin the defaults and the repair.
-
-// txDefaultsQuery answers the migrateTransactionsDefaults probes alongside the
-// portfolio_snapshot PK probes, so both migrations run in one fake.
-func txDefaultsQuery(condef string, dups int64, portfolioDefault, securityDefault driver.Value, nulls int64) func(string) ([]string, [][]driver.Value, error) {
-	base := condefQuery(condef, dups)
-	return func(q string) ([]string, [][]driver.Value, error) {
-		switch {
-		case strings.Contains(q, "information_schema.columns"):
-			return []string{"portfolio_default", "security_default"},
-				[][]driver.Value{{portfolioDefault, securityDefault}}, nil
-		case strings.Contains(q, "COUNT(*) FROM transactions"):
-			return []string{"nulls"}, [][]driver.Value{{nulls}}, nil
-		default:
-			return base(q)
-		}
-	}
-}
 
 func TestPGSchemaDeclaresTransactionsColumnDefaults(t *testing.T) {
 	var found string
@@ -610,7 +704,11 @@ func TestPGSchemaDeclaresTransactionsColumnDefaults(t *testing.T) {
 func TestEnsurePGSchemaBackfillsTransactionsDefaultsOnLegacyDB(t *testing.T) {
 	ctx := context.Background()
 	// Legacy shape: no column defaults declared, three rows already written NULL.
-	dbi, conn := newFakePGDB(t, nil, txDefaultsQuery("PRIMARY KEY (fund_code, portfolio_id)", 0, nil, nil, 3))
+	catalog := freshPGCatalog()
+	catalog.portfolioDefault = nil
+	catalog.securityDefault = nil
+	catalog.txNulls = 3
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema: %v", err)
 	}
@@ -632,18 +730,29 @@ func TestEnsurePGSchemaBackfillsTransactionsDefaultsOnLegacyDB(t *testing.T) {
 	if steps[0].at > steps[2].at || steps[1].at > steps[3].at {
 		t.Fatalf("backfill must run before declaring the default: %v", execs)
 	}
+	// Recorded, so a replay must not touch transactions again.
+	firstRun := len(execs)
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	for _, q := range conn.execSnapshot()[firstRun:] {
+		if strings.Contains(q, "UPDATE transactions") || strings.Contains(q, "ALTER TABLE transactions") {
+			t.Fatalf("replayed transactions migration side effect: %q", q)
+		}
+	}
 }
 
 func TestEnsurePGSchemaTransactionsDefaultsAreIdempotent(t *testing.T) {
 	ctx := context.Background()
 	// Already-migrated shape: both defaults declared and no NULL rows left.
-	dbi, conn := newFakePGDB(t, nil, txDefaultsQuery("PRIMARY KEY (fund_code, portfolio_id)", 0, "1", "'fund'::text", 0))
+	catalog := freshPGCatalog()
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema: %v", err)
 	}
 	execs := conn.execSnapshot()
-	if len(execs) != len(pgSchemaStatements)+1 {
-		t.Fatalf("exec count = %d, want %d (no migration side effects)", len(execs), len(pgSchemaStatements)+1)
+	if len(execs) != freshRunExecCount() {
+		t.Fatalf("exec count = %d, want %d (no migration side effects)", len(execs), freshRunExecCount())
 	}
 	for _, q := range execs {
 		if strings.Contains(q, "UPDATE transactions") || strings.Contains(q, "ALTER TABLE transactions") {
@@ -655,19 +764,49 @@ func TestEnsurePGSchemaTransactionsDefaultsAreIdempotent(t *testing.T) {
 func TestEnsurePGSchemaTransactionsDefaultsProbeTolerance(t *testing.T) {
 	ctx := context.Background()
 	// A catalog error must degrade to a warning and leave the table untouched,
-	// exactly like the portfolio_snapshot migration: never block boot.
-	dbi, conn := newFakePGDB(t, nil, func(q string) ([]string, [][]driver.Value, error) {
-		if strings.Contains(q, "pg_get_constraintdef") {
-			return []string{"condef"}, [][]driver.Value{{"PRIMARY KEY (fund_code, portfolio_id)"}}, nil
-		}
-		return nil, nil, errors.New("catalog probe exploded")
-	})
+	// exactly like the portfolio_snapshot repair: never block boot.
+	catalog := freshPGCatalog()
+	catalog.failInfoSchema = errors.New("catalog probe exploded")
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
 	if err := EnsurePGSchema(ctx, dbi); err != nil {
 		t.Fatalf("EnsurePGSchema with failing probe must not fail boot: %v", err)
 	}
 	for _, q := range conn.execSnapshot() {
 		if strings.Contains(q, "UPDATE transactions") || strings.Contains(q, "ALTER TABLE transactions") {
 			t.Fatalf("transactions migration ran despite failing probe: %q", q)
+		}
+	}
+}
+
+// ── nav_history security-era columns (migration 0004) ──────────────────────
+
+func TestEnsurePGSchemaBackfillsNavHistoryColumnsOnLegacyDB(t *testing.T) {
+	ctx := context.Background()
+	// Legacy shape: nav_history predates the security-type era.
+	catalog := freshPGCatalog()
+	catalog.navColumns = []string{"date", "fund_code", "unit_nav", "accumulated_nav"}
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsurePGSchema: %v", err)
+	}
+	execs := conn.execSnapshot()
+	dailyAt := indexOfSubstr(execs, `ADD COLUMN "daily_change_pct" DOUBLE PRECISION DEFAULT 0`)
+	secAt := indexOfSubstr(execs, `ADD COLUMN "security_type" TEXT DEFAULT 'fund'`)
+	if dailyAt < 0 || secAt < 0 {
+		t.Fatalf("nav_history backfill columns missing: %v", execs)
+	}
+}
+
+func TestEnsurePGSchemaSkipsNavHistoryBackfillWhenColumnsPresent(t *testing.T) {
+	ctx := context.Background()
+	catalog := freshPGCatalog()
+	dbi, conn := newFakePGDB(t, catalog.exec, catalog.query)
+	if err := EnsurePGSchema(ctx, dbi); err != nil {
+		t.Fatalf("EnsurePGSchema: %v", err)
+	}
+	for _, q := range conn.execSnapshot() {
+		if strings.Contains(q, "ALTER TABLE nav_history") {
+			t.Fatalf("nav_history backfill ran on a current-shape table: %q", q)
 		}
 	}
 }

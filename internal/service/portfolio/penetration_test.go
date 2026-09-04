@@ -10,21 +10,6 @@ func TestServiceGetPenetrationAggregatesLatestFundHoldings(t *testing.T) {
 	defer db.Close()
 
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE fund_holdings (
-			fund_code TEXT,
-			stock_code TEXT,
-			stock_name TEXT,
-			weight_pct REAL,
-			shares REAL,
-			market_value REAL,
-			report_date TEXT
-		);
-		CREATE TABLE sector_map (
-			stock_code TEXT,
-			market TEXT,
-			sector TEXT,
-			PRIMARY KEY (stock_code, market)
-		);
 		INSERT INTO fund_holdings (fund_code, stock_code, stock_name, weight_pct, shares, market_value, report_date) VALUES
 			('019173', 'NVDA', 'NVIDIA', 8.5, 100, 12000, '2026-03-31'),
 			('019173', 'MSFT', 'Microsoft', 7.2, 100, 11000, '2026-03-31'),
@@ -84,21 +69,6 @@ func TestServiceGetPenetrationReportsMixedDisclosureDates(t *testing.T) {
 	defer db.Close()
 
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE fund_holdings (
-			fund_code TEXT,
-			stock_code TEXT,
-			stock_name TEXT,
-			weight_pct REAL,
-			shares REAL,
-			market_value REAL,
-			report_date TEXT
-		);
-		CREATE TABLE sector_map (
-			stock_code TEXT,
-			market TEXT,
-			sector TEXT,
-			PRIMARY KEY (stock_code, market)
-		);
 		INSERT INTO fund_holdings (fund_code, stock_code, stock_name, weight_pct, shares, market_value, report_date) VALUES
 			('019173', 'NVDA', 'NVIDIA', 8.5, 100, 12000, '2026-03-31'),
 			('018439', 'MSFT', 'Microsoft', 7.2, 100, 11000, '2025-12-31');
@@ -134,21 +104,6 @@ func TestServiceGetPenetrationAvoidsAmbiguousSectorMapByCode(t *testing.T) {
 	defer db.Close()
 
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE fund_holdings (
-			fund_code TEXT,
-			stock_code TEXT,
-			stock_name TEXT,
-			weight_pct REAL,
-			shares REAL,
-			market_value REAL,
-			report_date TEXT
-		);
-		CREATE TABLE sector_map (
-			stock_code TEXT,
-			market TEXT,
-			sector TEXT,
-			PRIMARY KEY (stock_code, market)
-		);
 		INSERT INTO fund_holdings (fund_code, stock_code, stock_name, weight_pct, shares, market_value, report_date) VALUES
 			('019173', 'DUPL', 'Duplicate Code', 10, 100, 12000, '2026-03-31');
 		INSERT INTO sector_map (stock_code, market, sector) VALUES

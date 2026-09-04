@@ -13,7 +13,6 @@ func TestServiceGetAgentContextPackAssemblesVersionedFactsOnlyPack(t *testing.T)
 	db := openSummaryFixture(t)
 	defer db.Close()
 	seedMixedHarnessData(t, db)
-	ensureSourceEventsTable(t, db)
 
 	service := NewService(db)
 	appleEvent, err := service.CreateSourceEvent(context.Background(), CreateSourceEventInput{

@@ -1,0 +1,30 @@
+{
+  "actionable": "建议运行 crawl_nav 刷新 1 只过期证券的价格数据",
+  "anomaly_count": 0,
+  "decision_boundary": "read_only",
+  "health": "degraded",
+  "last_nav_date": "__SCRUBBED__",
+  "last_transaction": "__SCRUBBED__",
+  "missing_nav_securities": [
+    {
+      "code": "HELD1",
+      "name": "Held Missing NAV",
+      "type": "fund"
+    }
+  ],
+  "stale_securities": [
+    {
+      "code": "STALE1",
+      "last_nav": "__SCRUBBED__",
+      "name": "Stale Fund",
+      "stale_days": 10
+    }
+  ],
+  "watchlist_missing_nav_securities": [
+    {
+      "code": "WATCH1",
+      "name": "Watch Missing NAV",
+      "type": "stock"
+    }
+  ]
+}

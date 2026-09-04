@@ -2,14 +2,13 @@ package admin
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 // captureHandler records warn-level records so tests can assert the server
@@ -41,33 +40,15 @@ func (h *captureHandler) warnings() []slog.Record {
 
 func openShareDriftDB(t *testing.T, stmts []string) (svc Service, cleanup func()) {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
+	// Production schema via the real boot path; the share-drift probe then
+	// runs against the same tables it sees in production.
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	for _, q := range stmts {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("seed %q: %v", q, err)
 		}
 	}
 	return NewServiceWithDriver(db, "sqlite"), func() { _ = db.Close() }
-}
-
-func shareDriftSchema() []string {
-	return []string{
-		`CREATE TABLE transactions (
-			seq INTEGER PRIMARY KEY AUTOINCREMENT,
-			fund_code TEXT,
-			signed_share_change REAL
-		)`,
-		`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT NOT NULL,
-			held_shares REAL,
-			portfolio_id INTEGER NOT NULL DEFAULT 1,
-			PRIMARY KEY (fund_code, portfolio_id)
-		)`,
-	}
 }
 
 func hasShareDriftRecommendation(recs []string) bool {
@@ -83,10 +64,10 @@ func hasShareDriftRecommendation(recs []string) bool {
 // one-share gap between the transaction ledger and the snapshot must surface
 // as a recommendation, degrade the SQLite overall status, and emit a warn.
 func TestShareDriftDetectedReportsAndWarns(t *testing.T) {
-	svc, cleanup := openShareDriftDB(t, append(shareDriftSchema(),
+	svc, cleanup := openShareDriftDB(t, []string{
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F1', 100)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F1', 99, 1)`,
-	))
+	})
 	defer cleanup()
 
 	prev := slog.Default()
@@ -130,11 +111,11 @@ func TestShareDriftDetectedReportsAndWarns(t *testing.T) {
 // TestShareDriftCleanLedgerKeepsOverallOK: consistent ledger/snapshot data
 // must not produce findings or flip the report status.
 func TestShareDriftCleanLedgerKeepsOverallOK(t *testing.T) {
-	svc, cleanup := openShareDriftDB(t, append(shareDriftSchema(),
+	svc, cleanup := openShareDriftDB(t, []string{
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F1', 100)`,
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F2', 0.0000001)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F1', 100, 1)`,
-	))
+	})
 	defer cleanup()
 
 	report, err := svc.GetDBIntegrity(context.Background(), time.Now().UTC())
@@ -152,11 +133,11 @@ func TestShareDriftCleanLedgerKeepsOverallOK(t *testing.T) {
 // TestShareDriftSumsSnapshotsAcrossPortfolios: transactions are fund-wide so
 // the snapshot side must aggregate over portfolio rows before comparing.
 func TestShareDriftSumsSnapshotsAcrossPortfolios(t *testing.T) {
-	svc, cleanup := openShareDriftDB(t, append(shareDriftSchema(),
+	svc, cleanup := openShareDriftDB(t, []string{
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F1', 50)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F1', 30, 1)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F1', 20, 2)`,
-	))
+	})
 	defer cleanup()
 
 	report, err := svc.GetDBIntegrity(context.Background(), time.Now().UTC())
@@ -171,12 +152,12 @@ func TestShareDriftSumsSnapshotsAcrossPortfolios(t *testing.T) {
 // TestShareDriftWithinDustThresholdIgnored: sub-dust differences — including
 // pure float residue — are the dust threshold's job, not drift.
 func TestShareDriftWithinDustThresholdIgnored(t *testing.T) {
-	svc, cleanup := openShareDriftDB(t, append(shareDriftSchema(),
+	svc, cleanup := openShareDriftDB(t, []string{
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F1', 100.0005)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F1', 100, 1)`,
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('F2', 33.33333333)`,
 		`INSERT INTO portfolio_snapshot (fund_code, held_shares, portfolio_id) VALUES ('F2', 33.3333, 1)`,
-	))
+	})
 	defer cleanup()
 
 	report, err := svc.GetDBIntegrity(context.Background(), time.Now().UTC())
@@ -191,9 +172,9 @@ func TestShareDriftWithinDustThresholdIgnored(t *testing.T) {
 // TestShareDriftLedgerWithoutSnapshotRow: a fund holding shares in the ledger
 // but missing from portfolio_snapshot entirely is drift too.
 func TestShareDriftLedgerWithoutSnapshotRow(t *testing.T) {
-	svc, cleanup := openShareDriftDB(t, append(shareDriftSchema(),
+	svc, cleanup := openShareDriftDB(t, []string{
 		`INSERT INTO transactions (fund_code, signed_share_change) VALUES ('GHOST', 50)`,
-	))
+	})
 	defer cleanup()
 
 	report, err := svc.GetDBIntegrity(context.Background(), time.Now().UTC())

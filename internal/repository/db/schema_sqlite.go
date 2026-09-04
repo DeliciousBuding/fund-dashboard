@@ -3,8 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"log/slog"
 )
 
 // EnsureSQLiteSchema creates the fund-dashboard business tables on SQLite
@@ -23,32 +21,23 @@ import (
 // portfolio_snapshot uses the (fund_code, portfolio_id) composite primary key
 // like PG; ci-seed's single-column PK is a legacy defect not duplicated here.
 //
-// Every statement is idempotent (IF NOT EXISTS) and never alters existing
-// tables: column-level evolution on legacy DBs goes through schema_meta
-// probing, the established repo pattern. Indexes are best-effort — a legacy
-// DB may lack the columns an index references, and a failed index must never
-// block first boot.
+// EnsureSQLiteSchema brings a SQLite database to the current schema through
+// the numbered migration list (migrate.go): the 0001 baseline executes the
+// CREATE TABLE list below, later migrations carry the probe-and-ALTER repairs,
+// and every applied step is recorded in schema_migrations.
+//
+// Every baseline statement is idempotent (IF NOT EXISTS) and never alters
+// existing tables: column-level evolution on legacy DBs goes through numbered
+// migrations, the successor of the old schema_meta probing pattern.
+//
+// Behavior change (accepted when versioning was introduced): the non-unique
+// indexes are now enforced by migration 0001 — a failure fails startup
+// instead of logging a best-effort warn, so a legacy DB missing an indexed
+// column surfaces the defect on first boot. Only the (order_id, fund_code)
+// unique index stays best-effort (migration 0005): legacy conversion legs can
+// permanently violate it (import/DCA still use WHERE NOT EXISTS).
 func EnsureSQLiteSchema(ctx context.Context, db *sql.DB) error {
-	for i, stmt := range sqliteSchemaTables {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("sqlite schema stmt %d: %w", i, err)
-		}
-	}
-	for i, stmt := range sqliteSchemaIndexes {
-		if _, err := db.ExecContext(ctx, stmt); err != nil {
-			slog.Warn("sqlite schema index skipped", "stmt", i, "error", err)
-		}
-	}
-	// Conversion legs intentionally share order_id across two fund_codes.
-	// Uniqueness is (order_id, fund_code) — same as PG; do not fail boot on a
-	// legacy DB that violates it (import/DCA still use WHERE NOT EXISTS).
-	if _, err := db.ExecContext(ctx, `
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_order_fund_unique
-		ON transactions(order_id, fund_code)
-	`); err != nil {
-		slog.Warn("sqlite unique index transactions(order_id,fund_code) skipped", "error", err)
-	}
-	return nil
+	return ensureSchema(ctx, db, createSchemaMigrationsSQLite, sqliteMigrations)
 }
 
 var sqliteSchemaTables = []string{
@@ -353,8 +342,10 @@ var sqliteSchemaTables = []string{
 }
 
 // sqliteSchemaIndexes mirrors schema_pg.go idx_* (minus auth/agent tables,
-// which have their own EnsureSchema). Executed best-effort: legacy DBs may
-// not have the referenced columns.
+// which have their own EnsureSchema). Executed by migration 0001 with fatal
+// errors: a legacy DB missing a referenced column now fails startup instead
+// of booting without the index (accepted behavior change, see
+// EnsureSQLiteSchema).
 var sqliteSchemaIndexes = []string{
 	`CREATE INDEX IF NOT EXISTS idx_transactions_fund_code ON transactions(fund_code)`,
 	`CREATE INDEX IF NOT EXISTS idx_transactions_trade_time ON transactions(trade_time)`,

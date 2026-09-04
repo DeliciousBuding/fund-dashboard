@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
+	dbpkg "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
 )
 
@@ -15,26 +16,10 @@ func TestAdjustPositionOverridesShares(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 	for _, q := range []string{
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, fund_type TEXT, security_type TEXT, market TEXT, currency TEXT, exchange TEXT, source TEXT)`,
-		`CREATE TABLE portfolio_snapshot (fund_code TEXT NOT NULL, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (fund_code, portfolio_id))`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL, PRIMARY KEY(fund_code, date))`,
-		`CREATE TABLE transactions (
-			seq INTEGER PRIMARY KEY AUTOINCREMENT,
-			order_id TEXT UNIQUE,
-			trade_time TEXT,
-			confirm_date TEXT,
-			trade_type TEXT,
-			direction TEXT,
-			fund_code TEXT,
-			fund_name TEXT,
-			confirm_amount REAL,
-			confirm_share REAL,
-			fee REAL,
-			signed_cash_flow REAL,
-			signed_share_change REAL,
-			settlement_days INTEGER
-		)`,
 		`INSERT INTO fund_details (fund_code, fund_name, security_type, market) VALUES ('019173','Test','fund','CN')`,
 		`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('019173','2026-07-01',1.5)`,
 		`INSERT INTO transactions (order_id, trade_time, confirm_date, trade_type, direction, fund_code, fund_name, confirm_amount, confirm_share, fee, signed_cash_flow, signed_share_change, settlement_days)
@@ -91,11 +76,10 @@ func TestAdjustPositionRejectsHugeShares(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	if err := dbpkg.EnsureSQLiteSchema(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
 	for _, q := range []string{
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,
-		`CREATE TABLE portfolio_snapshot (fund_code TEXT NOT NULL, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (fund_code, portfolio_id))`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
-		`CREATE TABLE transactions (seq INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT, trade_time TEXT, confirm_date TEXT, trade_type TEXT, direction TEXT, fund_code TEXT, fund_name TEXT, confirm_amount REAL, confirm_share REAL, fee REAL, signed_cash_flow REAL, signed_share_change REAL, settlement_days INTEGER)`,
 		`INSERT INTO fund_details (fund_code, fund_name) VALUES ('019173','Test')`,
 	} {
 		if _, err := db.Exec(q); err != nil {

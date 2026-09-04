@@ -1,0 +1,26 @@
+[
+  {
+    "code": "019173",
+    "current_value": 150,
+    "held_shares": 100,
+    "latest_nav": 1.5,
+    "market": "CN",
+    "name": "纳斯达克100指数(QDII)C",
+    "pnl_pct": 25,
+    "security_type": "fund",
+    "type": "QDII-股票",
+    "unrealized_pnl": 30
+  },
+  {
+    "code": "AAPL",
+    "current_value": 380,
+    "held_shares": 2,
+    "latest_nav": 190,
+    "market": "US",
+    "name": "Apple Inc.",
+    "pnl_pct": 26.67,
+    "security_type": "stock",
+    "type": "科技股",
+    "unrealized_pnl": 80
+  }
+]

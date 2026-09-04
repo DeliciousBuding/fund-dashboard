@@ -1,0 +1,5 @@
+{
+  "code": "019173",
+  "message": "not enough cashflows (need \u003e=2 buy/sell/dividend records)",
+  "xirr": null
+}

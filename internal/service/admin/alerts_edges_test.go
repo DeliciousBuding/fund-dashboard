@@ -229,10 +229,12 @@ func TestCheckAlertsDCADayAlerts(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 	// One plan matches every weekday (always today), one has an empty mask (never).
-	if _, err := db.Exec(`INSERT INTO dca_plans (fund_code, fund_name, amount, weekday_mask, portfolio_id, active, start_date) VALUES
-		('019173', 'Fund A', 100, '1,2,3,4,5,6,7', 1, 1, '2026-01-01'),
-		('019174', 'Fund B', 200, '', 1, 1, '2026-01-01'),
-		('019175', 'Fund C', 300, '1,2,3,4,5,6,7', 2, 1, '2026-01-01')`); err != nil {
+	// Full column list: the production dca_plans table declares NOT NULL on
+	// frequency/trade_type/source/created_at/updated_at without defaults.
+	if _, err := db.Exec(`INSERT INTO dca_plans (fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, active, source, created_at, updated_at) VALUES
+		('019173', 'Fund A', 100, 'weekday', '1,2,3,4,5,6,7', 'buy', 1, '2026-01-01', 1, 'manual', '2026-01-01', '2026-01-01'),
+		('019174', 'Fund B', 200, 'weekday', '', 'buy', 1, '2026-01-01', 1, 'manual', '2026-01-01', '2026-01-01'),
+		('019175', 'Fund C', 300, 'weekday', '1,2,3,4,5,6,7', 'buy', 2, '2026-01-01', 1, 'manual', '2026-01-01', '2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
 	svc := NewServiceWithDriver(db, "sqlite")
@@ -313,10 +315,12 @@ func TestMaxDrawdownPctEmptyAndSinglePoint(t *testing.T) {
 		t.Fatalf("single point dd = %v, want 0", dd)
 	}
 
-	// Strictly increasing history (above the earlier 1.5 single point) has no drawdown.
+	// Strictly increasing history (above the earlier 1.5 single point) has no
+	// drawdown. Dates start on 01-02 because the production nav_history PK is
+	// (fund_code, date) and the single point already occupies 01-01.
 	for i := 0; i < 5; i++ {
 		nav := 2.0 + float64(i)
-		date := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+		date := time.Date(2026, 1, 2+i, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 		if _, err := db.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('019173', ?, ?)`, date, nav); err != nil {
 			t.Fatal(err)
 		}

@@ -1,0 +1,13 @@
+{
+  "change_amt": 23.5,
+  "change_pct": 0.42,
+  "code": "^GSPC",
+  "decision_boundary": "facts_only",
+  "external_fetch": "not_performed",
+  "market": "US",
+  "name": "标普500",
+  "price": 5600.5,
+  "side_effects": "none",
+  "source": "indices_cache",
+  "updated_at": "2099-01-01 12:00:00"
+}

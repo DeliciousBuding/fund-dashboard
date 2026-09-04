@@ -1,0 +1,24 @@
+{
+  "events": [
+    {
+      "event": "setup",
+      "ip": "127.0.0.1",
+      "kind": "auth",
+      "summary": "",
+      "ts": 0
+    },
+    {
+      "event": "login_ok",
+      "ip": "127.0.0.1",
+      "kind": "auth",
+      "summary": "",
+      "ts": 0
+    },
+    {
+      "event": "portfolio.summary",
+      "kind": "agent",
+      "summary": "result port_read",
+      "ts": 0
+    }
+  ]
+}

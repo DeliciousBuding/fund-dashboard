@@ -1,0 +1,15 @@
+{
+  "jobs": [
+    {
+      "last_run": 123456,
+      "name": "price_dca",
+      "next_run": 789012,
+      "schedule": "daily 20:00 CST"
+    },
+    {
+      "name": "wal",
+      "next_run": 456789,
+      "schedule": "daily 03:00 CST"
+    }
+  ]
+}

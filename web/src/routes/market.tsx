@@ -1,5 +1,7 @@
 // 市场 /market —— 指数看板（开盘状态着色）+ 纳斯达克透视（NDX 历史线 +
-// 全体交易散点叠加 + 统计卡）。SSE ticker 在顶栏，本页用轮询快照。
+// 全体交易散点叠加 + 统计卡）。指数数据首拉走 REST（useIndices），后续由
+// 顶栏 useMarketStream 的 SSE 帧回写同一缓存（["market-indices"]）增量更新，
+// 本页不再 60s 轮询。
 
 import { useMemo, useState } from "react";
 import { Chart } from "../components/charts/Chart";

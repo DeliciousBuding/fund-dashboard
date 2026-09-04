@@ -18,6 +18,9 @@ func TestCheckAlertsSkipsMissingDCAPlansTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	// intentionally legacy schema for missing-table tolerance: the subject of
+	// the test is a database WITHOUT dca_plans, so the production bootstrap
+	// (which would create it) must not run here.
 	for _, stmt := range []string{
 		`CREATE TABLE portfolio_snapshot (fund_code TEXT, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER)`,
 		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,

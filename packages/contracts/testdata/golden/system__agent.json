@@ -1,0 +1,77 @@
+{
+  "endpoint": "/mcp",
+  "key_env_vars": [
+    "MCP_API_KEY",
+    "PUBLIC_MCP_KEY"
+  ],
+  "keys": {
+    "mcp_api_key": "已配置",
+    "public_mcp_key": "已配置"
+  },
+  "request_method": "POST",
+  "tools": {
+    "audit_redaction_keys": [
+      "api_key",
+      "token",
+      "cookie",
+      "authorization",
+      "webhook",
+      "password",
+      "secret"
+    ],
+    "audited_tools": 22,
+    "by_permission": {
+      "allowed": 30,
+      "disabled": 3,
+      "requires_confirmation": 15
+    },
+    "by_permission_source": {
+      "harness": 19,
+      "inferred": 26,
+      "runtime": 3
+    },
+    "by_risk_level": {
+      "high": 15,
+      "low": 27,
+      "medium": 6
+    },
+    "by_scope": {
+      "disabled": 3,
+      "external_context": 3,
+      "maintenance": 3,
+      "read": 25,
+      "write": 14
+    },
+    "confirmation_required_by_category": {
+      "admin": 2,
+      "dca": 3,
+      "operations": 1,
+      "report": 1,
+      "securities": 4,
+      "transactions": 4
+    },
+    "confirmation_required_tools": 15,
+    "disabled_boundaries": [
+      "broker_trade_execution",
+      "cash_transfer",
+      "backup_producer"
+    ],
+    "disabled_tools": 3,
+    "generated_at": "__SCRUBBED__",
+    "review_required_by_category": {
+      "admin": 3,
+      "analysis": 1,
+      "dca": 4,
+      "market": 3,
+      "operations": 2,
+      "portfolio": 4,
+      "query": 3,
+      "report": 1,
+      "securities": 4,
+      "transactions": 1
+    },
+    "review_required_tools": 26,
+    "schema_version": "tool-registry-v1",
+    "total_tools": 48
+  }
+}

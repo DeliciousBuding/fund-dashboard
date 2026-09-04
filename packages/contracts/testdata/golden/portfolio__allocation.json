@@ -1,0 +1,56 @@
+{
+  "agent_brief": "Allocation: Stock 71.7%, Fund 28.3%; Market: US Stocks 71.7%, CN Funds 28.3%. Risk: US Stocks weight above 70%; 科技股 theme weight above 50%.",
+  "by_fund_type": [
+    {
+      "count": 1,
+      "key": "科技股",
+      "label": "科技股",
+      "value": 380,
+      "weight_pct": 71.7
+    },
+    {
+      "count": 1,
+      "key": "QDII-股票",
+      "label": "QDII-股票",
+      "value": 150,
+      "weight_pct": 28.3
+    }
+  ],
+  "by_market": [
+    {
+      "count": 1,
+      "key": "us_stock",
+      "label": "US Stocks",
+      "value": 380,
+      "weight_pct": 71.7
+    },
+    {
+      "count": 1,
+      "key": "cn_fund",
+      "label": "CN Funds",
+      "value": 150,
+      "weight_pct": 28.3
+    }
+  ],
+  "by_security_type": [
+    {
+      "count": 1,
+      "key": "stock",
+      "label": "Stock",
+      "value": 380,
+      "weight_pct": 71.7
+    },
+    {
+      "count": 1,
+      "key": "fund",
+      "label": "Fund",
+      "value": 150,
+      "weight_pct": 28.3
+    }
+  ],
+  "risk_flags": [
+    "US Stocks weight above 70%",
+    "科技股 theme weight above 50%"
+  ],
+  "total_value": 530
+}

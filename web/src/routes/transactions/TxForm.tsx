@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { ApiError, api } from "../../lib/api";
+import { api } from "../../lib/api";
+import { mutationErrorMessage } from "../../services/userError";
 
 // ── 新增/编辑表单 ───────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export function TxFormDialog(props: {
       props.onSaved();
     },
     onError: (e) => {
-      setError(e instanceof ApiError ? e.code : e instanceof Error ? e.message : "保存失败");
+      setError(mutationErrorMessage(e, "保存失败"));
     },
   });
 

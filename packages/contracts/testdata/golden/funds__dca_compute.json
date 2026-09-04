@@ -1,0 +1,18 @@
+{
+  "actual_amount": 15,
+  "base_amount": 30,
+  "change_pct": -4.2,
+  "cost_per_share": 1.2,
+  "dca_rate": 0.5,
+  "decision_boundary": "facts_only",
+  "deviation_pct": 25,
+  "explanation": "deviation=25.00% signal=decrease amount=15.00",
+  "fund_code": "019173",
+  "latest_nav": 1.5,
+  "market": "CN",
+  "mode": "nav_deviation",
+  "range": "decrease",
+  "security_type": "fund",
+  "side_effects": "none",
+  "signal": "decrease"
+}

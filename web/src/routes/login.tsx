@@ -1,17 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
-import type { ApiError } from "../lib/api";
 import { login } from "../lib/auth";
 import { refreshAuthStatus } from "../lib/authQuery";
 import { oauthReturnTarget } from "../lib/oauthReturn";
 import { queryClient } from "../lib/queryClient";
-
-const errorText: Record<string, string> = {
-  invalid_credentials: "密码不正确",
-  rate_limited: "尝试过于频繁，请稍后再试",
-  not_initialized: "尚未初始化，请先设置密码",
-};
+import { mutationErrorMessage } from "../services/userError";
 
 export function LoginPage() {
   const router = useRouter();
@@ -41,7 +35,7 @@ export function LoginPage() {
   };
 
   const message = mutation.error
-    ? (errorText[(mutation.error as ApiError).code] ?? "登录失败，请稍后重试")
+    ? mutationErrorMessage(mutation.error, "登录失败，请稍后重试")
     : null;
 
   return (
