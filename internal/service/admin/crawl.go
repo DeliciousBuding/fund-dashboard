@@ -201,15 +201,17 @@ func RefreshStaleCodes(ctx context.Context, svc Service, refresh CodeRefresher, 
 }
 
 // logCodeFailure records one per-code refresh failure with the caller's own
-// message and correlation attributes. Every caught error is logged.
+// message and correlation attributes. Every caught error is logged. Caller
+// attributes lead so a protocol adapter keeps its correlation key (a request
+// id) in the position its existing ops tooling already parses.
 func logCodeFailure(policy BatchPolicy, code string, err error) {
 	message := strings.TrimSpace(policy.FailureLogMessage)
 	if message == "" {
 		message = defaultBatchFailureLogMessage
 	}
 	attrs := make([]any, 0, len(policy.LogAttrs)+4)
-	attrs = append(attrs, "code", code, "error", err.Error())
 	attrs = append(attrs, policy.LogAttrs...)
+	attrs = append(attrs, "code", code, "error", err.Error())
 	slog.Error(message, attrs...)
 }
 
