@@ -514,7 +514,15 @@ func (s *Scheduler) sweepExpiredState(ctx context.Context) error {
 			}
 			continue
 		}
-		if deleted, err := res.RowsAffected(); err == nil && deleted > 0 {
+		deleted, err := res.RowsAffected()
+		if err != nil {
+			// The delete itself succeeded; only the affected-row count is
+			// unavailable (some drivers do not report it). Say so rather than
+			// silently logging nothing at all.
+			slog.Debug("daily sweep rows affected unavailable", "table", sweep.table, "error", err)
+			continue
+		}
+		if deleted > 0 {
 			slog.Info("daily sweep", "table", sweep.table, "deleted", deleted)
 		}
 	}
@@ -615,19 +623,12 @@ func (s *Scheduler) claimWindowDurable(job, windowID string) bool {
 	return true
 }
 
+// schedulerClaimCode maps a job name onto its crawl_log claim row. Production
+// crawl_log has fund_code as its primary key, so each job needs a distinct,
+// reserved-looking code. Every job uses the same prefix rule - there is no
+// per-job exception to encode.
 func schedulerClaimCode(job string) string {
-	switch job {
-	case "startup_refresh":
-		return "__sched_startup_refresh"
-	case "price_dca":
-		return "__sched_price_dca"
-	case "holdings":
-		return "__sched_holdings"
-	case "wal":
-		return "__sched_wal"
-	default:
-		return "__sched_" + job
-	}
+	return "__sched_" + job
 }
 
 func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) error {
@@ -635,8 +636,9 @@ func (s *Scheduler) runDCAMaterialization(ctx context.Context, now time.Time) er
 		return nil
 	}
 	asOf := now.Format("2006-01-02")
-	// Single-user deployment: default portfolio only. Multi-portfolio ledger is deferred
-	// (docs/STATE.md residual) — do not invent multi-id loops until ledger scopes txs.
+	// Single-user deployment: default portfolio only. A multi-portfolio ledger is
+	// deferred work — do not invent multi-id loops until the ledger scopes
+	// transactions per portfolio.
 	const portfolioID = 1
 	res, err := s.dca.RunDCAAutoInvest(ctx, portfoliosvc.RunDCAAutoInvestInput{
 		AsOf:        asOf,
