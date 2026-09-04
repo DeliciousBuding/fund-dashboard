@@ -90,19 +90,31 @@ jobs:
     timeout-minutes: 20
     env:
       # Curated set = exactly the golangci-lint v1.64.8 linters that are green on
-      # today's tree. Verified locally with go1.26.6 + golangci-lint v1.64.8:
+      # the tree this PR merges into. Verified with golangci-lint v1.64.8:
       #   golangci-lint run ./... --disable-all --enable=<this list>
+      #     --max-issues-per-linter=0 --max-same-issues=0
       #   -> exit 0, zero findings.
+      # stylecheck stays enabled on purpose. It reported four ST1019 findings on
+      # main: a local variable named db shadowed the db package alias, so a second
+      # alias for the very same import had been added as a workaround. The last
+      # commit in this PR removes those duplicate imports instead of dropping the
+      # linter, so the gate is green on arrival and still catches the next one.
       # golangci-lint is pinned to v1.x on purpose: v2 merged staticcheck /
       # gosimple / stylecheck into one linter and changed the flag surface, so
       # this list is only valid for v1. Re-validate it before a major bump.
       #
-      # Deliberately NOT enabled because they report pre-existing findings in
-      # files outside this lane's write territory. They are neither fixed here
-      # nor suppressed file-by-file; they are recorded as follow-up work:
-      #   errcheck 6 | staticcheck 4 | gosimple 2 | ineffassign 2 | gosec 12 |
-      #   revive 34 | predeclared 9 | unparam 9 | whitespace 6 | errorlint 3 |
-      #   exhaustive 3 | copyloopvar 2 | sqlclosecheck 1 | noctx 1 | nilerr 1
+      # Deliberately NOT enabled: they report pre-existing findings that this
+      # change neither fixes nor suppresses file-by-file. They are registered as
+      # backlog debt in docs/design/05-roadmap.md, which also records the exact
+      # per-linter command, so counts are re-measured there instead of drifting
+      # inside CI config.
+      # Measurement caveat before trusting any count: golangci-lint reporting is
+      # combination-dependent (predeclared reports findings alone that vanish when
+      # revive is enabled too), and the default --max-same-issues=3 truncates
+      # repeats, so a '3 findings' report can hide more. Per-linter runs with both
+      # limits at 0 are the only reliable oracle. A zero for the enabled set above
+      # is not such an artifact: de-duplication keeps one copy, so zero reported
+      # means zero present.
       # NOT enabled because a required check already does the same work:
       #   govet -> test-go runs `go vet ./...`
       #   gofmt -> test-go runs `gofmt -l .`
