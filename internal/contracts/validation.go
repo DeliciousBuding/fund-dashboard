@@ -11,6 +11,16 @@ import (
 	"time"
 )
 
+// MaxCompareCodes bounds how many securities one comparison request may fan
+// out to. Each code costs NAV history, XIRR and drawdown work, so this is a
+// fan-out guard rather than a presentation choice.
+//
+// It is the single copy on purpose. The same logical operation is reachable
+// through REST (GET /api/analysis/compare) and through MCP (compare_funds),
+// and a per-surface constant is exactly how two surfaces end up accepting
+// different batch sizes for one contract. Both must read the bound from here.
+const MaxCompareCodes = 8
+
 func ValidateAgentContextPackJSON(payload []byte) error {
 	var pack agentContextPack
 	if err := decodeStrict(payload, &pack); err != nil {
