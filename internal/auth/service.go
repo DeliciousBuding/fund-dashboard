@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 )
@@ -237,6 +238,12 @@ type SessionInfo struct {
 // SessionList is the settings session view: redacted items (capped by the
 // store soft ceiling) plus Total/Truncated so the UI can surface the cut
 // instead of silently showing an incomplete list.
+//
+// The session the caller is currently using is anchored first. Without this the
+// current position would depend on a same-second tie between last_seen_at values
+// resolved by the random session id, so the order flipped run to run and the
+// committed golden wire sample was unstable. Everything else keeps the store's
+// total order (last_seen_at DESC, then id DESC).
 type SessionList struct {
 	Items     []SessionInfo
 	Total     int
@@ -269,6 +276,11 @@ func (s *Service) ListSessions(ctx context.Context, currentToken string) (Sessio
 			Current:    sess.ID == currentID,
 		})
 	}
+	// Anchor the caller's current session first. This is a stable partition, so
+	// the relative order of the remaining (non-current) sessions is untouched.
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Current && !out[j].Current
+	})
 	return SessionList{Items: out, Total: listed.Total, Truncated: listed.Truncated}, nil
 }
 

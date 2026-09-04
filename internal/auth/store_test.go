@@ -54,6 +54,62 @@ func TestStoreListSessionsEmpty(t *testing.T) {
 	}
 }
 
+// TestStoreListSessionsOrderIsTotal pins the ordering contract of the session
+// list: newest last_seen_at first, ties broken by id descending.
+//
+// Ties are the common case, not an edge case -- last_seen_at is unix seconds, so
+// every pair of logins inside the same second ties. The seeds are inserted in
+// ascending id order so that insertion (rowid) order is the exact opposite of
+// the tiebreak: a plan that returns tied rows in insertion order fails here.
+// The repeated reads catch an order that is merely stable-by-accident within one
+// connection.
+func TestStoreListSessionsOrderIsTotal(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	const tie = int64(1_700_000_000)
+	seeds := []struct {
+		id         string
+		lastSeenAt int64
+	}{
+		{"aa-tied", tie},
+		{"mm-tied", tie},
+		{"zz-newest", tie + 10},
+	}
+	for _, seed := range seeds {
+		if err := store.CreateSession(ctx, Session{
+			ID:         seed.id,
+			CreatedAt:  tie,
+			ExpiresAt:  tie + 3600,
+			LastSeenAt: seed.lastSeenAt,
+			IP:         "192.0.2.1",
+			UserAgent:  "store-test-agent",
+		}); err != nil {
+			t.Fatalf("CreateSession %s: %v", seed.id, err)
+		}
+	}
+
+	want := []string{"zz-newest", "mm-tied", "aa-tied"}
+	for attempt := 1; attempt <= 5; attempt++ {
+		list, err := store.ListSessions(ctx)
+		if err != nil {
+			t.Fatalf("ListSessions attempt %d: %v", attempt, err)
+		}
+		if len(list.Sessions) != len(want) {
+			t.Fatalf("attempt %d: ListSessions = %d rows; want %d", attempt, len(list.Sessions), len(want))
+		}
+		for i, wantID := range want {
+			if list.Sessions[i].ID != wantID {
+				got := make([]string, len(list.Sessions))
+				for j, sess := range list.Sessions {
+					got[j] = sess.ID
+				}
+				t.Fatalf("attempt %d: order = %v; want %v (last_seen_at DESC, then id DESC)", attempt, got, want)
+			}
+		}
+	}
+}
+
 func TestStoreListSessionsTruncationSignals(t *testing.T) {
 	store := newTestStore(t)
 
