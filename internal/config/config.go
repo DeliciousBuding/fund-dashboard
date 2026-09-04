@@ -48,8 +48,14 @@ type Config struct {
 	// AuthSecureCookie controls the Secure flag on the session cookie (default
 	// true; set FUND_AUTH_SECURE_COOKIE=false only for plain-HTTP LAN access).
 	AuthSecureCookie bool
-	// EdgeAuthEnabled keeps the legacy X-Fund-Edge-Key browser-write fallback
-	// (default true during migration; FUND_EDGE_AUTH_ENABLED=false disables).
+	// EdgeAuthEnabled keeps the legacy X-Fund-Edge-Key browser-write fallback.
+	// Default false: browser writes authenticate with the fund_session cookie
+	// plus the X-Fund-Request CSRF header and the FUND_ALLOWED_ORIGINS
+	// allowlist, and the SPA client never sends the edge key, so the shared
+	// secret is opt-in. Set FUND_EDGE_AUTH_ENABLED=true only for a deployment
+	// whose trusted edge proxy still injects X-Fund-Edge-Key; while it is on,
+	// production additionally requires a strong FUND_EDGE_KEY (see
+	// validateProductionSecrets).
 	EdgeAuthEnabled bool
 	// AllowedOrigins is the browser Origin allowlist for mutations
 	// (FUND_ALLOWED_ORIGINS, comma-separated; localhost any port always allowed).
@@ -130,7 +136,7 @@ func Parse(env map[string]string) (Config, error) {
 		AuthSessionTTL:    parseDurationEnv(env["FUND_AUTH_SESSION_TTL"], "FUND_AUTH_SESSION_TTL", 720*time.Hour),
 		AuthSessionMaxAge: parseDurationEnv(env["FUND_AUTH_SESSION_MAX_AGE"], "FUND_AUTH_SESSION_MAX_AGE", 2160*time.Hour),
 		AuthSecureCookie:  parseBoolEnvDefault(env["FUND_AUTH_SECURE_COOKIE"], "FUND_AUTH_SECURE_COOKIE", true),
-		EdgeAuthEnabled:   parseBoolEnvDefault(env["FUND_EDGE_AUTH_ENABLED"], "FUND_EDGE_AUTH_ENABLED", true),
+		EdgeAuthEnabled:   parseBoolEnvDefault(env["FUND_EDGE_AUTH_ENABLED"], "FUND_EDGE_AUTH_ENABLED", false),
 		AllowedOrigins:    parseOrigins(env["FUND_ALLOWED_ORIGINS"]),
 		APIRPM:            parseRPM(env["FUND_API_RPM"], "FUND_API_RPM", 600),
 		MCPPreAuthRPM:     parseRPM(env["FUND_MCP_PREAUTH_RPM"], "FUND_MCP_PREAUTH_RPM", 600),
@@ -253,7 +259,9 @@ func validateProductionSecrets(cfg Config) error {
 	if err := requireStrongSecret("MCP_API_KEY", cfg.AdminKey); err != nil {
 		return err
 	}
-	// The edge key is only required while the legacy browser-write fallback is on.
+	// The edge key is only required while the legacy browser-write fallback is
+	// on. With the compat layer off by default a deployment needs no edge key at
+	// all; opting back in via FUND_EDGE_AUTH_ENABLED=true re-arms this floor.
 	if cfg.EdgeAuthEnabled {
 		if err := requireStrongSecret("FUND_EDGE_KEY", cfg.EdgeKey); err != nil {
 			return err
