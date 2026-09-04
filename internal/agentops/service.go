@@ -105,39 +105,21 @@ func NewService(deps ServiceDeps) *Service {
 }
 
 func (s *Service) PrepareConfirmation(ctx context.Context, input PrepareConfirmationInput) (PreparedConfirmation, error) {
-	if s.registry == nil {
-		return PreparedConfirmation{}, ErrMissingRegistry
+	if err := s.requireConfirmationIssuers(); err != nil {
+		return PreparedConfirmation{}, err
 	}
-	if s.confirmations == nil {
-		return PreparedConfirmation{}, confirmations.ErrEmptySecret
-	}
-	if len(input.Caller) > maxAgentIdentityLength || len(input.RequestID) > maxAgentIdentityLength {
+	if identityTooLong(input.Caller, input.RequestID) {
 		return PreparedConfirmation{}, ErrIdentityTooLong
 	}
 	// Fail fast on missing stores before issuing a token or persisting a row:
 	// a later audit failure must not leave an orphan confirmation behind.
-	if s.confirmationRepo == (agentstate.ConfirmationRepository{}) {
-		return PreparedConfirmation{}, ErrMissingConfirmationStore
-	}
-	if s.auditRepo == (agentstate.AuditEventRepository{}) {
-		return PreparedConfirmation{}, ErrMissingAuditStore
+	if err := s.requireConfirmationStores(); err != nil {
+		return PreparedConfirmation{}, err
 	}
 
-	tool, ok := s.registry.Lookup(input.Tool)
-	if !ok {
-		return PreparedConfirmation{}, ErrUnknownTool
-	}
-	decision := s.registry.Authorize(agenttools.AuthorizeRequest{
-		Tool:            input.Tool,
-		Role:            input.Role,
-		Confirmed:       true,
-		EnforceReviewed: input.EnforceReviewed,
-	})
-	if !decision.Allowed {
-		return PreparedConfirmation{}, mapDenyReason(decision.Reason)
-	}
-	if tool.Capability.Permission != agenttools.PermissionRequiresConfirmation {
-		return PreparedConfirmation{}, ErrConfirmationNotRequired
+	tool, err := s.authorizeGatedTool(input.Tool, input.Role, input.EnforceReviewed)
+	if err != nil {
+		return PreparedConfirmation{}, err
 	}
 
 	issued, err := s.confirmations.Issue(confirmations.IssueInput{
@@ -181,37 +163,19 @@ func (s *Service) PrepareConfirmation(ctx context.Context, input PrepareConfirma
 // Callers must prepare a new confirmation rather than risking double-write under concurrent
 // tools/call with the same confirmation_id+token. Prefer under-commit over over-commit.
 func (s *Service) ClaimConfirmation(ctx context.Context, input ConsumeConfirmationInput) (ConsumedConfirmation, error) {
-	if s.registry == nil {
-		return ConsumedConfirmation{}, ErrMissingRegistry
+	if err := s.requireConfirmationIssuers(); err != nil {
+		return ConsumedConfirmation{}, err
 	}
-	if s.confirmations == nil {
-		return ConsumedConfirmation{}, confirmations.ErrEmptySecret
+	if err := s.requireConfirmationStores(); err != nil {
+		return ConsumedConfirmation{}, err
 	}
-	if s.confirmationRepo == (agentstate.ConfirmationRepository{}) {
-		return ConsumedConfirmation{}, ErrMissingConfirmationStore
-	}
-	if s.auditRepo == (agentstate.AuditEventRepository{}) {
-		return ConsumedConfirmation{}, ErrMissingAuditStore
-	}
-	if len(input.Caller) > maxAgentIdentityLength || len(input.RequestID) > maxAgentIdentityLength {
+	if identityTooLong(input.Caller, input.RequestID) {
 		return ConsumedConfirmation{}, ErrIdentityTooLong
 	}
 
-	tool, ok := s.registry.Lookup(input.Tool)
-	if !ok {
-		return ConsumedConfirmation{}, ErrUnknownTool
-	}
-	decision := s.registry.Authorize(agenttools.AuthorizeRequest{
-		Tool:            input.Tool,
-		Role:            input.Role,
-		Confirmed:       true,
-		EnforceReviewed: input.EnforceReviewed,
-	})
-	if !decision.Allowed {
-		return ConsumedConfirmation{}, mapDenyReason(decision.Reason)
-	}
-	if tool.Capability.Permission != agenttools.PermissionRequiresConfirmation {
-		return ConsumedConfirmation{}, ErrConfirmationNotRequired
+	tool, err := s.authorizeGatedTool(input.Tool, input.Role, input.EnforceReviewed)
+	if err != nil {
+		return ConsumedConfirmation{}, err
 	}
 
 	record, err := s.confirmationRepo.Get(ctx, input.ConfirmationID)
@@ -273,6 +237,62 @@ func (s *Service) ClaimConfirmation(ctx context.Context, input ConsumeConfirmati
 // Prefer ClaimConfirmation at write boundaries so naming matches claim-before-execute.
 func (s *Service) ConsumeConfirmation(ctx context.Context, input ConsumeConfirmationInput) (ConsumedConfirmation, error) {
 	return s.ClaimConfirmation(ctx, input)
+}
+
+// requireConfirmationIssuers checks the two collaborators every confirmation
+// needs before a tool can even be considered: the registry that defines the
+// policy and the manager that signs and verifies tokens.
+func (s *Service) requireConfirmationIssuers() error {
+	if s.registry == nil {
+		return ErrMissingRegistry
+	}
+	if s.confirmations == nil {
+		return confirmations.ErrEmptySecret
+	}
+	return nil
+}
+
+// requireConfirmationStores checks the persistence half. Both repositories are
+// value types wrapping a *sql.DB, so "not wired" is the zero value, not nil.
+func (s *Service) requireConfirmationStores() error {
+	if s.confirmationRepo == (agentstate.ConfirmationRepository{}) {
+		return ErrMissingConfirmationStore
+	}
+	if s.auditRepo == (agentstate.AuditEventRepository{}) {
+		return ErrMissingAuditStore
+	}
+	return nil
+}
+
+// identityTooLong reports whether the caller-supplied attribution exceeds the
+// audit persistence bound.
+func identityTooLong(caller, requestID string) bool {
+	return len(caller) > maxAgentIdentityLength || len(requestID) > maxAgentIdentityLength
+}
+
+// authorizeGatedTool resolves the registry definition and applies the shared
+// confirmation gate: the tool must exist, the role must be allowed to use it,
+// and its policy must actually require a confirmation. Prepare and claim ask
+// exactly the same question, so one implementation is what keeps the two
+// answers from drifting apart.
+func (s *Service) authorizeGatedTool(tool string, role agenttools.Role, enforceReviewed bool) (agenttools.ToolDefinition, error) {
+	definition, ok := s.registry.Lookup(tool)
+	if !ok {
+		return agenttools.ToolDefinition{}, ErrUnknownTool
+	}
+	decision := s.registry.Authorize(agenttools.AuthorizeRequest{
+		Tool:            tool,
+		Role:            role,
+		Confirmed:       true,
+		EnforceReviewed: enforceReviewed,
+	})
+	if !decision.Allowed {
+		return agenttools.ToolDefinition{}, mapDenyReason(decision.Reason)
+	}
+	if definition.Capability.Permission != agenttools.PermissionRequiresConfirmation {
+		return agenttools.ToolDefinition{}, ErrConfirmationNotRequired
+	}
+	return definition, nil
 }
 
 func mapDenyReason(reason agenttools.DenyReason) error {
