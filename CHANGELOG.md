@@ -22,6 +22,16 @@
 
 ## [Unreleased]
 
+- [修复] `/mcp` 在认证之前没有任何限流，随机 bearer token 洪泛会让每个请求都强制走一次完整 ECDSA 验签——公网面上最廉价的 CPU 放大点。现在在 MCPAuth 之前挂一个粗粒度按来源 IP 的令牌桶（新增 `FUND_MCP_PREAUTH_RPM`，默认 600/分钟、burst 60），与认证后的按 key 桶（`FUND_MCP_RPM`）相互独立，因此 401 永远不会消耗 key 配额；已认证路径语义不变（#40）。
+- [修复] OAuth 访问令牌校验在 `exp` 缺失时会跳过过期检查（`Expiry==0`），任何忘记写该声明的签发路径都会静默铸出永不过期的令牌。现在 `exp` 为必填，并拒绝 `iat` 超前服务器时钟 5 分钟以上的令牌；当前签发方本来就总带 `exp`，但校验方不再依赖这一点（#40）。
+- [修复] 部署忘记设 `FUND_ENV` 时会静默跳过全部生产密钥下限检查。现在操作者声明了公网面也会触发加固：`FUND_PUBLIC_BASE_URL` 主机非回环，或 `FUND_ALLOWED_ORIGINS` 含非回环主机；纯回环部署（本地开发、CI smoke compose 在 localhost 用占位 key）继续豁免，检查项本身不变（#40）。
+- [修复] `/oauth/consent` 的 POST 校验了会话与一次性 `consent_token`，但没有复核 Origin/Sec-Fetch-Site。现在经 `browserMutationAllowed` 补上与其他浏览器写路径同等的纵深防御（真正的防线仍是 SameSite 加单次消费 token）；不发 Origin 的非浏览器客户端（基于 curl 的 CI smoke）继续可用（#40）。
+- [修复] 定投计划的 20:00 CST 执行窗口一旦被错过（重启、发版、宿主机挂起）就永久丢失。现在调度器按两条路径回补 due date，且都原样复用 `RunDCAAutoInvest`，因此 `order_id` 与 `dca_plan_executions` 台账继续记录 due date 而非回补日，按日幂等仍是原有的 claim-insert + 台账机制：启动追赶（在过期行情刷新之后、经 `startup_refresh` claim 每 CST 日一次）与 tick 兜底（每天 06:00-09:59 CST 窗口内首个 tick，内存内每日一次 + 持久化 `crawl_log`（`__sched_dca_backfill`））（#40）。
+- [修复] 定投买入的 `amount/nav` 是最后一条以全浮点写份额的资金路径（会落 33.333333333333336）。现在在执行边界用包内 `round4` 取整到 4 位小数，与台账存储单位净值的 4dp 精度对齐，preview 报告同一个取整值；整除结果（100/2=50）不变，既有断言全部保持（#40）。
+- [改进] 快照估值列改为在唯一写入路径上算定：`held_shares` 取整到 4dp（与净值解析对称），`total_cost` / `current_value` / `unrealized_pnl` / `pnl_pct` 取整到 2dp（与展示层对称）。份额求和先落到 4dp 基准再做 `HeldSharesDust` 粉尘判定，因此浮点残差恰为 0、阈值只判真正的小额持仓；`-0` 归一为 `0`，残差不再通过 API 露出「-0」。`latest_nav` 保持透传（解析时已是 4dp，ModeLight 有意保留存储值）（#40）。
+- [新功能] 一致性校验新增份额对账：按基金交叉核对 transactions 的 `SUM(signed_share_change)` 与 portfolio_snapshot 的 `SUM(held_shares)`（跨组合行求和，因为交易是基金级），两侧都经 `snapshot.RoundShares` 落到同一个 4dp 基准（即 Recalc 的基准）；漂移超过 `snapshot.HeldSharesDust` 才报告，单次报告的逐基金条目上限 20 条（#40）。
+- [改进] XIRR 终值在净值缺失时不再静默按 0 计入。现在发出显式退化告警，把「数据缺失」与「真实亏损」区分开；portfolio service 增加可选 slog 汇聚点，未注入时回落到 `slog.Default()`，因此既有接线无需改动（#40）。
+
 ## [2.2.1] - 2026-09-03
 
 
