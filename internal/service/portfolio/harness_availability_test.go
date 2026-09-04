@@ -212,7 +212,6 @@ func TestServiceFailsClosedWithoutWiringFact(t *testing.T) {
 	db := openSummaryFixture(t)
 	defer db.Close()
 	seedMixedHarnessData(t, db)
-	ensureSourceEventsTable(t, db) // the agent-context pack reads the source event queue
 
 	service := NewService(db)
 	op, err := service.GetHarnessSnapshotFor(context.Background(), 1, HarnessAudienceOperator)

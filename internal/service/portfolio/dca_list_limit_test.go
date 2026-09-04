@@ -2,36 +2,13 @@ package portfolio
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 func TestListDCAPlansSoftLimit(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE dca_plans (
-		id INTEGER PRIMARY KEY,
-		fund_code TEXT,
-		fund_name TEXT,
-		amount REAL,
-		frequency TEXT,
-		weekday_mask TEXT,
-		trade_type TEXT,
-		portfolio_id INTEGER,
-		start_date TEXT,
-		end_date TEXT,
-		active INTEGER,
-		source TEXT,
-		created_at TEXT,
-		updated_at TEXT
-	)`); err != nil {
-		t.Fatal(err)
-	}
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	// Insert a few rows; LIMIT 5000 must not break listing.
 	for i := 1; i <= 3; i++ {
 		if _, err := db.Exec(`INSERT INTO dca_plans

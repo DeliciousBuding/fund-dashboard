@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 func TestFreshnessReportsHealthyWhenNAVDataIsRecent(t *testing.T) {
@@ -199,84 +199,8 @@ func TestFreshnessOutputContainsNoTradingRecommendations(t *testing.T) {
 
 func testDB(t *testing.T) *sql.DB {
 	t.Helper()
-
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open in-memory sqlite: %v", err)
-	}
-
-	for _, stmt := range adminFixtureStatements {
-		if _, err := db.ExecContext(context.Background(), stmt); err != nil {
-			db.Close()
-			t.Fatalf("exec fixture statement %q: %v", stmt, err)
-		}
-	}
-	return db
-}
-
-var adminFixtureStatements = []string{
-	`CREATE TABLE fund_details (
-		fund_code TEXT PRIMARY KEY,
-		fund_name TEXT,
-		fund_type TEXT,
-		security_type TEXT DEFAULT 'fund',
-		market TEXT DEFAULT ''
-	)`,
-	`CREATE TABLE nav_history (
-		fund_code TEXT,
-		date TEXT,
-		unit_nav REAL,
-		daily_change_pct REAL DEFAULT 0,
-		security_type TEXT DEFAULT 'fund'
-	)`,
-	`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT NOT NULL,
-		fund_name TEXT,
-		held_shares REAL,
-		total_cost REAL,
-		latest_nav REAL,
-		current_value REAL,
-		unrealized_pnl REAL,
-		pnl_pct REAL,
-		security_type TEXT DEFAULT 'fund',
-			portfolio_id INTEGER NOT NULL DEFAULT 1,
-			PRIMARY KEY (fund_code, portfolio_id)
-		)`,
-	`CREATE TABLE transactions (
-		seq INTEGER PRIMARY KEY AUTOINCREMENT,
-		order_id TEXT,
-		trade_time TEXT,
-		confirm_date TEXT,
-		trade_type TEXT,
-		direction TEXT,
-		fund_code TEXT,
-		fund_name TEXT,
-		confirm_amount REAL,
-		confirm_share REAL,
-		fee REAL,
-		signed_cash_flow REAL,
-		signed_share_change REAL,
-		settlement_days INTEGER
-	)`,
-	`CREATE TABLE dca_plans (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		fund_code TEXT NOT NULL,
-		fund_name TEXT,
-		amount REAL NOT NULL,
-		frequency TEXT NOT NULL DEFAULT 'weekday',
-		weekday_mask TEXT NOT NULL DEFAULT '1,2,3,4,5',
-		trade_type TEXT NOT NULL DEFAULT '',
-		portfolio_id INTEGER NOT NULL DEFAULT 1,
-		start_date TEXT NOT NULL,
-		end_date TEXT,
-		active INTEGER NOT NULL DEFAULT 1,
-		source TEXT NOT NULL DEFAULT 'manual',
-		created_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL DEFAULT ''
-	)`,
-	`CREATE TABLE fund_holdings (
-		fund_code TEXT,
-		stock_code TEXT,
-		weight REAL
-	)`,
+	// Production schema via the real boot path (EnsureSQLiteSchema: baseline
+	// tables, enforced indexes, schema_migrations) instead of hand-rolled DDL,
+	// so a production DDL drift turns these tests red.
+	return testutil.OpenTempDBWithProductionSchema(t)
 }

@@ -66,8 +66,9 @@ func TestQueryTradingReportsFundStatus(t *testing.T) {
 	db := testDB(t)
 	defer db.Close()
 
+	// fund_status ships in the production fixture schema; only the rows are
+	// seeded here.
 	if _, err := db.ExecContext(context.Background(), `
-		CREATE TABLE fund_status (fund_code TEXT, purchase_status TEXT, redemption_status TEXT);
 		INSERT INTO fund_status (fund_code, purchase_status, redemption_status) VALUES
 			('019173', '开放', '开放'),
 			('019174', '暂停', NULL);
@@ -116,12 +117,17 @@ func TestTableExistsSQLiteFallback(t *testing.T) {
 	if !exists {
 		t.Fatal("transactions should exist")
 	}
+	// The production fixture ships every table, so absence is simulated by
+	// dropping one: tableExists must report false for a genuinely absent table.
+	if _, err := db.ExecContext(context.Background(), `DROP TABLE fund_status`); err != nil {
+		t.Fatalf("drop fund_status: %v", err)
+	}
 	exists, err = svc.tableExists(context.Background(), "fund_status")
 	if err != nil {
 		t.Fatalf("tableExists fund_status: %v", err)
 	}
 	if exists {
-		t.Fatal("fund_status should not exist in the base fixture")
+		t.Fatal("fund_status should not exist after the drop")
 	}
 }
 

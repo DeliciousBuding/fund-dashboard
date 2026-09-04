@@ -2,38 +2,15 @@ package portfolio
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 func TestServiceSearchStocksMergesLocalProfileAndSecurityFacts(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 
 	for _, stmt := range []string{
-		`CREATE TABLE fund_details (
-			fund_code TEXT PRIMARY KEY,
-			fund_name TEXT,
-			fund_type TEXT,
-			security_type TEXT DEFAULT 'fund',
-			market TEXT DEFAULT ''
-		)`,
-		`CREATE TABLE stock_profile (
-			code TEXT,
-			name TEXT,
-			market TEXT,
-			sector TEXT,
-			industry TEXT,
-			market_cap REAL,
-			pe REAL,
-			description TEXT,
-			PRIMARY KEY (code, market)
-		)`,
 		`INSERT INTO fund_details (fund_code, fund_name, fund_type, security_type, market) VALUES
 			('AAPL', 'Apple Inc.', '科技股', 'stock', 'US'),
 			('019173', '纳斯达克100指数(QDII)C', 'QDII-股票', 'fund', 'CN')`,
@@ -78,31 +55,9 @@ func TestServiceSearchStocksMergesLocalProfileAndSecurityFacts(t *testing.T) {
 }
 
 func TestServiceSearchStocksFiltersMarketAndLimit(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 
 	for _, stmt := range []string{
-		`CREATE TABLE fund_details (
-			fund_code TEXT PRIMARY KEY,
-			fund_name TEXT,
-			fund_type TEXT,
-			security_type TEXT DEFAULT 'fund',
-			market TEXT DEFAULT ''
-		)`,
-		`CREATE TABLE stock_profile (
-			code TEXT,
-			name TEXT,
-			market TEXT,
-			sector TEXT,
-			industry TEXT,
-			market_cap REAL,
-			pe REAL,
-			description TEXT,
-			PRIMARY KEY (code, market)
-		)`,
 		`INSERT INTO fund_details (fund_code, fund_name, fund_type, security_type, market) VALUES
 			('AAPL', 'Apple Inc.', '科技股', 'stock', 'US')`,
 		`INSERT INTO stock_profile (code, name, market, sector, industry) VALUES

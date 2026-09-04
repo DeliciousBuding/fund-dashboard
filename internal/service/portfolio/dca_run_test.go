@@ -3,20 +3,15 @@ package portfolio
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"testing"
 	"time"
 
-	db "github.com/DeliciousBuding/fund-dashboard/internal/repository/db"
 	"github.com/DeliciousBuding/fund-dashboard/internal/snapshot"
+	"github.com/DeliciousBuding/fund-dashboard/internal/testutil"
 )
 
 func TestRunDCAAutoInvestDryRunAndExecute(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "fund.db")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	// pick a Wednesday (mask day 3)
 	// 2026-07-15 is Wednesday
 	asOf := "2026-07-15"
@@ -24,29 +19,10 @@ func TestRunDCAAutoInvestDryRunAndExecute(t *testing.T) {
 		_ = d
 	}
 	for _, q := range []string{
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,
-		`CREATE TABLE dca_plans (
-			id INTEGER PRIMARY KEY, fund_code TEXT, fund_name TEXT, amount REAL,
-			frequency TEXT, weekday_mask TEXT, trade_type TEXT, portfolio_id INTEGER,
-			start_date TEXT, end_date TEXT, active INTEGER, source TEXT
-		)`,
-		`CREATE TABLE transactions (
-			seq INTEGER PRIMARY KEY AUTOINCREMENT,
-			order_id TEXT UNIQUE,
-			trade_time TEXT, confirm_date TEXT, trade_type TEXT, direction TEXT,
-			fund_code TEXT, fund_name TEXT, confirm_amount REAL, confirm_share REAL,
-			fee REAL, signed_cash_flow REAL, signed_share_change REAL, settlement_days INTEGER
-		)`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
-		`CREATE TABLE dca_plan_executions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, fund_code TEXT, trade_date TEXT,
-			amount REAL, status TEXT, order_id TEXT, nav_date TEXT, nav REAL, message TEXT, created_at TEXT, updated_at TEXT
-		)`,
-		`CREATE TABLE portfolio_snapshot (fund_code TEXT NOT NULL, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (fund_code, portfolio_id))`,
-		`INSERT INTO fund_details VALUES ('019173','Test Fund','fund','CN')`,
-		`INSERT INTO dca_plans (id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source)
-			VALUES (1, '019173', 'Test Fund', 100, 'weekday', '1,2,3,4,5', '定投买入', 1, '2026-01-01', NULL, 1, 'manual')`,
-		`INSERT INTO nav_history VALUES ('019173', '2026-07-14', 2.0)`,
+		`INSERT INTO fund_details (fund_code, fund_name, security_type, market) VALUES ('019173','Test Fund','fund','CN')`,
+		`INSERT INTO dca_plans (id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source, created_at, updated_at)
+			VALUES (1, '019173', 'Test Fund', 100, 'weekday', '1,2,3,4,5', '定投买入', 1, '2026-01-01', NULL, 1, 'manual', '2026-01-01', '2026-01-01')`,
+		`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('019173', '2026-07-14', 2.0)`,
 	} {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatalf("%s: %v", q, err)
@@ -99,56 +75,28 @@ func TestRunDCAAutoInvestDryRunAndExecute(t *testing.T) {
 	}
 }
 
-// newDCARunFixture builds the minimal DCA ledger schema (same inline pattern as
-// TestRunDCAAutoInvestDryRunAndExecute above) with one active plan (id=1, fund
-// '019173', amount 100, portfolio 1, start 2026-01-01) and a single NAV row, so
-// table cases can drive RunDCAAutoInvest with past due dates the way the
-// scheduler backfill does.
+// newDCARunFixture builds a production-schema DCA ledger with one active plan
+// (id=1, fund '019173', amount 100, portfolio 1, start 2026-01-01) and a single
+// NAV row, so table cases can drive RunDCAAutoInvest with past due dates the way
+// the scheduler backfill does.
 func newDCARunFixture(t *testing.T, mask, start, end string, hasNav bool, nav float64) *sql.DB {
 	t.Helper()
-	d, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "dca.db")})
-	if err != nil {
+	d := testutil.OpenTempDBWithProductionSchema(t)
+	if _, err := d.Exec(`INSERT INTO fund_details (fund_code, fund_name, security_type, market) VALUES ('019173','Test Fund','fund','CN')`); err != nil {
 		t.Fatal(err)
-	}
-	t.Cleanup(func() { d.Close() })
-	for _, q := range []string{
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,
-		`CREATE TABLE dca_plans (
-			id INTEGER PRIMARY KEY, fund_code TEXT, fund_name TEXT, amount REAL,
-			frequency TEXT, weekday_mask TEXT, trade_type TEXT, portfolio_id INTEGER,
-			start_date TEXT, end_date TEXT, active INTEGER, source TEXT
-		)`,
-		`CREATE TABLE transactions (
-			seq INTEGER PRIMARY KEY AUTOINCREMENT,
-			order_id TEXT UNIQUE,
-			trade_time TEXT, confirm_date TEXT, trade_type TEXT, direction TEXT,
-			fund_code TEXT, fund_name TEXT, confirm_amount REAL, confirm_share REAL,
-			fee REAL, signed_cash_flow REAL, signed_share_change REAL, settlement_days INTEGER
-		)`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
-		`CREATE TABLE dca_plan_executions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT, plan_id INTEGER, fund_code TEXT, trade_date TEXT,
-			amount REAL, status TEXT, order_id TEXT, nav_date TEXT, nav REAL, message TEXT, created_at TEXT, updated_at TEXT
-		)`,
-		`CREATE TABLE portfolio_snapshot (fund_code TEXT NOT NULL, fund_name TEXT, held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL, unrealized_pnl REAL, pnl_pct REAL, security_type TEXT, portfolio_id INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (fund_code, portfolio_id))`,
-		`INSERT INTO fund_details VALUES ('019173','Test Fund','fund','CN')`,
-	} {
-		if _, err := d.Exec(q); err != nil {
-			t.Fatalf("%s: %v", q, err)
-		}
 	}
 	endArg := any(nil)
 	if end != "" {
 		endArg = end
 	}
 	if _, err := d.Exec(`
-		INSERT INTO dca_plans (id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source)
-		VALUES (1, '019173', 'Test Fund', 100, 'weekday', ?, '定投买入', 1, ?, ?, 1, 'manual')
+		INSERT INTO dca_plans (id, fund_code, fund_name, amount, frequency, weekday_mask, trade_type, portfolio_id, start_date, end_date, active, source, created_at, updated_at)
+		VALUES (1, '019173', 'Test Fund', 100, 'weekday', ?, '定投买入', 1, ?, ?, 1, 'manual', '2026-01-01', '2026-01-01')
 	`, mask, start, endArg); err != nil {
 		t.Fatal(err)
 	}
 	if hasNav {
-		if _, err := d.Exec(`INSERT INTO nav_history VALUES ('019173', '2026-08-28', ?)`, nav); err != nil {
+		if _, err := d.Exec(`INSERT INTO nav_history (fund_code, date, unit_nav) VALUES ('019173', '2026-08-28', ?)`, nav); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -179,7 +127,7 @@ func TestRunDCAAutoInvestBackfillDueDateTable(t *testing.T) {
 		{
 			name: "missed_due_date_replays_with_due_date_on_order_and_ledger",
 			mask: "3", start: "2026-01-01", hasNav: true, nav: 2.0,
-			asOf: "2026-09-02", // Wednesday, mask day 3 — window was missed that day
+			asOf:       "2026-09-02", // Wednesday, mask day 3 — window was missed that day
 			wantStatus: "executed", wantExecuted: 1,
 			wantOrderID: "DCA-1-20260902", wantTx: 1, wantLedger: 1,
 		},
@@ -199,7 +147,7 @@ func TestRunDCAAutoInvestBackfillDueDateTable(t *testing.T) {
 		{
 			name: "empty_mask_weekday_semantics_preserved_on_past_date",
 			mask: "", start: "2026-01-01", hasNav: true, nav: 2.0,
-			asOf: "2026-08-31", // Monday — empty mask defaults to 1-5
+			asOf:       "2026-08-31", // Monday — empty mask defaults to 1-5
 			wantStatus: "executed", wantExecuted: 1,
 			wantOrderID: "DCA-1-20260831", wantTx: 1, wantLedger: 1,
 		},
@@ -341,29 +289,7 @@ func TestRunDCAAutoInvestRoundsSharesTo4dp(t *testing.T) {
 }
 
 func TestRecalcSnapshotLightDustClamp(t *testing.T) {
-	db, err := db.Open(context.Background(), db.Options{Driver: "sqlite", SQLitePath: filepath.Join(t.TempDir(), "dust.db")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	for _, q := range []string{
-		`CREATE TABLE fund_details (fund_code TEXT PRIMARY KEY, fund_name TEXT, security_type TEXT, market TEXT)`,
-		`CREATE TABLE transactions (
-			seq INTEGER PRIMARY KEY AUTOINCREMENT,
-			fund_code TEXT, fund_name TEXT, signed_share_change REAL, signed_cash_flow REAL
-		)`,
-		`CREATE TABLE nav_history (fund_code TEXT, date TEXT, unit_nav REAL)`,
-		`CREATE TABLE portfolio_snapshot (
-			fund_code TEXT, portfolio_id INTEGER DEFAULT 1, fund_name TEXT,
-			held_shares REAL, total_cost REAL, latest_nav REAL, current_value REAL,
-			unrealized_pnl REAL, pnl_pct REAL, security_type TEXT,
-			PRIMARY KEY (fund_code, portfolio_id)
-		)`,
-	} {
-		if _, err := db.Exec(q); err != nil {
-			t.Fatal(err)
-		}
-	}
+	db := testutil.OpenTempDBWithProductionSchema(t)
 	if _, err := db.Exec(`INSERT INTO fund_details (fund_code, fund_name, security_type) VALUES ('019173','t','fund')`); err != nil {
 		t.Fatal(err)
 	}
